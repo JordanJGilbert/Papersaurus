@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Nearby Places</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Essential Meta Tags -->
+    <meta name="description" content="Find restaurants, gas stations, and other places near you with distances">
+    
+    <!-- Open Graph Tags for Social Media Sharing -->
+    <meta property="og:title" content="Nearby Places - Find What's Around You">
+    <meta property="og:description" content="Discover restaurants, gas stations and other places near your location with accurate distance information">
+    <meta property="og:image" content="https://via.placeholder.com/1200x630">
+    <meta property="og:url" content="https://yourwebsite.com/nearby">
+    <meta property="og:type" content="website">
+    
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        .glassmorphism {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+        #map {
+            width: 100%;
+            height: 200px;
+            border-radius: 0.5rem;
+        }
+        @media (min-width: 768px) {
+            #map {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto max-w-3xl px-4 py-6">
+        <!-- Header -->
+        <header class="text-center mb-6">
+            <h1 class="text-2xl md:text-3xl font-semibold text-gray-800 mb-2">Nearby Places</h1>
+            <p class="text-gray-600">Find what's around you with accurate distances</p>
+        </header>
+
+        <!-- Search Section -->
+        <div class="glassmorphism rounded-xl shadow-lg p-6 mb-6">
+            <form id="searchForm" class="space-y-4">
+                <div>
+                    <label for="searchQuery" class="block text-sm font-medium text-gray-700 mb-1">What are you looking for?</label>
+                    <input 
+                        type="text" 
+                        id="searchQuery" 
+                        placeholder="Restaurants, gas stations, cafes..." 
+                        class="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                        required
+                    >
+                </div>
+                
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <button 
+                        type="submit"
+                        class="grow bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                    >
+                        Search
+                    </button>
+                    
+                    <button 
+                        type="button"
+                        id="useMyLocation"
+                        class="grow bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium py-3 px-4 rounded-lg transition focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 flex items-center justify-center"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        Use My Location
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Map Section -->
+        <div id="mapContainer" class="glassmorphism rounded-xl shadow-lg p-6 mb-6 hidden">
+            <div id="map"></div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="hidden">
+            <div class="flex justify-center items-center py-8">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="resultsContainer" class="hidden">
+            <h2 class="text-xl font-medium text-gray-800 mb-4">Results</h2>
+            <div id="resultsList" class="space-y-3">
+                <!-- Results will be populated here -->
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        <div id="errorMessage" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+            <p>There was an error finding nearby places. Please try again.</p>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        let map;
+        let userLocation = null;
+        let markers = [];
+        
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', () => {
+            // Set up event listeners
+            document.getElementById('searchForm').addEventListener('submit', handleSearch);
+            document.getElementById('useMyLocation').addEventListener('click', getUserLocation);
+        });
+
+        // Load Google Maps API
+        function loadGoogleMapsScript() {
+            if (window.google && window.google.maps) {
+                return Promise.resolve();
+            }
+            
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyDK8KzNK8Y0UKzWnV68Pu7R3-lqiZaq9xU&libraries=places`;
+                script.defer = true;
+                script.async = true;
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
+
+        // Get user's current location
+        function getUserLocation() {
+            if (navigator.geolocation) {
+                showLoading();
+                navigator.geolocation.getCurrentPosition(
+                    position => {
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        
+                        // Initialize map with user location
+                        loadGoogleMapsScript().then(() => {
+                            initMap();
+                            hideLoading();
+                            document.getElementById('mapContainer').classList.remove('hidden');
+                        });
+                    },
+                    error => {
+                        console.error('Error getting location:', error);
+                        showError('Could not access your location. Please enable location services.');
+                        hideLoading();
+                    }
+                );
+            } else {
+                showError('Geolocation is not supported by your browser.');
+            }
+        }
+
+        // Initialize the map
+        function initMap() {
+            document.getElementById('mapContainer').classList.remove('hidden');
+            
+            if (!map) {
+                map = new google.maps.Map(document.getElementById('map'), {
+                    center: userLocation,
+                    zoom: 14,
+                    mapTypeControl: false,
+                    streetViewControl: false,
+                    fullscreenControl: false
+                });
+                
+                // Add marker for user location
+                new google.maps.Marker({
+                    position: userLocation,
+                    map: map,
+                    title: 'Your Location',
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale: 10,
+                        fillColor: '#4285F4',
+                        fillOpacity: 1,
+                        strokeWeight: 2,
+                        strokeColor: '#FFFFFF'
+                    }
+                });
+            }
+        }
+
+        // Handle search form submission
+        async function handleSearch(e) {
+            e.preventDefault();
+            
+            if (!userLocation) {
+                showError('Please share your location first');
+                return;
+            }
+            
+            const query = document.getElementById('searchQuery').value.trim();
+            if (!query) {
+                showError('Please enter what you are looking for');
+                return;
+            }
+            
+            showLoading();
+            clearResults();
+            
+            try {
+                await loadGoogleMapsScript();
+                
+                const service = new google.maps.places.PlacesService(map);
+                const request = {
+                    location: userLocation,
+                    radius: 5000, // 5km radius
+                    keyword: query
+                };
+                
+                service.nearbySearch(request, (results, status) => {
+                    if (status === google.maps.places.PlacesServiceStatus.OK && results) {
+                        displayResults(results);
+                    } else {
+                        showError('No places found nearby. Try a different search term.');
+                    }
+                    hideLoading();
+                });
+            } catch (error) {
+                console.error('Error in search:', error);
+                showError('An error occurred while searching. Please try again.');
+                hideLoading();
+            }
+        }
+
+        // Display the results
+        function displayResults(places) {
+            const resultsContainer = document.getElementById('resultsContainer');
+            const resultsList = document.getElementById('resultsList');
+            
+            resultsContainer.classList.remove('hidden');
+            resultsList.innerHTML = '';
+            
+            // Clear existing markers
+            markers.forEach(marker => marker.setMap(null));
+            markers = [];
+            
+            // Create a bounds object to fit all markers on the map
+            const bounds = new google.maps.LatLngBounds();
+            bounds.extend(userLocation);
+            
+            // Calculate distances using the Distance Matrix API
+            const placesCoords = places.slice(0, 10).map(place => place.geometry.location);
+            const service = new google.maps.DistanceMatrixService();
+            
+            service.getDistanceMatrix({
+                origins: [userLocation],
+                destinations: placesCoords,
+                travelMode: google.maps.TravelMode.DRIVING,
+                unitSystem: google.maps.UnitSystem.IMPERIAL
+            }, (response, status) => {
+                if (status === 'OK') {
+                    const distances = response.rows[0].elements;
+                    
+                    places.slice(0, 10).forEach((place, index) => {
+                        const distance = distances[index].distance ? distances[index].distance.text : 'N/A';
+                        const duration = distances[index].duration ? distances[index].duration.text : 'N/A';
+                        
+                        // Create place marker
+                        const marker = new google.maps.Marker({
+                            position: place.geometry.location,
+                            map: map,
+                            title: place.name,
+                            animation: google.maps.Animation.DROP,
+                            label: {
+                                text: `${index + 1}`,
+                                color: 'white'
+                            }
+                        });
+                        
+                        markers.push(marker);
+                        bounds.extend(place.geometry.location);
+                        
+                        // Add info window to marker
+                        const infoWindow = new google.maps.InfoWindow({
+                            content: `<div class="p-2"><strong>${place.name}</strong><br>Distance: ${distance}</div>`
+                        });
+                        
+                        marker.addListener('click', () => {
+                            infoWindow.open(map, marker);
+                        });
+                        
+                        // Create result item in the list
+                        const resultItem = document.createElement('div');
+                        resultItem.className = 'glassmorphism rounded-lg p-4 hover:shadow-md transition';
+                        resultItem.innerHTML = `
+                            <div class="flex items-start">
+                                <div class="bg-blue-600 text-white rounded-full w-6 h-6 flex items-center justify-center mr-3 flex-shrink-0 mt-1">
+                                    ${index + 1}
+                                </div>
+                                <div>
+                                    <h3 class="font-medium text-gray-900">${place.name}</h3>
+                                    <div class="text-sm text-gray-600 mt-1">
+                                        <div>Distance: <span class="font-medium">${distance}</span></div>
+                                        <div>Travel time: <span class="font-medium">${duration}</span></div>
+                                        <div class="mt-1">
+                                            ${place.vicinity || ''}
+                                        </div>
+                                        ${place.rating ? `
+                                        <div class="mt-1 flex items-center">
+                                            <span class="text-yellow-500 mr-1">★</span>
+                                            <span>${place.rating}</span>
+                                            <span class="text-gray-400 ml-1">(${place.user_ratings_total || 0})</span>
+                                        </div>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-3 flex justify-end">
+                                <a href="https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lng}&destination=${place.geometry.location.lat()},${place.geometry.location.lng()}&travelmode=driving" 
+                                   target="_blank" 
+                                   class="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center">
+                                    Get Directions
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                                    </svg>
+                                </a>
+                            </div>
+                        `;
+                        
+                        resultItem.addEventListener('click', () => {
+                            map.setCenter(place.geometry.location);
+                            map.setZoom(15);
+                            infoWindow.open(map, marker);
+                        });
+                        
+                        resultsList.appendChild(resultItem);
+                    });
+                    
+                    // Fit the map to show all markers
+                    map.fitBounds(bounds);
+                }
+            });
+        }
+
+        // Utility functions
+        function showLoading() {
+            document.getElementById('loadingIndicator').classList.remove('hidden');
+            document.getElementById('errorMessage').classList.add('hidden');
+        }
+        
+        function hideLoading() {
+            document.getElementById('loadingIndicator').classList.add('hidden');
+        }
+        
+        function showError(message) {
+            const errorEl = document.getElementById('errorMessage');
+            errorEl.querySelector('p').textContent = message;
+            errorEl.classList.remove('hidden');
+        }
+        
+        function clearResults() {
+            document.getElementById('resultsContainer').classList.add('hidden');
+            document.getElementById('resultsList').innerHTML = '';
+            markers.forEach(marker => marker.setMap(null));
+            markers = [];
+        }
+    </script>
+</body>
+</html> 

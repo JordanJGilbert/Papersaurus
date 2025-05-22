@@ -1,0 +1,112 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.env
+.venv/
+ENV/
+venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+.cache/
+*.log
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Node/Next.js
+nextjs-chatbot/node_modules/
+nextjs-chatbot/.next/
+nextjs-chatbot/.env
+nextjs-chatbot/.env.local
+node_modules/
+.npm/
+.yarn/
+.pnpm/
+*.tsbuildinfo
+
+# Data/User Data
+user_data/
+history/
+cache/
+*.sqlite3
+*.db
+*.bak
+*.tmp
+*.swp
+
+# Editor/IDE
+.cursor/
+.DS_Store
+*.sublime-workspace
+*.sublime-project
+.idea/
+.vscode/
+*.code-workspace
+*.iml
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Misc
+*.tar.gz
+*.zip
+*.bak
+*.orig
+*.rej
+*.tmp
+*.temp
+
+# Base64 and large encoded data
+*.b64
+*.base64
+*.base64.txt
+*.base64.json
+base64_*.txt
+base64_*.json
+*_base64.txt
+*_base64.json
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Test output
+coverage/
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Compiled source
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+
+# Jupyter Notebooks
+.ipynb_checkpoints/ 

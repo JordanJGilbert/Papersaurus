@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Promptwerk Dashboard</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+
+        :root {
+            --repairen-primary: #2563eb;
+            --repairen-secondary: #1e40af;
+            --promptwerk-accent: #FDB515;
+        }
+
+        body {
+            min-height: 100vh;
+            background: #0f172a;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(37, 99, 235, 0.1) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(30, 64, 175, 0.1) 0%, transparent 40%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #ffffff;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        .header {
+            width: 100%;
+            padding: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo-small {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--repairen-primary), var(--repairen-secondary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo-small svg {
+            width: 24px;
+            height: 24px;
+            fill: white;
+        }
+
+        .brand-name {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(45deg, #ffffff, #e2e8f0);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            padding: 2rem;
+            margin: 0 auto;
+        }
+
+        .section-title {
+            font-size: 2rem;
+            margin: 2rem 0 1rem;
+            color: #ffffff;
+            font-weight: 700;
+        }
+
+        .section-description {
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 2rem;
+            max-width: 600px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 4rem;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 16px;
+            padding: 1.5rem;
+            text-decoration: none;
+            color: white;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .card:hover {
+            transform: translateY(-3px);
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 
+                0 12px 24px rgba(0, 0, 0, 0.2),
+                0 0 0 1px rgba(255, 255, 255, 0.1);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .card-icon {
+            font-size: 1.5rem;
+            color: var(--repairen-primary);
+            background: rgba(37, 99, 235, 0.1);
+            padding: 0.75rem;
+            border-radius: 12px;
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover .card-icon {
+            transform: scale(1.1);
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .card-description {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.9rem;
+            line-height: 1.5;
+            margin-bottom: 1rem;
+        }
+
+        .card-meta {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .promptwerk-watermark {
+            position: fixed;
+            bottom: 1rem;
+            right: 1rem;
+            font-size: 0.75rem;
+            opacity: 0.5;
+            color: var(--promptwerk-accent);
+            text-decoration: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .promptwerk-watermark:hover {
+            opacity: 0.8;
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                padding: 1rem;
+            }
+
+            .brand-name {
+                font-size: 1.25rem;
+            }
+
+            .section-title {
+                font-size: 1.5rem;
+            }
+
+            .container {
+                padding: 1rem;
+            }
+
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-left">
+            <div class="logo-small">
+                <svg viewBox="0 0 24 24">
+                    <path d="M19.82 2H4.18C2.97 2 2 2.97 2 4.18v15.64C2 21.03 2.97 22 4.18 22h15.64C21.03 22 22 21.03 22 19.82V4.18C22 2.97 21.03 2 19.82 2zm-6.87 15.14l-2.83-2.83-5.66 5.66-1.41-1.41 5.66-5.66L6 10.19l1.41-1.41 2.83 2.83 5.66-5.66 1.41 1.41-5.66 5.66L14.36 16l-1.41 1.41z"/>
+                </svg>
+            </div>
+            <h1 class="brand-name">Repairen</h1>
+        </div>
+    </header>
+
+    <main class="container">
+        <section>
+            <h2 class="section-title">Dashboard</h2>
+            <p class="section-description">Access your end-user applications and developer tools all in one place.</p>
+            
+            <div class="grid">
+                <a href="{{ DOMAIN }}/app-library" class="card">
+                    <div class="card-header">
+                        <div class="card-icon">
+                            <i class="fas fa-book"></i>
+                        </div>
+                        <h3 class="card-title">App Library</h3>
+                    </div>
+                    <p class="card-description">Browse and access end-user applications and tools for your daily workflow.</p>
+                    <div class="card-meta">
+                        <span><i class="fas fa-users"></i> End Users</span>
+                        <span><i class="fas fa-arrow-right"></i></span>
+                    </div>
+                </a>
+
+                <a href="{{ DOMAIN }}/warehouse" class="card">
+                    <div class="card-header">
+                        <div class="card-icon">
+                            <i class="fas fa-warehouse"></i>
+                        </div>
+                        <h3 class="card-title">Developer Warehouse</h3>
+                    </div>
+                    <p class="card-description">Access development tools for building and maintaining applications.</p>
+                    <div class="card-meta">
+                        <span><i class="fas fa-code"></i> Developers</span>
+                        <span><i class="fas fa-arrow-right"></i></span>
+                    </div>
+                </a>
+            </div>
+        </section>
+    </main>
+
+    <a href="#" class="promptwerk-watermark">Powered by Promptwerk</a>
+</body>
+</html>
+

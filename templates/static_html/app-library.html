@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>App Library</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
+    <script src="{{ DOMAIN }}/serve?key=tailwind-3.4.1"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              background: '#030712',
+              primary: '#3b82f6',
+              secondary: '#1d4ed8',
+              accent: '#f59e0b',
+              surface: 'rgba(255, 255, 255, 0.04)',
+              'surface-hover': 'rgba(255, 255, 255, 0.08)',
+            },
+            animation: {
+              'gradient': 'gradient 8s linear infinite',
+              'float': 'float 6s ease-in-out infinite',
+            },
+            keyframes: {
+              gradient: {
+                '0%, 100%': {
+                  'background-size': '200% 200%',
+                  'background-position': 'left center'
+                },
+                '50%': {
+                  'background-size': '200% 200%',
+                  'background-position': 'right center'
+                }
+              },
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-10px)' }
+              }
+            }
+          }
+        }
+      }
+    </script>
+  </head>
+  <body class="min-h-screen bg-background text-white leading-normal">
+    <!-- Enhanced gradient background -->
+    <div class="fixed inset-0 -z-10 bg-background">
+      <div class="absolute inset-0 bg-gradient-to-br from-primary/10 to-secondary/10 animate-gradient"></div>
+      <div class="absolute inset-0 backdrop-blur-[100px]"></div>
+      <div class="absolute inset-0 bg-[radial-gradient(circle_at_10%_20%,rgba(59,130,246,0.15)_0%,transparent_50%),radial-gradient(circle_at_90%_80%,rgba(29,78,216,0.15)_0%,transparent_50%)]"></div>
+    </div>
+
+    <!-- Modernized header -->
+    <header class="sticky top-0 z-10 w-full px-6 py-4 flex justify-between items-center bg-background/60 backdrop-blur-xl border-b border-white/10">
+      <div class="flex items-center gap-4">
+        <a href="{{ DOMAIN }}" class="group flex items-center gap-2 text-primary px-4 py-2 rounded-lg text-sm hover:bg-primary/10 transition-all">
+          <i class="fas fa-arrow-left transform group-hover:-translate-x-1 transition-transform"></i>
+          <span>Dashboard</span>
+        </a>
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-secondary p-[1px] animate-float">
+          <div class="w-full h-full rounded-xl bg-background/80 flex items-center justify-center backdrop-blur">
+            <svg viewBox="0 0 24 24" class="w-6 h-6 fill-white">
+              <path d="M19.82 2H4.18C2.97 2 2 2.97 2 4.18v15.64C2 21.03 2.97 22 4.18 22h15.64C21.03 22 22 21.03 22 19.82V4.18C22 2.97 21.03 2 19.82 2zm-6.87 15.14l-2.83-2.83-5.66 5.66-1.41-1.41 5.66-5.66L6 10.19l1.41-1.41 2.83 2.83 5.66-5.66 1.41 1.41-5.66 5.66L14.36 16l-1.41 1.41z"/>
+            </svg>
+          </div>
+        </div>
+        <h1 class="text-2xl font-bold bg-gradient-to-r from-white via-white/90 to-white/70 bg-clip-text text-transparent">App Library</h1>
+      </div>
+      
+      <div class="flex items-center gap-2">
+        <kbd class="hidden md:inline-flex items-center gap-1 px-3 py-1.5 text-xs text-white/50 bg-white/5 rounded-lg border border-white/10">
+          <span class="text-xs">⌘</span>K
+        </kbd>
+      </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto p-8">
+      <section>
+        <h2 class="text-5xl font-bold mt-12 mb-4 bg-gradient-to-r from-white via-white/90 to-white/70 bg-clip-text text-transparent">Browse Apps</h2>
+        <p class="text-lg text-white/70 mb-12 max-w-2xl">Access our comprehensive suite of applications and tools designed to enhance your workflow.</p>
+
+        <!-- Enhanced search bar -->
+        <div class="relative max-w-2xl mb-12">
+          <div class="group flex items-center gap-4 p-4 rounded-2xl bg-surface border border-white/10 transition-all duration-300 hover:bg-surface-hover focus-within:border-primary focus-within:bg-surface-hover focus-within:shadow-[0_0_30px_rgba(59,130,246,0.2)]">
+            <i class="fas fa-search text-white/50 group-hover:text-white/70 transition-colors"></i>
+            <input type="text" placeholder="Search applications... (⌘K)" id="searchInput" 
+                   class="w-full bg-transparent border-none text-white placeholder-white/50 focus:outline-none" />
+          </div>
+        </div>
+
+        <!-- Enhanced app grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" id="appsGrid"></div>
+      </section>
+    </main>
+
+    <!-- Enhanced app frame -->
+    <div id="appFrame" class="fixed inset-0 bg-background/98 opacity-0 invisible transition-all duration-500 ease-out z-50">
+      <div class="flex items-center gap-4 px-6 py-4 bg-background/80 backdrop-blur-xl border-b border-white/10">
+        <button onclick="closeApp()" class="group flex items-center gap-2 text-primary px-4 py-2 rounded-lg text-sm hover:bg-primary/10 transition-all">
+          <i class="fas fa-arrow-left transform group-hover:-translate-x-1 transition-transform"></i>
+          <span>Back to Library</span>
+        </button>
+        <span id="appFrameTitle" class="text-lg font-medium">App</span>
+      </div>
+      <iframe id="appFrameContent" class="w-full h-[calc(100%-60px)] border-none"></iframe>
+    </div>
+
+    <a href="#" class="fixed bottom-6 right-6 flex items-center gap-2 text-sm opacity-60 hover:opacity-100 transition-opacity text-accent group">
+      <span>Powered by</span>
+      <span class="font-semibold group-hover:text-white transition-colors">Promptwerk</span>
+    </a>
+
+    <style>
+      .active {
+        opacity: 1 !important;
+        visibility: visible !important;
+      }
+
+      @keyframes fadeUp {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .animate-fade-up {
+        animation: fadeUp 0.5s ease-out forwards;
+        opacity: 0;
+      }
+    </style>
+
+    <script>
+      let apps = [];
+      const API_BASE = '{{ DOMAIN }}';
+
+      function renderApps(appsToRender) {
+        const grid = document.getElementById('appsGrid');
+        grid.innerHTML = appsToRender
+          .map(
+            (app, index) => `
+              <div class="group p-8 rounded-2xl bg-surface border border-white/10 flex flex-col items-center gap-6 cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:bg-surface-hover hover:border-white/20 hover:shadow-[0_20px_40px_rgba(0,0,0,0.3)] backdrop-blur animate-fade-up"
+                   onclick="openApp('${app.url}', '${app.name}')"
+                   style="animation-delay: ${0.1 + index * 0.1}s">
+                <div class="relative">
+                  <div class="absolute inset-0 bg-gradient-to-br from-primary to-secondary blur-xl opacity-0 group-hover:opacity-30 transition-opacity duration-500"></div>
+                  <div class="relative w-16 h-16 rounded-2xl flex items-center justify-center text-3xl bg-gradient-to-br from-primary to-secondary transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3">
+                    ${app.icon}
+                  </div>
+                </div>
+                <div class="flex flex-col items-center gap-2 text-center">
+                  <span class="text-xl font-semibold group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-white/70 group-hover:bg-clip-text group-hover:text-transparent transition-all duration-300">${app.name}</span>
+                  <span class="text-sm text-white/60 group-hover:text-white/70 transition-colors duration-300">${app.description}</span>
+                </div>
+              </div>
+            `
+          )
+          .join('');
+      }
+
+      function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+          const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+          };
+          clearTimeout(timeout);
+          timeout = setTimeout(later, wait);
+        };
+      }
+      async function loadApps() {
+        try {
+          const response = await fetch(`${API_BASE}/read?key=warehouse-data`);
+          if (!response.ok && response.status !== 404) {
+            throw new Error('Failed to load apps');
+          }
+
+          let warehouseData = [];
+          if (response.ok) {
+            const data = await response.json();
+            warehouseData = data.value || [];
+          }
+
+          const appDetails = await Promise.all(
+            warehouseData.map(async appId => {
+              try {
+                const appResponse = await fetch(`${API_BASE}/read?key=${appId}`);
+                if (!appResponse.ok) return null;
+                const appData = await appResponse.json();
+                return appData.value;
+              } catch (error) {
+                console.error(`Error fetching app ${appId}:`, error);
+                return null;
+              }
+            })
+          );
+
+          apps = appDetails
+            .filter(app => app !== null)
+            .map(app => ({
+              name: app.name,
+              description: app.description || 'No description available',
+              url: `/app/${app.friendly_url}`,
+              icon: getIconForApp(app.name),
+            }));
+
+          renderApps(apps);
+        } catch (error) {
+          console.error('Error loading apps:', error);
+        }
+      }
+
+      // Helper function to get appropriate icon for app
+      function getIconForApp(name) {
+        const iconMap = {
+          editor: '��',
+          warehouse: '📦',
+          cyborgwriter: '🤖',
+          'ai-code-generator': '💻',
+          dashboard: '📊',
+          animalcoloringbook: '🎨',
+          'app-library': '📱',
+          'promptwerk-dashboard': '🎯',
+        };
+
+        // Convert name to lowercase and remove spaces/special characters
+        const normalizedName = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        return iconMap[normalizedName] || '📱';
+      }
+
+      const searchInput = document.getElementById('searchInput');
+      const handleSearch = debounce(e => {
+        const searchTerm = e.target.value.toLowerCase();
+        const filteredApps = apps.filter(
+          app =>
+            app.name.toLowerCase().includes(searchTerm) ||
+            app.description.toLowerCase().includes(searchTerm)
+        );
+        renderApps(filteredApps);
+      }, 300);
+
+      searchInput.addEventListener('input', handleSearch);
+
+      function openApp(url, name) {
+        const frame = document.getElementById('appFrame');
+        const content = document.getElementById('appFrameContent');
+        const title = document.getElementById('appFrameTitle');
+
+        content.src = url;
+        title.textContent = name;
+        frame.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        history.pushState({ app: name, url: url }, '', url);
+      }
+
+      function closeApp() {
+        const frame = document.getElementById('appFrame');
+        const content = document.getElementById('appFrameContent');
+
+        frame.classList.remove('active');
+        setTimeout(() => {
+          content.src = '';
+        }, 300);
+        document.body.style.overflow = 'auto';
+        history.pushState({ app: null }, '', '/');
+      }
+
+      window.addEventListener('popstate', event => {
+        if (event.state?.app && event.state?.url) {
+          openApp(event.state.url, event.state.app);
+        } else {
+          closeApp();
+        }
+      });
+
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+          const frame = document.getElementById('appFrame');
+          if (frame.classList.contains('active')) {
+            closeApp();
+          }
+        }
+
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+          e.preventDefault();
+          searchInput.focus();
+        }
+      });
+
+      // Initial render
+      renderApps(apps);
+
+      // Add smooth scrolling for iOS
+      document.documentElement.style.scrollBehavior = 'smooth';
+
+      // Add touch event handling for mobile
+      let touchStartY = 0;
+      document.addEventListener(
+        'touchstart',
+        e => {
+          touchStartY = e.touches[0].clientY;
+        },
+        { passive: true }
+      );
+
+      document.addEventListener(
+        'touchmove',
+        e => {
+          const touchY = e.touches[0].clientY;
+          const frame = document.getElementById('appFrame');
+          if (frame.classList.contains('active')) {
+            const scrollTop = frame.scrollTop;
+            if (scrollTop === 0 && touchY > touchStartY) {
+              e.preventDefault();
+            }
+          }
+        },
+        { passive: false }
+      );
+
+      // Add resize handler for mobile browsers
+      let vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
+
+      window.addEventListener('resize', () => {
+        vh = window.innerHeight * 0.01;
+        document.documentElement.style.setProperty('--vh', `${vh}px`);
+      });
+
+      // Enhance animation performance
+      document.querySelectorAll('.animate-fade-up').forEach(element => {
+        element.style.willChange = 'transform, opacity';
+      });
+
+      loadApps();
+    </script>
+  </body>
+</html>
+

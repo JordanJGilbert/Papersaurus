@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Endpoint Demo</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        h1 { color: #333; }
+        .endpoint { background-color: #f0f0f0; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
+        .endpoint h2 { margin-top: 0; }
+        input, textarea { width: 100%; padding: 5px; margin-bottom: 10px; }
+        button { background-color: #4CAF50; color: white; padding: 10px 15px; border: none; cursor: pointer; }
+        #result { white-space: pre-wrap; background-color: #e0e0e0; padding: 10px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h1>API Endpoint Demo</h1>
+
+    <div class="endpoint">
+        <h2>Write</h2>
+        <input type="text" id="writeKey" placeholder="Key">
+        <textarea id="writeValue" placeholder="Value"></textarea>
+        <button onclick="writeData()">Write</button>
+    </div>
+
+    <div class="endpoint">
+        <h2>Read</h2>
+        <input type="text" id="readKey" placeholder="Key">
+        <button onclick="readData()">Read</button>
+    </div>
+
+    <div class="endpoint">
+        <h2>Search</h2>
+        <input type="text" id="searchQuery" placeholder="Query">
+        <button onclick="searchData()">Search</button>
+    </div>
+
+    <div class="endpoint">
+        <h2>Serve</h2>
+        <input type="text" id="serveKey" placeholder="Key">
+        <button onclick="serveData()">Serve</button>
+    </div>
+
+    <div class="endpoint">
+        <h2>Store Prompt</h2>
+        <input type="text" id="promptAlias" placeholder="Alias">
+        <textarea id="promptContent" placeholder="Prompt Content"></textarea>
+        <input type="text" id="promptModel" placeholder="Model">
+        <input type="text" id="promptDescription" placeholder="Description">
+        <button onclick="storePrompt()">Store Prompt</button>
+    </div>
+
+    <div class="endpoint">
+        <h2>Run Prompt</h2>
+        <input type="text" id="runPromptAlias" placeholder="Alias">
+        <textarea id="runPromptParams" placeholder="Parameters (JSON format)"></textarea>
+        <button onclick="runPrompt()">Run Prompt</button>
+    </div>
+
+    <div class="endpoint">
+        <h2>Search Prompts</h2>
+        <input type="text" id="searchPromptsQuery" placeholder="Query">
+        <button onclick="searchPrompts()">Search Prompts</button>
+    </div>
+    
+    <div class="endpoint">
+        <h2>Show All Prompts</h2>
+        <button onclick="showAllPrompts()">Show All</button>
+    </div>
+
+    <div id="result"></div>
+
+    <script>
+        const baseUrl = '{{ DOMAIN }}';
+        const resultDiv = document.getElementById('result');
+
+        async function makeRequest(endpoint, method, data) {
+            const options = {
+                method: method,
+                headers: { 'Content-Type': 'application/json' }
+            };
+            if (data) options.body = JSON.stringify(data);
+            const response = await fetch(`${baseUrl}${endpoint}`, options);
+            return await response.json();
+        }
+
+        async function writeData() {
+            const key = document.getElementById('writeKey').value;
+            const value = document.getElementById('writeValue').value;
+            const result = await makeRequest('/write', 'POST', { key, value });
+            resultDiv.textContent = JSON.stringify(result, null, 2);
+        }
+
+        async function readData() {
+            const key = document.getElementById('readKey').value;
+            const result = await makeRequest(`/read?key=${key}`, 'GET');
+            resultDiv.textContent = JSON.stringify(result, null, 2);
+        }
+
+        async function searchData() {
+            const query = document.getElementById('searchQuery').value;
+            const result = await makeRequest(`/search?query=${query}`, 'GET');
+            resultDiv.textContent = JSON.stringify(result, null, 2);
+        }
+
+        async function serveData() {
+            const key = document.getElementById('serveKey').value;
+            const response = await fetch(`${baseUrl}/serve?key=${key}`);
+            const result = await response.text();
+            resultDiv.textContent = result;
+        }
+
+        async function storePrompt() {
+            const alias = document.getElementById('promptAlias').value;
+            const prompt = document.getElementById('promptContent').value;
+            const model = document.getElementById('promptModel').value;
+            const description = document.getElementById('promptDescription').value;
+            const result = await makeRequest('/store_prompt', 'POST', { alias, prompt, model, description });
+            resultDiv.textContent = JSON.stringify(result, null, 2);
+        }
+
+        async function runPrompt() {
+            const alias = document.getElementById('runPromptAlias').value;
+            const params = JSON.parse(document.getElementById('runPromptParams').value || '{}');
+            const result = await makeRequest('/run_prompt', 'POST', { alias, params });
+            resultDiv.textContent = JSON.stringify(result, null, 2);
+        }
+
+        async function searchPrompts() {
+            const query = document.getElementById('searchPromptsQuery').value;
+            const result = await makeRequest(`/search_prompts?query=${query}`, 'GET');
+            resultDiv.textContent = JSON.stringify(result, null, 2);
+        }
+        async function showAllPrompts() {
+            const result = await makeRequest('/list_prompts', 'GET');
+            resultDiv.textContent = JSON.stringify(result, null, 2);
+        }
+    </script>
+</body>
+</html>
+

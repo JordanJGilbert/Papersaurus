@@ -1,0 +1,8 @@
+Specifications for generating a family-safe coloring book:
+
+- **Total Pages:** 12 coloring pages.
+- **Content:** Family safe themes.
+- **Coloring Page Style:** Black and white with thick lines. No text on coloring pages.
+- **Cover Image:** Full color, full bleed cover. Can include any text.
+- **Watermark:** A readable "fairypaint.com" watermark on *every* page (cover and coloring pages). The watermark should look like smeared purple paint.
+- **Bumblebee and Butterfly Inclusion:** Each coloring page must include a photorealistic, life-size bumblebee and a photorealistic, life-size butterfly somewhere on the page.

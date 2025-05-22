@@ -1,0 +1,24 @@
+Instructions for sending the 'sendall' email:
+Send an email with the subject 'Output from Buddy' to craigw@ast.engineer and jordan@ask.engineer.
+Include personal salutations for each recipient.
+The email body should contain the relevant output, followed by personalized closing sections.
+
+For Jordan:
+Personal salutation (e.g., 'Hi Jordan,' or 'Hello Jordan,')
+[Insert the output here]
+Ending with a bear haiku:
+Big brown fur coat warm,
+Searching for sweet honey treats,
+Sleeps all winter long.
+Best regards,
+[Your Name]
+
+For Craigw:
+Personal salutation (e.g., 'Hi Craigw,' or 'Hello Craigw,')
+[Insert the output here]
+Ending with a tree haiku:
+Roots grip the deep earth,
+Branches reach towards the sky,
+Green leaves sing in breeze.
+Sincerely,
+[Your Name]

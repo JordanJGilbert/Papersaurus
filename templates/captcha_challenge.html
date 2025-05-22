@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Signal Captcha Challenge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        .glassmorphism {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+        .token-display {
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md">
+        <!-- Card Container -->
+        <div class="glassmorphism rounded-2xl shadow-lg p-8 md:p-10">
+            <!-- Header -->
+            <div class="text-center mb-8">
+                <h1 class="text-2xl font-semibold text-gray-800 mb-2">Signal Registration</h1>
+                <p class="text-gray-500">Enter your phone number and captcha token to clear rate limits</p>
+            </div>
+
+            <!-- Challenge Token Display -->
+            <div id="challengeTokenSection" class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200 hidden">
+                <h3 class="text-sm font-semibold text-gray-700 mb-2">Challenge Token</h3>
+                <div class="token-display text-sm text-gray-600 bg-white p-2 rounded border border-gray-200">
+                    <span id="challengeTokenDisplay"></span>
+                </div>
+                <button id="copyTokenBtn" class="mt-2 text-xs text-blue-600 hover:text-blue-800">
+                    Copy Token
+                </button>
+            </div>
+
+            <!-- Form -->
+            <form id="captchaForm" class="space-y-6">
+                <div>
+                    <label for="phoneNumber" class="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                    <input 
+                        type="tel" 
+                        id="phoneNumber" 
+                        name="phoneNumber" 
+                        placeholder="+1 (555) 123-4567" 
+                        class="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                        required
+                    >
+                    <p class="mt-1 text-xs text-gray-500">Include country code (e.g., +1 for US)</p>
+                </div>
+
+                <div>
+                    <label for="captchaToken" class="block text-sm font-medium text-gray-700 mb-1">Captcha Token</label>
+                    <input 
+                        type="text" 
+                        id="captchaToken" 
+                        name="captchaToken" 
+                        placeholder="signalcaptcha://..." 
+                        class="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                        required
+                    >
+                    <p class="mt-1 text-xs text-gray-500">Get token from <a href="https://signalcaptchas.org/challenge/generate.html" target="_blank" class="text-blue-500 hover:underline">signalcaptchas.org</a></p>
+                </div>
+
+                <button 
+                    type="submit"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                    Submit Captcha
+                </button>
+            </form>
+
+            <!-- Status Messages -->
+            <div id="statusMessage" class="mt-6 text-center hidden">
+                <div id="successMessage" class="text-green-600 hidden">
+                    <p>Captcha submitted successfully! Rate limits should now be cleared.</p>
+                </div>
+                <div id="errorMessage" class="text-red-600 hidden">
+                    <p>There was an error submitting your captcha. Please try again.</p>
+                </div>
+                <div id="loadingMessage" class="text-gray-600 hidden">
+                    <p>Processing captcha...</p>
+                </div>
+            </div>
+
+            <!-- Instructions Panel -->
+            <div class="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                <h3 class="text-sm font-semibold text-blue-800 mb-2">How to get a captcha token</h3>
+                <ol class="text-xs text-blue-700 list-decimal pl-4 space-y-1">
+                    <li>Go to <a href="https://signalcaptchas.org/challenge/generate.html" target="_blank" class="text-blue-600 underline">signalcaptchas.org</a></li>
+                    <li>Complete the captcha challenge</li>
+                    <li>After solving it, right-click on the "Open Signal" link</li>
+                    <li>Copy the link and paste it in the field above</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get challenge token from URL if present
+        const urlParams = new URLSearchParams(window.location.search);
+        const challengeToken = urlParams.get('token');
+        
+        // Function to display challenge token
+        function displayChallengeToken(token) {
+            const tokenSection = document.getElementById('challengeTokenSection');
+            const tokenDisplay = document.getElementById('challengeTokenDisplay');
+            tokenDisplay.textContent = token;
+            tokenSection.classList.remove('hidden');
+        }
+
+        // Copy token button functionality
+        document.getElementById('copyTokenBtn').addEventListener('click', () => {
+            const token = document.getElementById('challengeTokenDisplay').textContent;
+            navigator.clipboard.writeText(token).then(() => {
+                const btn = document.getElementById('copyTokenBtn');
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                }, 2000);
+            });
+        });
+
+        // If there's a challenge token in URL, display it
+        if (challengeToken) {
+            displayChallengeToken(challengeToken);
+            
+            // Check if we have stored information about this challenge
+            fetch(`/signal/api/challenge-info?token=${challengeToken}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success' && data.phone_number) {
+                        // Pre-populate the phone number field
+                        document.getElementById('phoneNumber').value = data.phone_number;
+                        
+                        // Update the header to indicate this is for a specific number
+                        document.querySelector('h1').textContent = 'Signal Rate Limit Challenge';
+                        document.querySelector('p.text-gray-500').textContent = 
+                            `Submit a captcha to clear rate limits for ${data.phone_number}`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching challenge info:', error);
+                });
+        }
+        
+        document.getElementById('captchaForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // Get form values
+            const phoneNumber = document.getElementById('phoneNumber').value.trim();
+            const captchaToken = document.getElementById('captchaToken').value.trim();
+            
+            // Simple validation
+            if (!phoneNumber) {
+                showError('Please enter a valid phone number');
+                return;
+            }
+            
+            if (!captchaToken || !captchaToken.startsWith('signalcaptcha://')) {
+                showError('Please enter a valid captcha token starting with "signalcaptcha://"');
+                return;
+            }
+            
+            // Show loading state
+            showLoading();
+            
+            try {
+                // Send request to backend
+                const response = await fetch('/signal/api/solve-captcha', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        phoneNumber: phoneNumber,
+                        captchaToken: captchaToken,
+                        challengeToken: challengeToken // Include the challenge token if present
+                    }),
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showSuccess();
+                    // Redirect back to chat after 2 seconds
+                    setTimeout(() => {
+                        window.location.href = '/signal/chat';
+                    }, 2000);
+                } else {
+                    showError(data.message || 'Failed to submit captcha');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showError('An unexpected error occurred');
+            }
+        });
+        
+        function showSuccess() {
+            document.getElementById('statusMessage').classList.remove('hidden');
+            document.getElementById('successMessage').classList.remove('hidden');
+            document.getElementById('errorMessage').classList.add('hidden');
+            document.getElementById('loadingMessage').classList.add('hidden');
+        }
+        
+        function showError(message) {
+            document.getElementById('statusMessage').classList.remove('hidden');
+            document.getElementById('errorMessage').classList.remove('hidden');
+            document.getElementById('errorMessage').querySelector('p').textContent = message;
+            document.getElementById('successMessage').classList.add('hidden');
+            document.getElementById('loadingMessage').classList.add('hidden');
+        }
+        
+        function showLoading() {
+            document.getElementById('statusMessage').classList.remove('hidden');
+            document.getElementById('loadingMessage').classList.remove('hidden');
+            document.getElementById('successMessage').classList.add('hidden');
+            document.getElementById('errorMessage').classList.add('hidden');
+        }
+    </script>
+</body>
+</html> 

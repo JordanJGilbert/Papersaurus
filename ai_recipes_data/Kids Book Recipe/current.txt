@@ -1,0 +1,18 @@
+AI Recipe: Kids Story Book
+
+**Book Structure & Formatting:**
+- **Orientation:** Horizontal.
+- **Cover Page:** Full color, full bleed image. No text on the image itself.
+- **Title Page:** Contains book title and possibly author/illustrator names. Text font size should be 1 inch.
+- **Content Pages:** Exactly 8 pages.
+    - Each content page includes a visual element: an image that takes up the top half of the page (half height), with no text overlaid on the image.
+    - Each content page includes a text element: a block of text below the image. The text font size should be 24 pixels.
+- **Back Cover:** Full color, full bleed image. The image should conceptually represent **recursion** and be related to the book's title/theme.
+
+**Content Requirements:**
+- **Story:** Must be a single, coherent narrative.
+- **Safety:** The story and all images must be **very family safe**.
+
+**Image Generation Instructions:**
+- When generating images for the cover, content pages, and back cover, attempt image generation up to a maximum of **3 times** if an error occurs.
+- For each retry, **slightly modify the image prompt** to try and work around potential generation issues.

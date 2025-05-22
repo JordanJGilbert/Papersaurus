@@ -1,0 +1,482 @@
+import sys
+import os
+import json
+import tempfile
+import re
+import asyncio
+import base64
+import shutil
+from typing import Optional, Tuple
+
+# Ensure project root is in path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+from mcp.server.fastmcp import FastMCP
+from llm_adapters import get_llm_adapter, StandardizedMessage, StandardizedLLMConfig
+
+# Base user_data directory
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'user_data'))
+
+mcp = FastMCP("Attachment Management Server")
+
+def sanitize_user_id(user_id: str) -> str:
+    """Sanitize a user identifier for filesystem path use."""
+    if user_id.startswith('+'):
+        user_id = user_id[1:]
+    # Remove any non-alphanumeric characters
+    sanitized = re.sub(r'\W+', '', user_id)
+    return sanitized or 'unknown_user_id'
+
+
+def load_index_for_user(user_number: str) -> dict:
+    """Load the attachments index.json for a given user."""
+    uid = sanitize_user_id(user_number)
+    index_path = os.path.join(BASE_DIR, uid, 'attachments', 'index.json')
+    try:
+        with open(index_path, 'r') as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_index_for_user(user_number: str, idx: dict):
+    """Atomically save the attachments index.json for a given user."""
+    uid = sanitize_user_id(user_number)
+    attachments_dir = os.path.join(BASE_DIR, uid, 'attachments')
+    os.makedirs(attachments_dir, exist_ok=True)
+    index_path = os.path.join(attachments_dir, 'index.json')
+    # Atomic write to temp file then replace
+    fd, tmp_path = tempfile.mkstemp(dir=attachments_dir, prefix='idx-', suffix='.tmp')
+    with os.fdopen(fd, 'w') as tmpf:
+        json.dump(idx, tmpf, indent=2)
+    os.replace(tmp_path, index_path)
+
+
+# --- Helper function for path validation ---
+async def _get_validated_user_path(user_number: str, relative_path_str: str = "", check_existence: bool = False, item_must_be_dir: Optional[bool] = None) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Validates and resolves a path relative to a user's specific data directory.
+
+    Args:
+        user_number (str): The user's identifier.
+        relative_path_str (str): The path relative to the user's data root.
+                                 Can be empty to refer to the user's root.
+        check_existence (bool): If True, checks if the resolved path exists.
+        item_must_be_dir (Optional[bool]): If True, checks if path is a directory. If False, checks if it's a file.
+                                         If None, no type check is performed.
+
+    Returns:
+        Tuple[Optional[str], Optional[str]]: (absolute_path, error_message).
+                                             absolute_path is None if validation fails.
+                                             error_message contains the reason for failure.
+    """
+    sanitized_uid = sanitize_user_id(user_number)
+    user_root_path = os.path.abspath(os.path.join(BASE_DIR, sanitized_uid))
+
+    # Ensure user root directory exists, create if not (for operations like mkdir in user root)
+    if not await asyncio.to_thread(os.path.exists, user_root_path):
+        try:
+            await asyncio.to_thread(os.makedirs, user_root_path, exist_ok=True)
+        except Exception as e:
+            return None, f"Failed to create user root directory {user_root_path}: {e}"
+
+    # Normalize the relative path: remove leading/trailing slashes, protect against ".."
+    # os.path.normpath will handle "." and ".." but we need to ensure it doesn't escape the root.
+    # Prevent absolute paths in relative_path_str by stripping leading slashes.
+    cleaned_relative_path = relative_path_str.lstrip('/').lstrip('\\\\')
+    
+    # Join and normalize
+    prospective_path = os.path.normpath(os.path.join(user_root_path, cleaned_relative_path))
+
+    # Security check: Ensure the resolved path is still within the user's root directory
+    if not prospective_path.startswith(user_root_path):
+        return None, "Path traversal attempt detected. Access denied."
+
+    abs_path = os.path.abspath(prospective_path) # Final absolute path
+
+    if check_existence:
+        path_exists = await asyncio.to_thread(os.path.exists, abs_path)
+        if not path_exists:
+            return None, f"Path does not exist: {relative_path_str}"
+        
+        if item_must_be_dir is not None:
+            is_dir = await asyncio.to_thread(os.path.isdir, abs_path)
+            if item_must_be_dir and not is_dir:
+                return None, f"Path is not a directory: {relative_path_str}"
+            if not item_must_be_dir and is_dir:
+                return None, f"Path is not a file: {relative_path_str}"
+                
+    return abs_path, None
+
+
+@mcp.tool()
+async def create_directory_in_user_data(
+    user_number: str,
+    directory_path: str
+) -> dict:
+    """
+    Creates a new directory within the user's data space.
+    Paths are relative to the user's root data directory.
+    e.g., 'my_new_folder' or 'documents/work_projects'.
+
+    Args:
+        user_number (str): The user's identifier.
+        directory_path (str): The relative path of the directory to create.
+                              Cannot be empty or just '/'.
+
+    Returns:
+        dict: Status of the operation.
+    """
+    if not directory_path or directory_path.strip() in ["/", "\\\\"]:
+        return {"status": "error", "message": "Directory path cannot be empty or root."}
+
+    abs_path, error = await _get_validated_user_path(user_number, directory_path, check_existence=False)
+    if error:
+        return {"status": "error", "message": error}
+
+    if await asyncio.to_thread(os.path.exists, abs_path):
+        return {"status": "error", "message": f"Directory or file already exists at '{directory_path}'."}
+
+    try:
+        await asyncio.to_thread(os.makedirs, abs_path, exist_ok=False) # exist_ok=False to ensure it's a new creation
+        return {"status": "success", "message": f"Directory '{directory_path}' created successfully."}
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to create directory '{directory_path}': {e}"}
+
+
+@mcp.tool()
+async def move_item_in_user_data(
+    user_number: str,
+    source_path: str,
+    destination_path: str
+) -> dict:
+    """
+    Moves or renames a file or directory within the user's data space.
+    Paths are relative to the user's root data directory.
+
+    Args:
+        user_number (str): The user's identifier.
+        source_path (str): The relative path of the source file or directory.
+        destination_path (str): The relative path of the destination.
+
+    Returns:
+        dict: Status of the operation.
+    """
+    abs_source_path, error = await _get_validated_user_path(user_number, source_path, check_existence=True)
+    if error:
+        return {"status": "error", "message": f"Source path error: {error}"}
+
+    # For destination, we don't check existence initially, as it might be a new name or overwrite.
+    # However, the parent directory of the destination MUST exist if it's not the user root.
+    dest_parent_dir_relative = os.path.dirname(destination_path)
+    if dest_parent_dir_relative and dest_parent_dir_relative != ".": # if not user root
+        abs_dest_parent_path, error = await _get_validated_user_path(user_number, dest_parent_dir_relative, check_existence=True, item_must_be_dir=True)
+        if error:
+            return {"status": "error", "message": f"Destination parent directory error: {error}"}
+    
+    # Now get the full absolute destination path
+    abs_destination_path, error = await _get_validated_user_path(user_number, destination_path, check_existence=False)
+    if error:
+        return {"status": "error", "message": f"Destination path error: {error}"}
+
+    if await asyncio.to_thread(os.path.exists, abs_destination_path):
+        # Simple overwrite prevention for now. Could add an 'overwrite=True' flag later.
+        return {"status": "error", "message": f"Destination '{destination_path}' already exists."}
+
+    try:
+        await asyncio.to_thread(shutil.move, abs_source_path, abs_destination_path)
+        # Note: This does not update the attachment index.json if the moved item was indexed.
+        return {"status": "success", "message": f"Moved '{source_path}' to '{destination_path}'."}
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to move item: {e}"}
+
+
+@mcp.tool()
+async def remove_item_in_user_data(
+    user_number: str,
+    item_path: str,
+    recursive: bool = False
+) -> dict:
+    """
+    Removes a file or directory within the user's data space.
+    Paths are relative to the user's root data directory.
+    Use 'recursive=True' to remove non-empty directories.
+
+    Args:
+        user_number (str): The user's identifier.
+        item_path (str): The relative path of the file or directory to remove.
+        recursive (bool): If True and item_path is a directory, remove it and its contents.
+                          Defaults to False (will not remove non-empty directories).
+
+    Returns:
+        dict: Status of the operation.
+    """
+    abs_item_path, error = await _get_validated_user_path(user_number, item_path, check_existence=True)
+    if error:
+        return {"status": "error", "message": error}
+
+    try:
+        if await asyncio.to_thread(os.path.isdir, abs_item_path):
+            if recursive:
+                await asyncio.to_thread(shutil.rmtree, abs_item_path)
+            else:
+                # Check if directory is empty before attempting os.rmdir
+                if await asyncio.to_thread(os.listdir, abs_item_path): # Will raise error if not empty and not recursive
+                    return {"status": "error", "message": f"Directory '{item_path}' is not empty. Use recursive=True to remove."}
+                await asyncio.to_thread(os.rmdir, abs_item_path)
+        else: # It's a file
+            await asyncio.to_thread(os.remove, abs_item_path)
+        
+        # Note: This does not update the attachment index.json if the removed item was indexed.
+        return {"status": "success", "message": f"Item '{item_path}' removed successfully."}
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to remove item '{item_path}': {e}"}
+
+
+@mcp.tool()
+async def create_file_in_user_data(
+    user_number: str,
+    file_path: str,
+    content: str = ""
+) -> dict:
+    """
+    Creates a new text file with optional content within the user's data space.
+    Paths are relative to the user's root data directory.
+    If the file already exists, it will be overwritten.
+
+    Args:
+        user_number (str): The user's identifier.
+        file_path (str): The relative path of the file to create (e.g., 'notes.txt', 'project/report.md').
+        content (str, optional): The text content to write to the file. Defaults to empty.
+
+    Returns:
+        dict: Status of the operation.
+    """
+    if not file_path or file_path.strip() in ["/", "\\\\"] or file_path.endswith(("/", "\\\\")):
+        return {"status": "error", "message": "File path cannot be empty, root, or a directory path."}
+
+    abs_file_path, error = await _get_validated_user_path(user_number, file_path, check_existence=False)
+    if error:
+        return {"status": "error", "message": error}
+
+    # Ensure parent directory exists
+    parent_dir = os.path.dirname(abs_file_path)
+    if not await asyncio.to_thread(os.path.exists, parent_dir):
+        try:
+            await asyncio.to_thread(os.makedirs, parent_dir, exist_ok=True)
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to create parent directory for '{file_path}': {e}"}
+    
+    if await asyncio.to_thread(os.path.isdir, abs_file_path): # Check if a directory exists at this path
+         return {"status": "error", "message": f"Cannot create file. A directory already exists at '{file_path}'."}
+
+    try:
+        async def write_file_content():
+            with open(abs_file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+        await asyncio.to_thread(write_file_content)
+        # Note: This does not automatically index the new file in attachments index.json
+        return {"status": "success", "message": f"File '{file_path}' created/updated successfully."}
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to create file '{file_path}': {e}"}
+
+
+@mcp.tool()
+async def list_directory_in_user_data(
+    user_number: str,
+    directory_path: str = "",
+    show_details: bool = False
+) -> dict:
+    """
+    Lists the contents of a directory within the user's data space.
+    Paths are relative to the user's root data directory.
+    An empty directory_path lists the user's root.
+
+    Args:
+        user_number (str): The user's identifier.
+        directory_path (str, optional): The relative path of the directory to list.
+                                        Defaults to "" (user's root data directory).
+        show_details (bool, optional): If True, returns more details for each item (type, size, mtime).
+                                       Defaults to False (returns only names).
+
+    Returns:
+        dict: A list of items in the directory, or an error message.
+    """
+    abs_dir_path, error = await _get_validated_user_path(user_number, directory_path, check_existence=True, item_must_be_dir=True)
+    if error:
+        return {"status": "error", "message": error}
+
+    try:
+        items = await asyncio.to_thread(os.listdir, abs_dir_path)
+        if not show_details:
+            return {"status": "success", "path": directory_path or "/", "items": items}
+        
+        detailed_items = []
+        for item_name in items:
+            item_abs_path = os.path.join(abs_dir_path, item_name)
+            stats = await asyncio.to_thread(os.stat, item_abs_path)
+            item_type = "directory" if await asyncio.to_thread(os.path.isdir, item_abs_path) else "file"
+            detailed_items.append({
+                "name": item_name,
+                "type": item_type,
+                "size_bytes": stats.st_size,
+                "modified_timestamp": int(stats.st_mtime)
+            })
+        return {"status": "success", "path": directory_path or "/", "items": detailed_items}
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to list directory '{directory_path}': {e}"}
+
+
+@mcp.tool()
+async def read_file_in_user_data(
+    user_number: str,
+    file_path: str
+) -> dict:
+    """
+    Reads and returns the content of a specified file within the user's data space.
+    Paths are relative to the user's root data directory.
+    This is intended for reading text-based files.
+
+    Args:
+        user_number (str): The user's identifier.
+        file_path (str): The relative path of the file to read.
+
+    Returns:
+        dict: A dictionary containing the file content or an error message.
+              On success: {"status": "success", "file_path": str, "content": str}
+              On error: {"status": "error", "message": str}
+    """
+    abs_file_path, error = await _get_validated_user_path(user_number, file_path, check_existence=True, item_must_be_dir=False)
+    if error:
+        return {"status": "error", "message": error}
+
+    try:
+        async def read_content():
+            with open(abs_file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        
+        content = await asyncio.to_thread(read_content)
+        return {"status": "success", "file_path": file_path, "content": content}
+    except Exception as e:
+        # Attempt to provide a more specific error for binary files
+        try:
+            # Try reading as bytes to see if it's a binary file causing UnicodeDecodeError
+            with open(abs_file_path, 'rb') as f:
+                f.read(1024) # Try to read a small chunk
+            # If reading as bytes succeeds, it's likely a binary file the user tried to cat
+            return {"status": "error", "message": f"Failed to read file '{file_path}': File appears to be binary or uses an unsupported encoding. This tool is for text files."}
+        except Exception:
+            # If even reading as bytes fails, or another error occurred initially
+            return {"status": "error", "message": f"Failed to read file '{file_path}': {e}"}
+
+
+@mcp.tool()
+async def list_attachments(
+    user_number: str,
+    since_timestamp: int = 0,
+    limit: int = 10
+) -> dict:
+    """
+    Lists metadata for attachments associated with a given user.
+    The LLM typically calls this tool first to discover available files and review their
+    metadata (key, url, mime_type, timestamp, label, description).
+    Based on this information, the LLM can then decide if it needs to retrieve the
+    actual content of specific files using the 'fetch_attachments' tool.
+
+    Args:
+        user_number (str): The user's identifier.
+        since_timestamp (int, optional): Filters attachments to those created or modified
+                                         after this UNIX timestamp. Defaults to 0 (all attachments).
+        limit (int, optional): Maximum number of attachments to return. Defaults to 10.
+
+    Returns:
+        dict: A dictionary containing a list of attachment metadata objects under the key "attachments".
+              Each object includes 'key', 'url', 'mime_type', 'timestamp', 'label', and 'description'.
+    """
+    idx = load_index_for_user(user_number)
+    items = []
+    for key, entry in idx.items():
+        ts = entry.get('timestamp', 0)
+        if ts >= since_timestamp:
+            items.append({
+                'key': key,
+                'url': entry.get('url'),
+                'mime_type': entry.get('mime_type'),
+                'timestamp': ts,
+                'label': entry.get('label'),
+                'description': entry.get('description')
+            })
+    # Sort by most recent
+    items.sort(key=lambda x: x['timestamp'], reverse=True)
+    return {"attachments": items[:limit]}
+
+
+@mcp.tool()
+async def fetch_attachments(
+    user_number: str,
+    keys: list
+) -> dict:
+    """
+    Retrieves the content of specific attachments for a user, base64-encoded.
+    After using 'list_attachments' to identify relevant files, the LLM calls this tool
+    with a list of 'keys' (obtained from the 'list_attachments' response) to get their content.
+    The calling system (e.g., the AI model's orchestration layer) is expected to:
+    1. Receive the list of attachment dictionaries from this tool.
+    2. For each attachment, decode the 'base64_data' field back into bytes.
+    3. Prepare this byte data as inline content (e.g., a Gemini 'Blob' part) for the LLM.
+    4. Include these inline content parts in the next message/turn to the LLM,
+       allowing it to directly process or "see" the file content.
+
+    Args:
+        user_number (str): The user's identifier.
+        keys (list): A list of attachment keys (strings) to fetch.
+
+    Returns:
+        dict: A dictionary containing a list of attachment dictionaries under the key "attachments_data".
+              Each dictionary corresponds to a requested attachment and includes: 'key', 'filename', 'mime_type', and 'base64_data' (the
+              base64-encoded file content). If a key is not found or an error occurs
+              while processing a file, that file may be omitted from the results or
+              an error indicator might be included (current behavior is to print a warning
+              and skip).
+    """
+    idx = load_index_for_user(user_number)
+    output_attachments = []
+    if not isinstance(keys, list):
+        # Handle cases where keys might not be a list, though Pydantic/MCP should enforce this.
+        print(f"Warning: 'keys' argument was not a list for user {user_number}. Got: {type(keys)}")
+        return {"attachments_data": []} # Or raise an error
+
+    for key in keys:
+        entry = idx.get(key)
+        if not entry:
+            print(f"Warning: Attachment key '{key}' not found in index for user {user_number}.")
+            continue
+        
+        file_path = entry.get("path")
+        mime_type = entry.get("mime_type", "application/octet-stream") # Default MIME type
+        original_filename = entry.get("filename", key) # Fallback to key if no filename
+
+        if not file_path or not os.path.exists(file_path):
+            print(f"Warning: File path for key '{key}' not found or invalid: {file_path}")
+            continue
+        
+        try:
+            with open(file_path, "rb") as f:
+                file_bytes = f.read()
+            base64_encoded_data = base64.b64encode(file_bytes).decode('utf-8')
+            output_attachments.append({
+                "key": key,
+                "filename": original_filename,
+                "mime_type": mime_type,
+                "base64_data": base64_encoded_data # Changed field name for clarity
+            })
+        except Exception as e:
+            print(f"Error reading or encoding file for key '{key}' (user {user_number}): {e}")
+            # Optionally, include error information in the response or skip this attachment
+            continue
+            
+    return {"attachments_data": output_attachments} # Standardized return format
+
+# Add mcp.run() if it's not already there for standalone execution/testing
+if __name__ == "__main__":
+    mcp.run() 

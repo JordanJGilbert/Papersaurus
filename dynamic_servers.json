@@ -1,0 +1,287 @@
+{
+    "16503829987": [
+        {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@modelcontextprotocol/server-google-maps"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/filemanagementserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/file_utility_server.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/stock_photo_server.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/dermatology_expert_server.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/nps_query_server.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/stripecheckoutserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/nytnewstool.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/wayfoundapitool.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/stripecheckoutsnippetserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/holidaysserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/timequoteserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/openweathertool.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/postcardserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/pyramidandfactserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/bookreaderserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/buddy_weather_tool_server.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/smssenderserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/userassistserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/processmanagerserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/systeminfoserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/synthesiavideoserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/boxfileserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/regextoolserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/echonumberserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/preferencemanagerserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/airecipemanagerserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/dynamicserver_859f_8fae4ce4py.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/randomfactserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/emojipyramidmaker.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/multimodelexecutor.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/modelresponsetimer.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/unixcommandserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/plant_tree.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/googlemapsaddressvalidationserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/googleemailsenderserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/googledocsserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/delegatedemailsender.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/iiferunner.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/rickrollserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/answerserver.py"
+            ]
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/generated_mcp_servers/stockquoteserver.py"
+            ]
+        }
+    ],
+    "17145986105": [
+        {
+            "command": "python",
+            "args": [
+                "user_data/users/17145986105/generated_mcp_servers/CurrentTimeServer.py"
+            ],
+            "env": {}
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/users/17145986105/generated_mcp_servers/MathOperationsServer.py"
+            ],
+            "env": {}
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/users/17145986105/generated_mcp_servers/MathAnimalServer.py"
+            ],
+            "env": {}
+        },
+        {
+            "command": "python",
+            "args": [
+                "user_data/17145986105/generated_mcp_servers/MathOpsImageServer.py"
+            ],
+            "env": {}
+        }
+    ]
+}

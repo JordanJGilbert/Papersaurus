@@ -1,0 +1,8 @@
+Specifications for generating a family-safe coloring book:
+
+- **Total Pages:** 10 coloring pages.
+- **Content:** Family safe themes, specifically focusing on dinosaurs and sharks.
+- **Coloring Page Style:** Black and white with thick lines. No text on coloring pages.
+- **Cover Image:** Full color, full bleed cover. Can include any text, perhaps the title "Dino and Shark Coloring Fun!"
+- **Watermark:** A readable "fairypaint.com" watermark on *every* page (cover and coloring pages). The watermark should look like smeared purple paint.
+- **Bumblebee Inclusion:** Each coloring page must include a photorealistic, life-size bumblebee somewhere on the page.
