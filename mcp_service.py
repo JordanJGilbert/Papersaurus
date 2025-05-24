@@ -435,10 +435,6 @@ CORE_SERVER_COMMANDS: List[Dict[str, Any]] = [
     },
     {
         "command": "python",
-        "args": ["mcp_client/mcp-servers/coloring_book_server.py"]
-    },
-    {
-        "command": "python",
         "args": ["mcp_client/mcp-servers/google_maps_server.py"]
     },
     {

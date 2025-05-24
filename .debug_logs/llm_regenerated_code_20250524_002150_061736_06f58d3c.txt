@@ -1,0 +1,393 @@
+--- Original code provided to LLM for regeneration ---
+async def generated_function_name(topic: str, num_pages: int, user_number: str):
+    # _call_mcp_tool is assumed to be available in the execution environment.
+    # No standard library imports like 'json' or 'asyncio' are directly used beyond async/await.
+
+    # Step 1: Validate num_pages
+    if num_pages > 20:
+        num_pages = 20
+        print(f"Info: Number of pages requested was too high, capped at 20 for topic '{topic}'.")
+    elif num_pages < 1:
+        num_pages = 1
+        print(f"Info: Number of pages requested was too low, set to minimum 1 for topic '{topic}'.")
+
+    # Step 2: Generate image prompts
+    image_prompts = []
+    for i in range(num_pages):
+        # Detailed prompt for generating black and white line art suitable for coloring
+        prompt = (
+            f"Generate a black and white line art image of '{topic}'. "
+            f"This image is for a coloring book page. "
+            f"It MUST have clear, distinct outlines and NO grayscale shading or solid black fills. "
+            f"The style should be simple, clean, and easy to color, suitable for children. "
+            f"Image subject: {topic}. Page {i+1} of {num_pages}."
+        )
+        image_prompts.append(prompt)
+
+    # Step 3: Call generate_images_with_prompts
+    generated_image_urls = []
+    try:
+        print(f"Requesting {len(image_prompts)} images for topic '{topic}' for user '{user_number}'...")
+        image_generation_result = await _call_mcp_tool(
+            'generate_images_with_prompts',
+            dict(prompts=image_prompts, user_number=user_number)
+        )
+        
+        if isinstance(image_generation_result, dict):
+            if image_generation_result.get('status') == 'success':
+                data = image_generation_result.get('data', {})
+                generated_image_urls = data.get('image_urls', [])
+                if not generated_image_urls and image_prompts:
+                     return f"Error: Image generation for '{topic}' succeeded but returned no image URLs."
+            elif 'image_urls' in image_generation_result: # Fallback if no 'status' field
+                generated_image_urls = image_generation_result['image_urls']
+            else: 
+                error_detail = image_generation_result.get('message') or image_generation_result.get('error', 'Unknown error')
+                return f"Error: Failed to generate images for '{topic}'. Service message: {error_detail}"
+        elif isinstance(image_generation_result, list) and all(isinstance(url, str) for url in image_generation_result):
+             generated_image_urls = image_generation_result
+        else:
+            return f"Error: Unexpected response format from image generation service for '{topic}': {str(image_generation_result)[:200]}"
+
+        if not generated_image_urls and image_prompts: # Check if list is empty after processing
+            return f"Error: No image URLs were obtained from image generation service for '{topic}'."
+            
+    except Exception as e:
+        return f"Error: Exception while calling image generation service for '{topic}': {str(e)}"
+
+    if not generated_image_urls:
+        return f"Error: No images were generated for '{topic}', or image URLs could not be retrieved."
+    
+    print(f"Successfully received {len(generated_image_urls)} image URLs for '{topic}'. Starting analysis...")
+
+    # Step 5 & 6: Analyze images for B&W suitability and filter
+    bw_image_urls = []
+    analysis_prompt = (
+        "Analyze the provided image. Is it a black and white line art image suitable for a coloring page? "
+        "It must have clear, distinct outlines, and minimal to no grayscale shading or solid filled areas. "
+        "Answer with only 'yes' or 'no'."
+    )
+    
+    for idx, img_url in enumerate(generated_image_urls):
+        try:
+            print(f"Analyzing image {idx+1}/{len(generated_image_urls)} for '{topic}': {img_url[:70]}...")
+            # Assuming 'analyze_images' takes 'image_urls' as a list, even for a single image.
+            analysis_result_data = await _call_mcp_tool(
+                'analyze_images',
+                dict(image_urls=[img_url], 
+                     analysis_prompt=analysis_prompt,
+                     user_number=user_number) 
+            )
+            
+            analysis_text = None
+            if isinstance(analysis_result_data, dict):
+                if analysis_result_data.get('status') == 'success':
+                    data = analysis_result_data.get('data', {})
+                    if 'analysis_texts' in data and isinstance(data['analysis_texts'], list) and data['analysis_texts']:
+                        analysis_text = data['analysis_texts'][0] # Expecting one result for one image
+                    elif 'analysis' in data: # Alternative successful structure
+                         analysis_text = data['analysis']
+                # Fallbacks if no 'status' field or status not 'success' but valid data present
+                elif 'analysis_texts' in analysis_result_data and isinstance(analysis_result_data['analysis_texts'], list) and analysis_result_data['analysis_texts']:
+                    analysis_text = analysis_result_data['analysis_texts'][0]
+                elif 'analysis' in analysis_result_data:
+                    analysis_text = analysis_result_data['analysis']
+                else: 
+                    error_detail = analysis_result_data.get('message') or analysis_result_data.get('error', 'Unknown analysis error structure')
+                    print(f"Warning: Analysis for image {img_url[:70]} for '{topic}' returned an error or unexpected data: {error_detail}")
+            elif isinstance(analysis_result_data, str): # If tool returns direct string 'yes'/'no'
+                analysis_text = analysis_result_data
+            else:
+                print(f"Warning: Unexpected analysis response type for image {img_url[:70]} for '{topic}': {type(analysis_result_data)}. Response: {str(analysis_result_data)[:200]}")
+
+            if analysis_text and analysis_text.strip().lower() == 'yes':
+                bw_image_urls.append(img_url)
+                print(f"Image {img_url[:70]} for '{topic}' confirmed suitable for coloring book.")
+            else:
+                print(f"Image {img_url[:70]} for '{topic}' not suitable. Analysis result: '{analysis_text}'")
+
+        except Exception as e_analyze_single:
+            print(f"Warning: Exception during analysis of image {img_url[:70]} for '{topic}': {str(e_analyze_single)}. Skipping this image.")
+    
+    if not bw_image_urls:
+        return f"Error: No suitable black and white images were confirmed after analyzing all {len(generated_image_urls)} generated images for '{topic}'."
+
+    print(f"Found {len(bw_image_urls)} suitable black and white images for '{topic}'. Proceeding to PDF creation...")
+
+    # Step 7: Create PDF
+    try:
+        # Sanitize topic for use in a filename (replace spaces and slashes)
+        safe_topic_name = topic.replace(" ", "_").replace("/", "_")
+        document_name = f'{safe_topic_name}_Coloring_Book_{user_number}.pdf'
+        
+        pdf_additional_context = (
+            f"This PDF is a coloring book based on the topic '{topic}'. "
+            f"It contains {len(bw_image_urls)} black and white line art images selected for their suitability for coloring. "
+            f"This document was generated for user ID: {user_number}."
+        )
+        
+        # "a suitable model" - using a generic placeholder for PDF creation model
+        pdf_model = "high_quality_pdf_assembler_v1" 
+
+        pdf_creation_result = await _call_mcp_tool(
+            'create_pdf_document',
+            dict(
+                image_urls=bw_image_urls,
+                document_name=document_name,
+                user_number=user_number,
+                additional_context=pdf_additional_context,
+                model=pdf_model
+            )
+        )
+
+        if isinstance(pdf_creation_result, dict):
+            if pdf_creation_result.get('status') == 'success':
+                data = pdf_creation_result.get('data', {})
+                pdf_url = data.get('pdf_url')
+                if pdf_url:
+                    print(f"PDF '{document_name}' created successfully for '{topic}'. URL: {pdf_url}")
+                    return pdf_url
+                else:
+                    return f"Error: PDF creation for '{topic}' succeeded but returned no PDF URL."
+            elif 'pdf_url' in pdf_creation_result: # Fallback if no 'status' field
+                pdf_url = pdf_creation_result['pdf_url']
+                if pdf_url:
+                     print(f"PDF '{document_name}' created successfully for '{topic}' (fallback check). URL: {pdf_url}")
+                     return pdf_url
+                else: # 'pdf_url' key exists but is empty/null
+                     return f"Error: PDF creation service for '{topic}' returned an empty or null PDF URL."
+            else: 
+                error_detail = pdf_creation_result.get('message') or pdf_creation_result.get('error', 'Unknown PDF creation error')
+                return f"Error: Failed to create PDF for '{topic}'. Service message: {error_detail}"
+        else:
+            return f"Error: Unexpected response format from PDF creation service for '{topic}': {str(pdf_creation_result)[:200]}"
+
+    except Exception as e:
+        return f"Error: Exception while calling PDF creation service for '{topic}': {str(e)}"
+--- End of original code ---
+
+--- Edit request: ---
+The function is failing because it does not correctly parse the responses from `_call_mcp_tool`. The `_call_mcp_tool` returns a dictionary like `{'result': JSON_STRING, 'error': ERROR_MESSAGE}`. The `JSON_STRING` is the actual response from the called MCP tool (e.g., `generate_images_with_prompts`). 
+
+Please modify the function to correctly handle these responses for all three MCP tool calls (`generate_images_with_prompts`, `analyze_images`, and `create_pdf_document`):
+1. Add `import json` at the beginning of the `generated_function_name` function.
+2. For each call to `await _call_mcp_tool`:
+    a. Store the result in a variable (e.g., `mcp_tool_output`).
+    b. Check if `mcp_tool_output.get('error')` exists. If so, print a warning/error and handle it (e.g., by returning an error message or skipping the current item in a loop).
+    c. If no error, get the JSON string from `mcp_tool_output.get('result')`.
+    d. If the JSON string is missing or empty, handle this as an error.
+    e. Parse this JSON string using `json.loads()` into a new variable (e.g., `parsed_response`). Handle potential `json.JSONDecodeError`.
+    f. Modify the subsequent logic to use `parsed_response` according to the specific MCP tool's expected output structure:
+        i. For `generate_images_with_prompts`: `parsed_response.get('results')` should give a list of lists (e.g., `[['url1'], ['url2']]`). Extract URLs as `[item[0] for item in parsed_response.get('results', []) if item and isinstance(item, list) and len(item)>0 and item[0]]`.
+        ii. For `analyze_images`: `parsed_response.get('results')` should be a list of analysis objects. Since we analyze one image at a time in the loop, we need `parsed_response.get('results', [])[0].get('analysis')` to get the 'yes'/'no' string. Add checks for list emptiness or missing keys.
+        iii. For `create_pdf_document`: `parsed_response.get('url')` should give the PDF URL string.
+    g. Ensure that `status == 'success'` (or similar success indicators) from the `parsed_response` is also checked where appropriate (e.g., `if parsed_response.get('status') == 'success':`).
+Ensure all error messages returned by the function are informative strings.
+---
+
+--- Full LLM response (regenerated code attempt): ---
+```temp.py
+# Potentially some module-level imports if they were in the original or are newly required
+# No module-level imports were in the original. `json` will be imported inside the function as requested.
+
+async def generated_function_name(topic: str, num_pages: int, user_number: str):
+    import json # As per specific instruction to place it here.
+
+    # _call_mcp_tool is assumed to be available in the execution environment.
+
+    # Step 1: Validate num_pages
+    if num_pages > 20:
+        num_pages = 20
+        print(f"Info: Number of pages requested was too high, capped at 20 for topic '{topic}'.")
+    elif num_pages < 1:
+        num_pages = 1
+        print(f"Info: Number of pages requested was too low, set to minimum 1 for topic '{topic}'.")
+
+    # Step 2: Generate image prompts
+    image_prompts = []
+    for i in range(num_pages):
+        prompt = (
+            f"Generate a black and white line art image of '{topic}'. "
+            f"This image is for a coloring book page. "
+            f"It MUST have clear, distinct outlines and NO grayscale shading or solid black fills. "
+            f"The style should be simple, clean, and easy to color, suitable for children. "
+            f"Image subject: {topic}. Page {i+1} of {num_pages}."
+        )
+        image_prompts.append(prompt)
+
+    # Step 3: Call generate_images_with_prompts
+    generated_image_urls = []
+    try:
+        print(f"Requesting {len(image_prompts)} images for topic '{topic}' for user '{user_number}'...")
+        mcp_tool_output_images = await _call_mcp_tool(
+            'generate_images_with_prompts',
+            dict(prompts=image_prompts, user_number=user_number)
+        )
+        
+        if mcp_tool_output_images.get('error'):
+            return f"Error: Image generation MCP tool call failed for '{topic}'. Details: {mcp_tool_output_images['error']}"
+
+        json_string_result_images = mcp_tool_output_images.get('result')
+        if not json_string_result_images:
+            return f"Error: Image generation MCP tool call for '{topic}' returned no 'result' field."
+
+        try:
+            parsed_response_images = json.loads(json_string_result_images)
+        except json.JSONDecodeError as e:
+            return f"Error: Failed to parse JSON response from image generation for '{topic}': {str(e)}. Response string: {json_string_result_images[:200]}"
+
+        if parsed_response_images:
+            # As per request: parsed_response.get('results') -> [['url1'], ['url2']]
+            # Extract URLs as [item[0] for item in parsed_response.get('results', []) if item and isinstance(item, list) and len(item)>0 and item[0]]
+            raw_results = parsed_response_images.get('results', [])
+            if isinstance(raw_results, list):
+                generated_image_urls = [
+                    item[0] for item in raw_results
+                    if item and isinstance(item, list) and len(item) > 0 and item[0] and isinstance(item[0], str)
+                ]
+            else: # 'results' field is not a list
+                 return f"Error: Image generation service for '{topic}' returned 'results' field that is not a list. Content: {str(raw_results)[:200]}"
+
+
+            if not generated_image_urls and image_prompts: # If prompts were sent, but no URLs extracted
+                service_message = parsed_response_images.get('message', f"Parsed response structure: {str(parsed_response_images)[:200]}")
+                return f"Error: Image generation for '{topic}' returned no valid image URLs in the expected 'results' structure. {service_message}"
+        else: # parsed_response_images is None or empty (e.g. if json_string_result_images was "null")
+            return f"Error: Parsed JSON response from image generation for '{topic}' was empty or null."
+            
+    except Exception as e:
+        # Catch any other unexpected error during the tool call or initial processing
+        return f"Error: Exception during image generation phase for '{topic}': {str(e)}"
+
+    if not generated_image_urls: # If list is empty after all processing
+        return f"Error: No image URLs were successfully obtained from image generation service for '{topic}'."
+    
+    print(f"Successfully received {len(generated_image_urls)} image URLs for '{topic}'. Starting analysis...")
+
+    # Step 4 & 5: Analyze images for B&W suitability and filter
+    # (Original Step 5 & 6 mapped to current step number, this is analysis)
+    bw_image_urls = []
+    analysis_prompt = (
+        "Analyze the provided image. Is it a black and white line art image suitable for a coloring page? "
+        "It must have clear, distinct outlines, and minimal to no grayscale shading or solid filled areas. "
+        "Answer with only 'yes' or 'no'."
+    )
+    
+    for idx, img_url in enumerate(generated_image_urls):
+        try:
+            print(f"Analyzing image {idx+1}/{len(generated_image_urls)} for '{topic}': {img_url[:70]}...")
+            mcp_tool_output_analysis = await _call_mcp_tool(
+                'analyze_images',
+                dict(image_urls=[img_url], 
+                     analysis_prompt=analysis_prompt,
+                     user_number=user_number) 
+            )
+            
+            analysis_text = None # Reset for each image
+
+            if mcp_tool_output_analysis.get('error'):
+                print(f"Warning: Image analysis MCP tool call for {img_url[:70]} (topic: '{topic}') failed. Details: {mcp_tool_output_analysis['error']}. Skipping this image.")
+                continue
+
+            json_string_result_analysis = mcp_tool_output_analysis.get('result')
+            if not json_string_result_analysis:
+                print(f"Warning: Image analysis MCP tool call for {img_url[:70]} (topic: '{topic}') returned no 'result' field. Skipping this image.")
+                continue
+            
+            try:
+                parsed_response_analysis = json.loads(json_string_result_analysis)
+            except json.JSONDecodeError as e:
+                print(f"Warning: Failed to parse JSON response from image analysis for {img_url[:70]} (topic: '{topic}'): {str(e)}. Response string: {json_string_result_analysis[:200]}. Skipping this image.")
+                continue
+
+            if parsed_response_analysis:
+                # As per request: parsed_response.get('results', [])[0].get('analysis')
+                results_list = parsed_response_analysis.get('results', [])
+                if isinstance(results_list, list) and len(results_list) > 0:
+                    first_result_item = results_list[0]
+                    if isinstance(first_result_item, dict):
+                        analysis_text = first_result_item.get('analysis')
+                        if not isinstance(analysis_text, str):
+                            print(f"Warning: Analysis result for {img_url[:70]} (topic: '{topic}') is not a string: Value '{analysis_text}'. Skipping this image.")
+                            analysis_text = None # Ensure it's None if not a valid string
+                    else:
+                        print(f"Warning: First item in 'results' from image analysis for {img_url[:70]} (topic: '{topic}') is not a dictionary: {str(first_result_item)[:100]}. Skipping this image.")
+                else:
+                    print(f"Warning: 'results' list from image analysis for {img_url[:70]} (topic: '{topic}') is empty or not a list. Parsed response: {str(parsed_response_analysis)[:200]}. Skipping this image.")
+            else: # parsed_response_analysis is None or empty
+                print(f"Warning: Parsed JSON response from image analysis for {img_url[:70]} (topic: '{topic}') was empty or null. Skipping this image.")
+
+            if analysis_text and analysis_text.strip().lower() == 'yes':
+                bw_image_urls.append(img_url)
+                print(f"Image {img_url[:70]} (topic: '{topic}') confirmed suitable for coloring book.")
+            else:
+                print(f"Image {img_url[:70]} (topic: '{topic}') not suitable. Analysis result: '{analysis_text}'.")
+
+        except Exception as e_analyze_single:
+            print(f"Warning: Exception during analysis of image {img_url[:70]} (topic: '{topic}'): {str(e_analyze_single)}. Skipping this image.")
+    
+    if not bw_image_urls:
+        return f"Error: No suitable black and white images were confirmed after analyzing all {len(generated_image_urls)} generated images for '{topic}'."
+
+    print(f"Found {len(bw_image_urls)} suitable black and white images for '{topic}'. Proceeding to PDF creation...")
+
+    # Step 6: Create PDF (Original Step 7)
+    try:
+        safe_topic_name = topic.replace(" ", "_").replace("/", "_")
+        document_name = f'{safe_topic_name}_Coloring_Book_{user_number}.pdf'
+        
+        pdf_additional_context = (
+            f"This PDF is a coloring book based on the topic '{topic}'. "
+            f"It contains {len(bw_image_urls)} black and white line art images selected for their suitability for coloring. "
+            f"This document was generated for user ID: {user_number}."
+        )
+        
+        pdf_model = "high_quality_pdf_assembler_v1" 
+
+        mcp_tool_output_pdf = await _call_mcp_tool(
+            'create_pdf_document',
+            dict(
+                image_urls=bw_image_urls,
+                document_name=document_name,
+                user_number=user_number,
+                additional_context=pdf_additional_context,
+                model=pdf_model
+            )
+        )
+
+        if mcp_tool_output_pdf.get('error'):
+            return f"Error: PDF creation MCP tool call failed for '{topic}'. Details: {mcp_tool_output_pdf['error']}"
+
+        json_string_result_pdf = mcp_tool_output_pdf.get('result')
+        if not json_string_result_pdf:
+            return f"Error: PDF creation MCP tool call for '{topic}' returned no 'result' field."
+
+        try:
+            parsed_response_pdf = json.loads(json_string_result_pdf)
+        except json.JSONDecodeError as e:
+            return f"Error: Failed to parse JSON response from PDF creation for '{topic}': {str(e)}. Response string: {json_string_result_pdf[:200]}"
+
+        if parsed_response_pdf:
+            # Check for a status field in parsed_response as per user's general request.
+            # This is a generic check; specific tools might have different success indicators.
+            service_status = parsed_response_pdf.get('status')
+            if service_status and service_status.lower() != 'success':
+                error_message = parsed_response_pdf.get('message', f"PDF service indicated status: {service_status}")
+                return f"Error: PDF creation service for '{topic}' failed. {error_message}"
+
+            # As per request: parsed_response.get('url') -> PDF URL string.
+            pdf_url = parsed_response_pdf.get('url')
+            if pdf_url and isinstance(pdf_url, str):
+                print(f"PDF '{document_name}' created successfully for '{topic}'. URL: {pdf_url}")
+                return pdf_url
+            else:
+                # This handles cases where 'url' is missing, null, not a string, or if status was 'success' but no URL.
+                service_message = parsed_response_pdf.get('message', f"Parsed response structure: {str(parsed_response_pdf)[:200]}")
+                return f"Error: PDF creation for '{topic}' did not return a valid PDF URL in the 'url' field. {service_message}"
+        else: # parsed_response_pdf is None or empty
+            return f"Error: Parsed JSON response from PDF creation for '{topic}' was empty or null."
+
+    except Exception as e:
+        # Catch any other unexpected error during the PDF creation tool call or processing
+        return f"Error: Exception while calling PDF creation service for '{topic}': {str(e)}"
+```

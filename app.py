@@ -2882,7 +2882,7 @@ def analyze_image_gemini():
         image_url = data.get('image_url')
         mime_type = data.get('mime_type')
         prompt = data.get('prompt')
-        model_name = data.get('model_name', "gemini-2.5-flash-preview-04-17")
+        model_name = data.get('model_name', "gemini-2.5-flash-preview-05-20")
 
         if not prompt or not mime_type:
             return jsonify({

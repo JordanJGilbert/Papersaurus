@@ -43,7 +43,7 @@ mcp = FastMCP("Document Generation Server")
 
 # --- Supported LLM Models ---
 MODELS_LITERAL = Literal[
-    "gemini-2.5-flash-preview-04-17",
+    "gemini-2.5-flash-preview-05-20",
     "gemini-2.5-pro-preview-05-06",
     "models/gemini-2.0-flash",
     "gemini-2.0-flash",
@@ -52,7 +52,7 @@ MODELS_LITERAL = Literal[
     "o4-mini-2025-04-16"
 ]
 SUPPORTED_MODELS_TUPLE = (
-    "gemini-2.5-flash-preview-04-17",
+    "gemini-2.5-flash-preview-05-20",
     "gemini-2.5-pro-preview-05-06",
     "models/gemini-2.0-flash",
     "gemini-2.0-flash",
@@ -63,7 +63,7 @@ SUPPORTED_MODELS_TUPLE = (
 
 # --- System Prompts for Editing ---
 EDIT_WEB_APP_SYSTEM_PROMPT = """You are an expert code editor. You will be given the complete original content of an HTML file and a user's request describing desired modifications.
-Your task is to generate a set of changes in the "diff-fenced" format to achieve the user's request.
+You may also receive an `additional_context` string containing information from previous steps (e.g., search results, API documentation) that should inform your edits.
 
 The "diff-fenced" format for each change is:
 <<<<<<< SEARCH
@@ -90,9 +90,11 @@ Guidelines:
 5.  You can provide multiple diff blocks one after another if multiple distinct changes are needed. Order them logically.
 6.  Ensure that your SEARCH blocks are precise and correctly reflect the parts of the original HTML you intend to change. If a text segment appears multiple times, make your SEARCH block specific enough to target only the intended instance (e.g., by including surrounding unique text).
 7.  Output ONLY the diff blocks. Do NOT include any other text, explanations, the filename, or markdown formatting (like ```diff ... ```). Just the raw `<<<<<<< SEARCH ... >>>>>>> REPLACE` blocks, one after another.
+8.  If `additional_context` is provided, ensure your diffs reflect the information or requirements mentioned in it, in addition to the primary user's edit request.
 """
 
 EDIT_PDF_SYSTEM_PROMPT = """You are an expert at editing HTML documents that will be converted to PDFs. You will receive the original HTML content and a user's request for changes.
+You may also receive an `additional_context` string containing information from previous steps (e.g., search results, API documentation) that should inform your edits.
 Your task is to generate diffs in the "diff-fenced" format to apply these changes.
 
 The "diff-fenced" format for each change:
@@ -121,6 +123,7 @@ Guidelines:
 6.  Specificity: SEARCH blocks must be specific to target the correct HTML segment.
 7.  Output: ONLY the raw `<<<<<<< SEARCH ... >>>>>>> REPLACE` diff blocks. No extra text, filenames, or markdown.
 8.  PDF Context: Remember all images must still adhere to PDF sizing (max-width 600px via `width` attribute) and HTML should be well-structured for PDF conversion.
+9.  If `additional_context` is provided, ensure your diffs reflect the information or requirements mentioned in it, in addition to the primary user's edit request.
 """
 
 # --- Helper function to apply diffs ---
@@ -325,12 +328,17 @@ async def create_web_app(
     user_request: Annotated[Optional[str], Field(
         description="The user's primary request detailing what the web app should do, its purpose, or content. This is the main input for generation."
     )] = None,
-    client_injected_context: Annotated[str, Field(
-        description="Additional context, such as conversation history, injected by the client system. This is not meant for direct user input but for providing broader context to the generation process."
-    )] = "No additional context provided",
     model: Annotated[MODELS_LITERAL, Field(
         description="The LLM model to use for HTML generation."
-    )] = "gemini-2.5-pro-preview-05-06"
+    )] = "gemini-2.5-pro-preview-05-06",
+    mcp_tools: Annotated[Optional[List[str]], Field(
+        description="Optional list of MCP tool names the generated web application can be aware of or designed to interact with (potentially via backend calls).",
+        default=None
+    )] = None,
+    additional_context: Annotated[Optional[str], Field(
+        description="Optional textual context to guide web app generation. This string should contain all necessary and relevant details from previous tool calls (e.g., search results, API documentation, user clarifications) to produce the optimal web app. The LLM is responsible for synthesizing this string to be as detailed as required for the task. Do not use @@ref_ to pass complex objects directly into this field; provide the synthesized string context yourself.",
+        default=None
+    )] = None
 ) -> dict:
     """
     Creates a custom web application based on user specifications and provided attachments.
@@ -365,13 +373,14 @@ async def create_web_app(
 
     # --- Prepare LLM Call ---
     adapter = get_llm_adapter(model_name=model)
-    
-    # Use user_request as the main context if provided, else fallback
-    main_request = user_request or client_injected_context
-    
+
+    # Use user_request as the main context
+    main_request = user_request or ""
+
     # --- Dynamically construct the system prompt for web app generation ---
     # Start with the base WEB_APP_PROMPT
     current_web_app_system_prompt = WEB_APP_PROMPT # Assuming WEB_APP_PROMPT is globally available
+    current_web_app_system_prompt += "\n\nNote: An `additional_context` field might be passed to you along with the user's primary request. This context MUST be a string that you (the LLM) have synthesized from relevant information (e.g., previous search results, or API documentation) to inform the web app's content and features. Do not expect this field to be auto-populated with complex objects via @@ref syntax; you are responsible for crafting this string context."
 
     # Append attachment information and instructions if attachments are present
     if attachment_info_for_prompt:
@@ -387,17 +396,106 @@ async def create_web_app(
                 current_web_app_system_prompt += f"  Instruction: Reference or link to this file as appropriate for its type.\n"
         current_web_app_system_prompt += "\nEnsure all referenced attachments are displayed or linked correctly in the final HTML."
 
+    # Append available MCP tools information if provided
+    if mcp_tools:
+        current_web_app_system_prompt += "\n\n# Available MCP System Tools\n"
+        current_web_app_system_prompt += "The broader system has access to the following tools. You can design the web application to conceptually leverage these capabilities (e.g., by describing features that would use them, or by including UI elements that imply their use via backend calls). Do not attempt to directly call these tools from the client-side HTML/JavaScript you generate unless you are also generating the backend infrastructure for such calls.\n"
+        for tool_name in mcp_tools:
+            current_web_app_system_prompt += f"- {tool_name}\n"
+
+    current_web_app_system_prompt += """
+
+# Calling Backend MCP Tools from JavaScript
+
+If the web application needs to trigger backend MCP tools (from the `mcp_tools` list if provided, or other known tools), you can generate JavaScript to make an HTTP POST request to the `/query` endpoint.
+
+**Request Format:**
+-   **URL:** `/query` (make sure to use a relative path or one that correctly resolves to the MCP service backend)
+-   **Method:** `POST`
+-   **Headers:** `{'Content-Type': 'application/json'}`
+-   **Body (JSON):**
+    ```json
+    {
+        "query": "call_tool TOOL_NAME with arguments JSON_ARGUMENTS_STRING",
+        "sender": "USER_ID_PLACEHOLDER", // This should ideally be set by a backend proxy based on the authenticated user.
+                                       // If you cannot rely on a proxy, the frontend might need to manage a user identifier.
+        "attachments": [], // Usually empty for direct tool calls, unless the tool itself needs them.
+        "stream": false    // For simplicity, assume non-streaming calls from client-side JS.
+    }
+    ```
+    -   Replace `TOOL_NAME` with the exact name of the MCP tool you want to call.
+    -   Replace `JSON_ARGUMENTS_STRING` with a *stringified JSON object* containing the arguments for that tool. Example: `'{\\"param1\\":\\"value1\\",\\"param2\\":123}'`. Ensure correct escaping if this string is embedded within another JSON string or JavaScript string.
+
+**Response Handling:**
+-   The `/query` endpoint will respond with JSON:
+    ```json
+    {
+        "result": "STRINGIFIED_JSON_OR_PLAIN_TEXT_RESULT_FROM_TOOL",
+        "error": "OPTIONAL_ERROR_MESSAGE"
+    }
+    ```
+-   Your JavaScript should parse `response.result`. If `response.result` is itself a stringified JSON, parse it again to get the tool's actual output object.
+-   Handle potential errors by checking `response.error`.
+-   Remember these are asynchronous calls (`fetch().then(...)` or `async/await`). Update the DOM *after* receiving the response.
+
+**Example JavaScript Snippet (Conceptual):**
+```javascript
+async function callMcpTool(toolName, argsObject) {
+    // USER_ID_PLACEHOLDER needs to be replaced with the actual user identifier.
+    // This might come from a global JS variable set by the server, a cookie, or other context.
+    const currentUserId = window.currentUser || "default_user"; // Example placeholder
+
+    const queryPayload = {
+        query: `call_tool ${toolName} with arguments ${JSON.stringify(JSON.stringify(argsObject))}`,
+        sender: currentUserId, 
+        stream: false
+    };
+    try {
+        const response = await fetch('/query', { // Assuming /query is on the same host
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(queryPayload)
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        if (data.error) {
+            console.error('Error calling tool:', data.error);
+            // Consider displaying error to user in the web app's UI
+            return null;
+        }
+        // Assuming data.result is a stringified JSON from the tool for many tools
+        try {
+            return JSON.parse(data.result);
+        } catch (e) {
+            // If data.result is not JSON, return it as is (e.g., plain text, or already an object if tool returns differently)
+            return data.result; 
+        }
+    } catch (error) {
+        console.error('Failed to call MCP tool:', error);
+        // Consider displaying error to user in the web app's UI
+        return null;
+    }
+}
+
+// Example Usage in your web app's JS:
+// callMcpTool('name_of_tool_from_mcp_tools_list', { arg1: 'value1', arg2: 100 })
+//   .then(result => { 
+//       if (result) { 
+//           // Process the result and update the DOM
+//           // For example: document.getElementById('someElement').textContent = result.someProperty;
+//       } 
+//   });
+```
+Use this pattern to enable dynamic interactions with backend tools. Make sure your JavaScript handles the asynchronous nature of these calls and updates the web page appropriately.
+"""
+
     # Original prompt construction for the user message partx
     prompt_text = f"Create a web app titled '{app_name}'.\n\n**User Request:**\n{main_request}"
     
-    # If there were attachment_urls (now attachment_info_for_prompt), 
-    # the system prompt handles them. We can optionally still mention them in the user prompt for clarity,
-    # but the core instruction is now in the system prompt.
-    # For now, let's remove it from prompt_text to avoid redundancy, as the system prompt is more direct.
-    # if attachment_info_for_prompt:
-    #     prompt_text += "\n\nThe following files are attached for your reference (if applicable to the request):"
-    #     for att_info in attachment_info_for_prompt:
-    #         prompt_text += f"\n- {att_info['url']} ({att_info['mime_type']})"
+    if additional_context:
+        prompt_text += f"\n\n**Additional Context to Consider:**\n{additional_context}"
 
     history = [
         StandardizedMessage(
@@ -471,12 +569,17 @@ async def create_pdf_document(
     attachments: Annotated[Optional[List[str]], Field(
         description="A list of attachment URLs (e.g., for images) to be included or referenced in the PDF document. Base64 encoded data is no longer supported."
     )] = None,
-    client_injected_context: Annotated[str, Field(
-        description="Conversation history or other contextual information provided by the client system to inform document generation."
-    )] = "No additional context provided",
     model: Annotated[MODELS_LITERAL, Field(
         description="The LLM model to use for generating the HTML source of the PDF."
-    )] = "gemini-2.5-pro-preview-05-06"
+    )] = "gemini-2.5-pro-preview-05-06",
+    mcp_tools: Annotated[Optional[List[str]], Field(
+        description="Optional list of MCP tool names that can inform the content generation, making the LLM aware of other system capabilities.",
+        default=None
+    )] = None,
+    additional_context: Annotated[Optional[str], Field(
+        description="Optional textual context to guide PDF generation. This string should contain all necessary and relevant details from previous tool calls (e.g., search results, API documentation, user clarifications) to produce the optimal PDF. The LLM is responsible for synthesizing this string to be as detailed as required for the task. Do not use @@ref_ to pass complex objects directly into this field; provide the synthesized string context yourself.",
+        default=None
+    )] = None
 ) -> dict:
     """
     Creates a custom PDF document based on the user's request and any provided attachments.
@@ -492,7 +595,6 @@ async def create_pdf_document(
     user_id_safe = sanitize_for_path(user_number)
     doc_name = doc_name or f"pdf-doc-{str(uuid.uuid4())[:8]}"
     doc_name_safe = sanitize_for_path(doc_name)
-
 
     # --- Attachment Handling ---
     processed_attachments = await asyncio.to_thread(process_attachments, attachments)
@@ -527,9 +629,9 @@ You are an expert at generating HTML documents for PDF conversion.
 - All images you include MUST be sized appropriately for a PDF document page.
 - The **maximum width for any image is 600 pixels**. Do NOT exceed this width.
 - You MAY use smaller widths if it makes sense for the specific image or layout (e.g., for a small icon or a thumbnail).
-- Always set the image size using the `width` attribute in the `<img>` tag (e.g., `<img src="..." width="450">` or `<img src="..." width="600">`).
+- Always set the image size using the `width` attribute in the `<img>` tag (e.g., `<img src=\"...\" width=\"450\">` or `<img src=\"...\" width=\"600\">`).
 - Do NOT use CSS for image sizing—use the `width` attribute only.
-- For best PDF rendering, ensure images are displayed as block elements and consider appropriate margins (e.g., `<img src="..." width="600" style="display: block; margin: 1em auto;">`). You can include such basic inline styles for images if it aids PDF layout.
+- For best PDF rendering, ensure images are displayed as block elements and consider appropriate margins (e.g., `<img src=\"...\" width=\"600\" style=\"display: block; margin: 1em auto;\">`). You can include such basic inline styles for images if it aids PDF layout.
 
 # Output Format
 
@@ -541,18 +643,121 @@ You are an expert at generating HTML documents for PDF conversion.
 
 {json.dumps(attachment_urls, indent=2)}
 
-# User Request and Context
+# User Request
 
-{client_injected_context}
+{''}
+"""
+    # The {''} above is a placeholder for the actual user request that will be formatted into the history.
+    # We add a note about additional_context to the system prompt here.
+    PDF_SYSTEM_PROMPT += "\n\nNote: An `additional_context` field might be passed to you along with the user's primary request. This context MUST be a string that you (the LLM) have synthesized from relevant information (e.g., previous search results, or API documentation) to inform the PDF's content and structure. Do not expect this field to be auto-populated with complex objects via @@ref syntax; you are responsible for crafting this string context."
 
+    # Append available MCP tools information to PDF_SYSTEM_PROMPT if provided
+    if mcp_tools:
+        PDF_SYSTEM_PROMPT += "\n\n# Aware System Capabilities (MCP Tools)\n"
+        PDF_SYSTEM_PROMPT += "For your awareness, the broader system has access to the following tools. This information may be relevant for the content you generate (e.g., if the document should refer to these capabilities):\n"
+        for tool_name in mcp_tools:
+            PDF_SYSTEM_PROMPT += f"- {tool_name}\n"
+    
+    PDF_SYSTEM_PROMPT += f"""
+
+# Dynamically Fetching Data with MCP Tools for PDF Content
+
+If the PDF content requires data fetched dynamically from MCP tools (from the `mcp_tools` list or other known tools) at the time of generation, you can embed JavaScript in the HTML to achieve this. Playwright will execute this JavaScript before rendering the PDF.
+
+**JavaScript API Call Mechanism:**
+-   Your JavaScript should make an HTTP `POST` request to the `/query` endpoint.
+-   **Request Format (same as for web apps):**
+    -   **URL:** `/query` (this will be resolved by Playwright relative to the base URL of the loaded HTML content, or use an absolute URL if necessary)
+    -   **Method:** `POST`
+    -   **Headers:** `{{'Content-Type': 'application/json'}}`
+    -   **Body (JSON):**
+        ```json
+        {{
+            "query": "call_tool TOOL_NAME with arguments JSON_ARGUMENTS_STRING",
+            "sender": "USER_ID_PLACEHOLDER_FOR_PDF_CONTEXT", // Context needs to be established for PDF generation run by the system.
+            "attachments": [],
+            "stream": false
+        }}
+        ```
+        -   `TOOL_NAME` and `JSON_ARGUMENTS_STRING` as described for web apps. `JSON_ARGUMENTS_STRING` is a stringified JSON.
+-   **Response Handling (same as for web apps):**
+    -   The endpoint responds with `{{"result": "...", "error": "..."}}`.
+    -   Parse `response.result` (potentially twice if it's stringified JSON from the tool).
+-   **DOM Manipulation:** The JavaScript *must* take the fetched data and update the HTML DOM *before* Playwright generates the PDF. Ensure all data is present and rendered.
+-   **Asynchronous Nature:** Remember these calls are asynchronous. Use `async/await` or Promises carefully. The `wait_until="networkidle"` setting in Playwright helps, but your script should ensure all content is settled.
+
+**Example (Conceptual JavaScript within the HTML for PDF):**
+```html
+<script>
+    async function fetchAndInjectPdfData(toolName, argsObject, elementIdToUpdate) {{
+        // USER_ID_PLACEHOLDER_FOR_PDF_CONTEXT needs to be resolved by the system generating the PDF.
+        // For PDF generation, this 'sender' might be a generic context or a specific user if the PDF is user-centric.
+        const pdfContextUserId = "pdf_generator_service_user"; // Example
+
+        const queryPayload = {{
+            query: `call_tool ${{toolName}} with arguments ${{JSON.stringify(JSON.stringify(argsObject))}}`,
+            sender: pdfContextUserId, 
+            stream: false
+        }};
+        try {{
+            const response = await fetch('/query', {{ // Playwright will make this call
+                method: 'POST',
+                headers: {{ 'Content-Type': 'application/json' }},
+                body: JSON.stringify(queryPayload)
+            }});
+            if (!response.ok) {{
+                throw new Error(`HTTP error! status: ${{response.status}}`);
+            }}
+            const data = await response.json();
+            const targetElement = document.getElementById(elementIdToUpdate);
+            if (!targetElement) return;
+
+            if (data.error) {{
+                console.error('Error calling tool for PDF:', data.error);
+                targetElement.textContent = 'Error loading dynamic content.';
+                return;
+            }}
+            
+            let finalData = data.result;
+            try {{
+                finalData = JSON.parse(data.result); // If tool result is stringified JSON
+            }} catch (e) {{ /* Keep as is if not JSON */ }}
+
+            // Example: Update the DOM. This needs to be specific to the data structure.
+            if (typeof finalData === 'object' && finalData !== null && finalData.content) {{
+                targetElement.innerHTML = finalData.content; // Or textContent, etc.
+            }} else {{
+                targetElement.textContent = String(finalData);
+            }}
+
+        }} catch (error) {{
+            console.error('Failed to call MCP tool for PDF:', error);
+            const targetElement = document.getElementById(elementIdToUpdate);
+            if (targetElement) {{
+                targetElement.textContent = 'Failed to load dynamic content.';
+            }}
+        }}
+    }}
+
+    // Example of how you might invoke this in your HTML:
+    // Ensure the element with ID 'dynamicReportData' exists.
+    // document.addEventListener('DOMContentLoaded', () => {{
+    //     fetchAndInjectPdfData('get_financial_summary', {{'quarter': 'Q4'}}, 'dynamicReportData');
+    // }});
+    // Or, if the script is at the end of the body, DOMContentLoaded might not be strictly needed
+    // if elements are already parsed.
+</script>
+"""
+
+    PDF_SYSTEM_PROMPT += f"""
 VERY IMPORTANT FORMATTING INSTRUCTIONS:
 You must present your HTML output exactly as follows:
-1. Output \"document.html\" on a line by itself (no quotes or other characters)
+1. Output "document.html" on a line by itself (no quotes or other characters)
 2. On the next line, output three backticks (```) to start a code fence
 3. Output the complete HTML document, including DOCTYPE, html, head, and body tags
 4. End with three backticks (```) on a line by itself
 5. NEVER skip, omit or abbreviate any part of the HTML content
-6. Do not include placeholder comments like \"<!-- Content will be generated here -->\"
+6. Do not include placeholder comments like "<!-- Content will be generated here -->"
 7. DO NOT include any explanatory text before or after the HTML content
 
 Output Format Example:
@@ -574,10 +779,19 @@ document.html
     # --- LLM API Call using Adapter ---
     adapter = get_llm_adapter(model_name=model)
     
+    # The user request for PDF generation is usually general, like "create a PDF based on the system prompt instructions".
+    # The actual content generation is driven by the system prompt which now includes attachment details and potentially MCP tool info.
+    # If user_request was also a parameter to create_pdf_document (it's not currently in the signature but could be added),
+    # it would be incorporated here. For now, the prompt is generic.
+    
+    user_facing_prompt = "Please generate a PDF-ready HTML document as described in the system prompt."
+    if additional_context: # Append additional_context to the user-facing part of the prompt
+        user_facing_prompt += f"\n\n**Additional Context to Consider:**\n{additional_context}"
+    
     history = [
         StandardizedMessage(
             role="user",
-            content="Please generate a PDF-ready HTML document as described in the system prompt."
+            content=user_facing_prompt
         )
     ]
     
@@ -639,7 +853,7 @@ document.html
             # Load HTML from file
             with open(html_path, 'r', encoding='utf-8') as f:
                 html_for_pdf = f.read()
-            await page.set_content(html_for_pdf, wait_until="load")
+            await page.set_content(html_for_pdf, wait_until="networkidle")
             await page.pdf(path=pdf_path, format="A4")
             await browser.close()
     except Exception as e:
@@ -673,12 +887,13 @@ async def edit_web_app(
     user_edit_request: Annotated[Optional[str], Field(
         description="A clear description of the changes the user wants to make to the web app."
     )] = None,
-    client_injected_context: Annotated[str, Field(
-        description="Additional context, like conversation history, relevant to the edit request."
-    )] = "No additional context provided for edit",
     model: Annotated[MODELS_LITERAL, Field(
         description="The LLM model to use for generating the diff to edit the HTML content."
-    )] = "gemini-2.5-pro-preview-05-06"
+    )] = "gemini-2.5-pro-preview-05-06",
+    additional_context: Annotated[Optional[str], Field(
+        description="Optional textual context to guide web app editing. This string should contain all necessary and relevant details from previous steps (e.g., search results, API documentation, user clarifications) to perform the optimal edit. The LLM should synthesize this string to be as detailed as required. For this edit tool, using @@ref_ to point to a string field within a previous output is also acceptable for this parameter.",
+        default=None
+    )] = None
 ) -> dict:
     """
     Edits an existing web application based on the user's request using a diff-fenced format.
@@ -723,11 +938,11 @@ async def edit_web_app(
 User's request for changes:
 "{user_edit_request}"
 
-Context for this edit (if any):
-{client_injected_context}
-
-Please provide the necessary changes ONLY in the "diff-fenced" format as per system instructions.
+Please provide the necessary changes ONLY in the \"diff-fenced\" format as per system instructions.
 """
+
+    if additional_context:
+        prompt_to_llm += f"\n\n**Additional Context to Consider for this edit:**\n{additional_context}"
 
     history = [StandardizedMessage(role="user", content=prompt_to_llm)]
     llm_config = StandardizedLLMConfig(system_prompt=EDIT_WEB_APP_SYSTEM_PROMPT)
@@ -789,12 +1004,13 @@ async def edit_pdf_document(
     user_edit_request: Annotated[Optional[str], Field(
         description="A clear description of the changes the user wants to make to the PDF's content."
     )] = None,
-    client_injected_context: Annotated[str, Field(
-        description="Additional context, like conversation history, relevant to the PDF edit request."
-    )] = "No additional context provided for edit",
     model: Annotated[MODELS_LITERAL, Field(
         description="The LLM model to use for generating the diff to edit the PDF's HTML source."
-    )] = "gemini-2.5-pro-preview-05-06"
+    )] = "gemini-2.5-pro-preview-05-06",
+    additional_context: Annotated[Optional[str], Field(
+        description="Optional textual context to guide PDF editing. This string should contain all necessary and relevant details from previous steps (e.g., search results, API documentation, user clarifications) to perform the optimal edit. The LLM should synthesize this string to be as detailed as required. For this edit tool, using @@ref_ to point to a string field within a previous output is also acceptable for this parameter.",
+        default=None
+    )] = None
 ) -> dict:
     """
     Edits an existing PDF document by modifying its underlying HTML source based on the user's request.
@@ -840,12 +1056,13 @@ async def edit_pdf_document(
 User's request for changes to the PDF content:
 "{user_edit_request}"
 
-Context for this edit (if any):
-{client_injected_context}
-
-Please provide the necessary changes ONLY in the "diff-fenced" format as per system instructions.
+Please provide the necessary changes ONLY in the \"diff-fenced\" format as per system instructions.
 Ensure the edited HTML remains suitable for PDF conversion.
 """
+
+    if additional_context:
+        prompt_to_llm += f"\n\n**Additional Context to Consider for this edit:**\n{additional_context}"
+
     history = [StandardizedMessage(role="user", content=prompt_to_llm)]
     llm_config = StandardizedLLMConfig(system_prompt=EDIT_PDF_SYSTEM_PROMPT)
 
@@ -891,7 +1108,7 @@ Ensure the edited HTML remains suitable for PDF conversion.
             page = await browser.new_page()
             # Load HTML from file (the modified version)
             # No need to read again, use modified_html_content directly
-            await page.set_content(modified_html_content, wait_until="load")
+            await page.set_content(modified_html_content, wait_until="networkidle")
             await page.pdf(path=pdf_path, format="A4") # Ensure pdf_path is correct
             await browser.close()
             

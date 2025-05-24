@@ -24,13 +24,14 @@ logger = logging.getLogger(__name__)
 
 # --- Supported LLM Models (copied from document_generation_server.py for consistency) ---
 MODELS_LITERAL = Literal[
-    "gemini-2.5-flash-preview-04-17",
+    "gemini-2.5-flash-preview-05-20",
     "gemini-2.5-pro-preview-05-06",
     "models/gemini-2.0-flash",
     "gemini-2.0-flash",
     "claude-3-7-sonnet-latest",
     "gpt-4.1-2025-04-14",
-    "o4-mini-2025-04-16"
+    "o4-mini-2025-04-16",
+    "gemini-2.5-flash-preview-05-20"
 ]
 
 CREATE_PYTHON_SYSTEM_PROMPT_TEMPLATE = """You are an expert Python programmer. Your primary task is to write a single, complete, and directly executable Python function based on the user's request.
@@ -51,12 +52,13 @@ async def generated_function_name(args_if_any): # Make it async if using _call_m
 ```
 - Do not include any explanations, comments outside the code, or any other text before or after the code block.
 - The generated function should be self-contained if possible. If it requires external libraries, assume they are installed, and include necessary imports *inside* the function if they are specific to it, or at the top of the `temp.py` block if they are general.
-- Focus on fulfilling the user's request for Python *function* generation.
+- Focus on fulfilling the user's request for Python *function* generation. If an `additional_context` is provided, use it to inform the code generation process.
 - Do NOT include any `if __name__ == '__main__':` block in your generated code. The function `generated_function_name` will be called directly by the execution environment.
 """
 
 EDIT_PYTHON_REGENERATE_SYSTEM_PROMPT_TEMPLATE = """You are an expert Python programmer. You will be given an existing Python code block (typically a single function) and a user's request describing desired modifications.
-Your task is to rewrite the entire Python code block, incorporating the requested changes, and output the new, complete code block.
+You might also be provided with `additional_context` which could contain relevant information from previous steps (e.g., search results, API documentation) that should inform your edits.
+Your task is to rewrite the entire Python code block, incorporating the requested changes and leveraging any provided context, and output the new, complete code block.
 
 - The entire output Python code should be encapsulated within a single function, or if the original code was not a function, the appropriate complete structure.
 - If the original code was a function, the modified function MUST be named `generated_function_name`.
@@ -82,6 +84,7 @@ async def generated_function_name(args_if_any): # Make it async if using _call_m
 - Do not include any explanations, comments outside the code, or any other text before or after the code block.
 - The generated code should be self-contained if possible. If it requires external libraries, assume they are installed. Include necessary imports *inside* the function if they are specific to it and were handled that way originally, or at the top of the `temp.py` block if they are general (mirroring common Python style).
 - Focus on fulfilling the user's request by providing a fully rewritten, directly executable Python code block.
+- If `additional_context` is provided, ensure your edits reflect the information or requirements mentioned in it, in addition to the primary `edit_request`.
 - Do NOT include any `if __name__ == '__main__':` block in your generated code unless it was part of the original code structure provided.
 - Ensure the returned code is a complete, standalone piece of Python that reflects the requested edits to the original.
 """
@@ -92,7 +95,8 @@ async def execute_python_code(
     function_args: Annotated[Optional[List[Any]], Field(description="Optional list of positional arguments to pass to 'generated_function_name' if it is called. Ignored if 'generated_function_name' is not found or not callable.", default=None)] = None,
     function_kwargs: Annotated[Optional[Dict[str, Any]], Field(description="Optional dictionary of keyword arguments to pass to 'generated_function_name' if it is called. Ignored if 'generated_function_name' is not found or not callable.", default=None)] = None,
     timeout_seconds: Annotated[Optional[int], Field(description="Optional timeout in seconds for the code execution.", ge=1, le=300)] = 60,
-    caller_user_id: Annotated[Optional[str], Field(description="User ID for context if the executed code calls other MCP tools. This is automatically passed by the system.", default=None)] = None
+    caller_user_id: Annotated[Optional[str], Field(description="User ID for context if the executed code calls other MCP tools. This is automatically passed by the system.", default=None)] = None,
+    additional_context: Annotated[Optional[str], Field(description="Optional textual context that might inform how the results of this execution are interpreted or used in subsequent steps. This string can be as detailed as necessary, containing all relevant information (e.g., from previous tool calls like search results or API documentation) to best inform subsequent actions. This context is not directly passed to the executing code unless specified in function_args/kwargs or embedded in the code string.", default=None)] = None
 ) -> dict:
     """
     Executes arbitrary Python code provided by the user in a restricted environment. 
@@ -280,8 +284,8 @@ async def execute_python_code(
 async def create_python_code(
     user_request: Annotated[str, Field(description="A natural language description of the Python code to be generated.")],
     model: Annotated[MODELS_LITERAL, Field(description="The LLM model to use for code generation.")] = "gemini-2.5-pro-preview-05-06",
-    available_tool_names_for_code_gen: Annotated[Optional[List[str]], Field(description="Optional list of MCP tool names that the generated Python code can call using `_call_mcp_tool`.", default=None)] = None
-    # client_injected_context: Annotated[Optional[str], Field(description="Optional additional context, like conversation history, to inform code generation.")] = None
+    available_tool_names_for_code_gen: Annotated[Optional[List[str]], Field(description="Optional list of MCP tool names that the generated Python code can call using `_call_mcp_tool`.", default=None)] = None,
+    additional_context: Annotated[Optional[str], Field(description="Optional textual context to guide the code generation. This string should contain all necessary and relevant details from previous steps (e.g., search results, API documentation, or user clarifications) to produce the optimal code. The LLM should synthesize this string to be as detailed as required.", default=None)] = None
 ) -> dict:
     """
     Generates arbitrary Python code based on a user's natural language request using an LLM.
@@ -302,6 +306,8 @@ async def create_python_code(
     adapter = get_llm_adapter(model_name=model)
     
     prompt_content = f"User request for Python code: {user_request}"
+    if additional_context:
+        prompt_content += f"\n\nAdditional Context to consider for this request:\n{additional_context}"
     
     available_tools_section_str = ""
     if available_tool_names_for_code_gen:
@@ -350,8 +356,8 @@ async def edit_python_code(
     original_code: Annotated[str, Field(description="The original Python code to be edited.")],
     edit_request: Annotated[str, Field(description="A natural language description of the changes to make to the Python code.")],
     model: Annotated[MODELS_LITERAL, Field(description="The LLM model to use for code editing.")] = "gemini-2.5-pro-preview-05-06",
-    available_tool_names_for_code_gen: Annotated[Optional[List[str]], Field(description="Optional list of MCP tool names that the generated Python code can call using `_call_mcp_tool`.", default=None)] = None
-    # client_injected_context: Annotated[Optional[str], Field(description="Optional additional context, like conversation history, to inform code editing.")] = None
+    available_tool_names_for_code_gen: Annotated[Optional[List[str]], Field(description="Optional list of MCP tool names that the generated Python code can call using `_call_mcp_tool`.", default=None)] = None,
+    additional_context: Annotated[Optional[str], Field(description="Optional textual context to guide the code editing. This string should contain all necessary and relevant details from previous steps (e.g., search results, API documentation, or user clarifications) to perform the optimal edit. The LLM should synthesize this string to be as detailed as required.", default=None)] = None
 ) -> dict:
     """
     Edits existing Python code by regenerating the entire code block with arbitrary changes based on the original and a user's natural language request.
@@ -391,6 +397,9 @@ User's request for changes:
 
 Please rewrite the entire Python code block above, incorporating these changes, and provide the new, complete code block as per the system instructions.
 """
+
+    if additional_context:
+        prompt_to_llm += f"\n\nAdditional Context to consider while making these edits:\n{additional_context}"
 
     available_tools_section_str = ""
     if available_tool_names_for_code_gen:

@@ -1,8 +1,0 @@
-mcp==1.6.0  # Model Context Protocol SDK
-anthropic==0.27.0  # Anthropic client for Claude
-google-generativeai==0.7.0  # Google Generative AI client for Gemini
-Pillow==10.1.0  # Image manipulation
-python-dotenv==1.0.0  # Environment variable management
-requests==2.31.0  # HTTP requests
-aiohttp==3.9.3  # Async HTTP client/server for API calls
-aiofiles==23.2.1  # Async file operations 

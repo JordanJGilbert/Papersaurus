@@ -154,7 +154,7 @@ The output MUST be ONLY the Python code, enclosed in a single triple-backtick ma
     mcp = FastMCP("{server_instance_name}")
 
     @mcp.tool()
-    async def example_generative_tool(prompt_text: str, llm_model_name: str = "gemini-2.5-flash-preview-04-17") -> dict:
+    async def example_generative_tool(prompt_text: str, llm_model_name: str = "gemini-2.5-flash-preview-05-20") -> dict:
         \"\"\"
         An example tool that uses an LLM to generate text.
         Args:
@@ -253,11 +253,11 @@ Example:
         \"\"\"
         # Updated tool logic here
         try:
-            adapter = get_llm_adapter("gemini-2.5-flash-preview-04-17") # Or choose model dynamically
+            adapter = get_llm_adapter("gemini-2.5-flash-preview-05-20") # Or choose model dynamically
             history = [StandardizedMessage(role="user", content=query_for_llm)]
             config = StandardizedLLMConfig()
             llm_response = await adapter.generate_content(
-                model_name="gemini-2.5-flash-preview-04-17",
+                model_name="gemini-2.5-flash-preview-05-20",
                 history=history,
                 config=config
             )

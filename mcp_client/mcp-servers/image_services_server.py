@@ -67,7 +67,7 @@ async def analyze_images(urls: list, analysis_prompt: str = "Describe this image
             img_bytes_for_gemini.seek(0)
 
             # Use the adapter for Gemini LLM call
-            adapter = get_llm_adapter("gemini-2.5-flash-preview-04-17")  # Will be forced to Flash in the adapter
+            adapter = get_llm_adapter("gemini-2.5-flash-preview-05-20")  # Will be forced to Flash in the adapter
             attachment = AttachmentPart(mime_type=content_type, data=img_bytes_for_gemini.getvalue(), name=url)
             history = [
                 StandardizedMessage(
@@ -78,7 +78,7 @@ async def analyze_images(urls: list, analysis_prompt: str = "Describe this image
             ]
             llm_config = StandardizedLLMConfig()
             llm_response = await adapter.generate_content(
-                model_name="gemini-2.5-flash-preview-04-17",
+                model_name="gemini-2.5-flash-preview-05-20",
                 history=history,
                 tools=None,
                 config=llm_config

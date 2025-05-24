@@ -255,22 +255,27 @@ def _get_referenceable_tool_outputs_summary(history: List[StandardizedMessage]) 
             # and now it's wrapped like {'tool_name_response': {...original_result...}}
             wrapped_result_keys = list(msg.tool_result.keys()) # Should be one key: f"{msg.tool_name}_response"
             
-            inner_result_preview = "Output structure is unexpected."
-            if wrapped_result_keys and f"{msg.tool_name}_response" in msg.tool_result:
-                inner_result = msg.tool_result[f"{msg.tool_name}_response"]
+            inner_result_preview = "Output structure is unexpected or result is not a dictionary."
+            # Path for @@ref should start with the key in tool_result, e.g., {tool_name}_response
+            path_prefix_for_ref = ""
+            if wrapped_result_keys:
+                path_prefix_for_ref = wrapped_result_keys[0] # e.g. "web_search_response"
+                inner_result = msg.tool_result[path_prefix_for_ref]
                 if isinstance(inner_result, dict):
                     output_keys = list(inner_result.keys())
                     if not output_keys:
-                        inner_result_preview = "Wrapped output dictionary is empty."
+                        inner_result_preview = f"Tool '{msg.tool_name}' output (under '{path_prefix_for_ref}') is an empty dictionary."
                     else:
-                        inner_result_preview = f"It contains keys: {', '.join(output_keys[:3])}{'...' if len(output_keys) > 3 else ''}."
+                        inner_result_preview = f"Tool '{msg.tool_name}' output (under '{path_prefix_for_ref}') contains keys: {', '.join(output_keys[:3])}{'...' if len(output_keys) > 3 else ''}."
                 else:
-                    inner_result_preview = f"Wrapped output is not a dictionary (type: {type(inner_result).__name__}), cannot be referenced by path."
+                    # If the inner result (e.g., from web_search_response) is a string or list directly
+                    inner_result_preview = f"Tool '{msg.tool_name}' output (under '{path_prefix_for_ref}') is a {type(inner_result).__name__}. To reference it directly, use @@ref_{msg.tool_call_id}__{path_prefix_for_ref}."
             
             summary_lines.append(
                 f"- Tool Call ID '{msg.tool_call_id}' (for tool '{msg.tool_name}') executed. {inner_result_preview} "
-                f"To reference an output (e.g., a key named 'example_key' from the list above), use the format @@ref_{msg.tool_call_id}__{msg.tool_name}_response__example_key. "
-                f"For nested outputs, append more keys: @@ref_{msg.tool_call_id}__{msg.tool_name}_response__outer_key__inner_key."
+                f"To reference an output (e.g., a key named 'example_key' from the dictionary under '{path_prefix_for_ref}'), use the format @@ref_{msg.tool_call_id}__{path_prefix_for_ref}__example_key. "
+                f"For nested outputs, append more keys: @@ref_{msg.tool_call_id}__{path_prefix_for_ref}__outer_key__inner_key. "
+                f"If the output under '{path_prefix_for_ref}' is a simple type (string, list) and you want to reference it directly, use @@ref_{msg.tool_call_id}__{path_prefix_for_ref}."
             )
     
     if not summary_lines:
@@ -482,6 +487,23 @@ async def function_calling_loop(
         + f"\n  Day of week: {day_of_week}"
         + f"\n  Timezone: {timezone}"
         + f"\n\nUSER NUMBER: {user_number}"
+        + "\n\nMULTI-STEP OPERATIONS & CONTEXT PASSING VIA 'additional_context':"
+        + "\n  - Several tools (e.g., code generation, document generation/editing) accept an 'additional_context' STRING parameter."
+        + "\n  - GENERAL RULE: The 'additional_context' parameter MUST always receive a string. It cannot be a complex object like a JSON dictionary or list resolved from an @@ref_."
+        + "\n  - USING @@ref_ TO POPULATE ARGUMENTS (INCLUDING 'additional_context'):"
+        + "\n    - If you use @@ref_<TOOL_CALL_ID>__<PATH_TO_VALUE> to populate any argument, ensure the <PATH_TO_VALUE> resolves to the correct type for that argument."
+        + "\n    - For 'additional_context', this means the <PATH_TO_VALUE> must resolve to a STRING. Example: 'additional_context': '@@ref_prev_call_id__tool_response__summary_text'."
+        + "\n  - SPECIAL GUIDANCE FOR 'additional_context' IN DOCUMENT *CREATION* TOOLS (create_web_app, create_pdf_document):"
+        + "\n    - For these specific creation tools, you are responsible for SYNTHESIZING the string for 'additional_context'."
+        + "\n    - DO NOT use @@ref_ to point 'additional_context' to a complex object (like a full JSON dictionary from 'search_batch_tool')."
+        + "\n    - INSTEAD: If data from a complex object (e.g., search results) is needed for document creation:"
+        + "\n      1. Have the search tool return its results (which will be in history)."
+        + "\n      2. In your thought process for the create_web_app/create_pdf_document call, analyze those results."
+        + "\n      3. Formulate a STRING containing all necessary details from those results. This might be a comprehensive summary, a list of extracted key information, or any textual representation that is optimally detailed for the creation task. Ensure it is a single string."
+        + "\n      4. Pass this *self-generated, appropriately detailed string* directly as the value for 'additional_context'."
+        + "\n  - GUIDANCE FOR 'additional_context' IN *OTHER* TOOLS (e.g., code/document *editing* tools):"
+        + "\n    - For tools like 'edit_python_code', 'edit_web_app', 'edit_pdf_document', if you use @@ref_ to populate 'additional_context', it is permissible as long as the <PATH_TO_VALUE> resolves to a string (e.g., pointing to a specific text field from a previous tool's output)."
+        + "\n    - ALWAYS be strategic: the string passed to 'additional_context' should contain all relevant information needed for the task, structured clearly if possible. Avoid including truly irrelevant data, but prioritize completeness of necessary details over excessive brevity if that detail is required for optimal performance of the next tool."
     )
 
     # Prepare user message with attachments
@@ -526,12 +548,17 @@ async def function_calling_loop(
         except Exception as e_resolve:
             print(f"Critical error during placeholder resolution for {tool_name} (ID: {tool_id}): {e_resolve}")
             traceback.print_exc()
+            # Fallback to original arguments if resolution fails, but log critical error
             resolved_args_dict = tool_call.arguments 
         
         args_dict = resolved_args_dict
         
         if isinstance(args_dict, dict):
-            args_dict["user_number"] = current_user_number_str
+            # Ensure 'user_number' is present, but avoid overwriting if already set by placeholder resolution
+            if "user_number" not in args_dict:
+                args_dict["user_number"] = current_user_number_str
+            # Do NOT automatically inject caller_user_id here, it is specific to execute_python_code's own needs.
+            # Other tools get user_number which they can use for their own user_id_context if they call other MCP tools internally.
         
         print(f"DEBUG: Calling tool '{tool_name}' (ID: {tool_id}) with parameters:")
         try:

@@ -1,0 +1,48 @@
+# Top-level requirements.txt for the entire project
+# Includes all dependencies used in any subdirectory/module
+
+# --- Web Framework ---
+flask
+fastapi
+uvicorn
+
+# --- Environment Management ---
+python-dotenv
+
+# --- HTTP Requests ---
+requests
+
+aiohttp
+aiofiles
+
+# --- LLM/AI SDKs ---
+anthropic
+openai
+google-generativeai
+mcp
+
+# --- Google APIs ---
+google-api-python-client
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+
+# --- Image and File Processing ---
+Pillow
+weasyprint
+pdfkit
+python-docx
+
+# --- Data Science ---
+numpy
+pandas
+lxml
+
+# --- Utilities ---
+pydantic
+pygments
+pytz
+beautifulsoup4
+
+# --- Any other discovered dependencies ---
+# (Add more here if new imports are added in the future) 
