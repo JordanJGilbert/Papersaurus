@@ -282,6 +282,13 @@
                 "user_data/17145986105/generated_mcp_servers/MathOpsImageServer.py"
             ],
             "env": {}
+        },
+        {
+            "command": "python",
+            "args": [
+                "mcp_client/mcp_servers/math_operations_mcp_server.py"
+            ],
+            "env": {}
         }
     ]
 }

@@ -30,9 +30,7 @@ from ai_models import function_calling_loop, clear_conversation_history_for_user
 # For example, set MCP_INTERNAL_API_KEY in your shell or deployment environment.
 logging.info("Relying on globally set environment variables. Ensure necessary variables (e.g., MCP_INTERNAL_API_KEY, API keys for services) are available.")
 
-# Path to the dynamic servers configuration file
-DYNAMIC_SERVERS_JSON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dynamic_servers.json")
-USER_PREFS_JSON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_server_preferences.json")
+# REMOVED: DYNAMIC_SERVERS_JSON_PATH and USER_PREFS_JSON_PATH as they are no longer primary drivers for server startup
 
 # --- Placeholder for Internal API Key (SHOULD BE IN ENV VARS) ---
 INTERNAL_API_KEY = os.getenv("MCP_INTERNAL_API_KEY", "your_secret_internal_api_key_here")
@@ -47,33 +45,6 @@ async def verify_internal_api_key(key: str = Security(api_key_header)):
     return key
 
 # --- Utility Functions ---
-def load_dynamic_servers_per_user() -> Dict[str, List[Dict[str, Any]]]:
-    """Loads dynamic server configurations, now structured per user."""
-    if os.path.exists(DYNAMIC_SERVERS_JSON_PATH):
-        try:
-            with open(DYNAMIC_SERVERS_JSON_PATH, 'r') as f:
-                data = json.load(f)
-                # Ensure it's a dict where values are lists
-                if isinstance(data, dict) and all(isinstance(v, list) for v in data.values()):
-                    return data
-                else:
-                    print(f"Warning: dynamic_servers.json is not in the expected format (Dict[str, List]). Resetting.")
-                    return {} # Return empty dict if format is wrong
-        except Exception as e:
-            print(f"Error loading dynamic servers: {str(e)}")
-            return {}
-    return {}
-
-def save_dynamic_servers_per_user(user_server_configs: Dict[str, List[Dict[str, Any]]]):
-    """Saves dynamic server configurations, structured per user."""
-    try:
-        with open(DYNAMIC_SERVERS_JSON_PATH, 'w') as f:
-            json.dump(user_server_configs, f, indent=4)
-        return True
-    except Exception as e:
-        print(f"Error saving dynamic servers: {str(e)}")
-        return False
-
 def _mcp_config_key(config: dict) -> str:
     args = config.get("args", [])
     if args is None:
@@ -132,11 +103,12 @@ class MCPManager:
         # Assuming CORE_SERVER_COMMANDS is accessible here or passed in.
         # For this example, we'll use the global CORE_SERVER_COMMANDS.
         # A more robust solution might pass CORE_SERVER_COMMANDS to the constructor or initialize.
-        global CORE_SERVER_COMMANDS
-        for core_conf in CORE_SERVER_COMMANDS:
-            # Make all core servers default
-            self.default_core_server_config_keys.add(_mcp_config_key(core_conf))
-        print(f"MCPManager: Default core server config keys set to: {self.default_core_server_config_keys}")
+        # global CORE_SERVER_COMMANDS # CORE_SERVER_COMMANDS is no longer used
+        # for core_conf in CORE_SERVER_COMMANDS: # CORE_SERVER_COMMANDS is no longer used
+        #     # Make all core servers default
+        #     self.default_core_server_config_keys.add(_mcp_config_key(core_conf))
+        # print(f"MCPManager: Default core server config keys set to: {self.default_core_server_config_keys}")
+        pass # No default core server keys based on a static list anymore
 
     def load_user_preferences_from_file(self):
         if os.path.exists(USER_PREFS_JSON_PATH):
@@ -238,14 +210,15 @@ class MCPManager:
         startup_tasks = []
         
         print(f"MCPManager: Queueing {len(core_server_configs)} core server configurations for startup...")
-        for core_conf in core_server_configs:
-            startup_tasks.append(self.start_single_server(core_conf, user_id=None)) # user_id=None for core
+        for core_conf in core_server_configs: # This will now be the discovered server configs
+            startup_tasks.append(self.start_single_server(core_conf, user_id=None)) # user_id=None for all discovered servers for now
 
-        print(f"MCPManager: Queueing dynamic server configurations for {len(dynamic_user_server_configs)} users.")
-        for user_id, configs_for_user in dynamic_user_server_configs.items():
-            print(f"MCPManager: Queueing {len(configs_for_user)} servers for user '{user_id}'.")
-            for user_conf in configs_for_user:
-                startup_tasks.append(self.start_single_server(user_conf, user_id=user_id))
+        # REMOVED: Logic for dynamic_user_server_configs as all servers are discovered
+        # print(f"MCPManager: Queueing dynamic server configurations for {len(dynamic_user_server_configs)} users.")
+        # for user_id, configs_for_user in dynamic_user_server_configs.items():
+        #     print(f"MCPManager: Queueing {len(configs_for_user)} servers for user '{user_id}'.")
+        #     for user_conf in configs_for_user:
+        #         startup_tasks.append(self.start_single_server(user_conf, user_id=user_id))
 
         if startup_tasks:
             print(f"MCPManager: Attempting to start {len(startup_tasks)} MCP servers concurrently...")
@@ -269,7 +242,7 @@ class MCPManager:
         user_effective_tool_to_session_map: Dict[str, ClientSession] = {}
 
         # Active config keys: default core servers
-        active_config_keys = set(self.default_core_server_config_keys)
+        active_config_keys = set(self.core_config_to_session.keys())
         # Include all dynamic server configs started by the user
         if user_id in self.user_config_to_session:
             for config_key, session in self.user_config_to_session[user_id].items():
@@ -356,32 +329,49 @@ class MCPManager:
                 known_configs[key] = core_conf
         
         # Add user's own dynamic servers
-        all_user_dynamic_configs = load_dynamic_servers_per_user()
-        user_specific_dynamic_configs = all_user_dynamic_configs.get(user_id, [])
-        for user_conf in user_specific_dynamic_configs:
-            key = _mcp_config_key(user_conf)
-            if key not in known_configs: # Should generally be unique by path if user_id is in path
-                known_configs[key] = user_conf
-                
+        # all_user_dynamic_configs = load_dynamic_servers_per_user() # REMOVED
+        # user_specific_dynamic_configs = all_user_dynamic_configs.get(user_id, []) # REMOVED
+        # Instead, we consider all discovered servers as potentially available.
+        # If we need to distinguish servers "owned" or specifically configured by a user in the future,
+        # that would require a different mechanism than the old dynamic_servers.json.
+        # For now, get_all_known_server_configs_for_user will get all discovered servers.
+
+        # Filter discovered servers based on some criteria if needed (e.g. user permissions for specific server files)
+        # For now, all discovered servers are considered "known" to any user for listing purposes.
+        discovered_configs = [] # This needs to be populated by scanning the directory, similar to lifespan
+        servers_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_client", "mcp_servers")
+        if os.path.exists(servers_dir) and os.path.isdir(servers_dir):
+            for filename in os.listdir(servers_dir):
+                if filename.endswith(".py") and filename != "__init__.py":
+                    script_path = os.path.join("mcp_client", "mcp_servers", filename)
+                    config = {"command": "python", "args": [script_path], "env": {}}
+                    key = _mcp_config_key(config)
+                    if key not in known_configs: # Ensure uniqueness
+                        known_configs[key] = config
+        
         return list(known_configs.values())
     
     def get_all_globally_known_server_configs(self, core_server_configs: List[Dict[str,Any]]) -> List[Dict[str, Any]]:
         """Gets all server configurations known to the system across all users and core."""
         all_configs: Dict[str, Dict[str, Any]] = {}
 
-        for core_conf in core_server_configs:
-            key = _mcp_config_key(core_conf)
-            if key not in all_configs:
-                all_configs[key] = core_conf
+        # core_server_configs is now expected to be empty as we discover all servers
+        # for core_conf in core_server_configs:
+        #     key = _mcp_config_key(core_conf)
+        #     if key not in all_configs:
+        #         all_configs[key] = core_conf
         
-        dynamic_servers_by_user = load_dynamic_servers_per_user()
-        for user_id, configs_for_user in dynamic_servers_by_user.items():
-            for user_conf in configs_for_user:
-                key = _mcp_config_key(user_conf)
-                # It's possible for different users to create servers with identical config if paths aren't perfectly unique,
-                # but _mcp_config_key relies on command+args. If args includes user-specific path, it should be unique.
-                if key not in all_configs:
-                    all_configs[key] = {**user_conf, "_owner_user_id": user_id} # Add owner info
+        # Scan the directory for all .py files
+        servers_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_client", "mcp_servers")
+        if os.path.exists(servers_dir) and os.path.isdir(servers_dir):
+            for filename in os.listdir(servers_dir):
+                if filename.endswith(".py") and filename != "__init__.py":
+                    script_path = os.path.join("mcp_client", "mcp_servers", filename)
+                    config = {"command": "python", "args": [script_path], "env": {}}
+                    key = _mcp_config_key(config)
+                    if key not in all_configs:
+                         # Add owner info - for discovered files, there isn't an explicit owner unless we add another mechanism
+                        all_configs[key] = {**config, "_owner_user_id": None} # Mark as None for discovered
         return list(all_configs.values())
 
 
@@ -403,45 +393,13 @@ class MCPManager:
         print("MCPManager: Shutdown complete.")
 
 # --- Global State ---
-CORE_SERVER_COMMANDS: List[Dict[str, Any]] = [
-    {
-        "command": "python",
-        "args": ["mcp_client/mcp-servers/document_generation_server.py"]
-    },
-    {
-        "command": "python",
-        "args": ["mcp_client/mcp-servers/image_services_server.py"]
-    },
-    {
-        "command": "python",
-        "args": ["mcp_client/mcp-servers/google_services_server.py"]
-    },
-
-    {
-        "command": "python",
-        "args": ["mcp_client/mcp-servers/mcp_management_server.py"]
-    },
-    {
-        "command": "python",
-        "args": ["mcp_client/mcp-servers/utility_server.py"]
-    },
-    {
-        "command": "python",
-        "args": ["mcp_client/mcp-servers/search_mcp_server.py"]
-    },
-    {
-        "command": "python",
-        "args": ["mcp_client/mcp-servers/attachment_management_server.py"]
-    },
-    {
-        "command": "python",
-        "args": ["mcp_client/mcp-servers/google_maps_server.py"]
-    },
-    {
-        "command": "python",
-        "args": ["mcp_client/mcp-servers/python_code_execution_server.py"]
-    }
-]
+# REMOVED: CORE_SERVER_COMMANDS as servers are now discovered
+# CORE_SERVER_COMMANDS: List[Dict[str, Any]] = [
+#     {
+#         "command": "python",
+# ... (rest of the old list) ...
+#     }
+# ]
 
 mcp_manager: Optional[MCPManager] = None
 service_globally_initialized = False
@@ -450,15 +408,29 @@ service_globally_initialized = False
 # --- FastAPI Lifespan ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global mcp_manager, service_globally_initialized, CORE_SERVER_COMMANDS
+    global mcp_manager, service_globally_initialized # REMOVED: CORE_SERVER_COMMANDS
 
     print("FastAPI Lifespan: MCP service starting up...")
     mcp_manager = MCPManager()
+
+    discovered_server_configs: List[Dict[str, Any]] = []
+    servers_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_client", "mcp_servers")
+    if os.path.exists(servers_dir) and os.path.isdir(servers_dir):
+        for filename in os.listdir(servers_dir):
+            if filename.endswith(".py") and filename != "__init__.py": # Ignore __init__.py
+                script_path = os.path.join("mcp_client", "mcp_servers", filename) # Path relative to workspace root for StdioServerParameters
+                discovered_server_configs.append({
+                    "command": "python",
+                    "args": [script_path],
+                    "env": {} # Default empty env, can be enhanced later if needed
+                })
+        print(f"Discovered {len(discovered_server_configs)} potential server scripts in {servers_dir}.")
+    else:
+        print(f"Warning: Servers directory {servers_dir} not found. No servers will be auto-discovered.")
     
     try:
-        # dynamic_user_servers_map = load_dynamic_servers_per_user()  # <-- Temporarily disabled
-        # await mcp_manager.startup_all_servers(CORE_SERVER_COMMANDS, dynamic_user_servers_map)  # <-- Temporarily disabled
-        await mcp_manager.startup_all_servers(CORE_SERVER_COMMANDS, {})  # Only start core servers
+        # All discovered servers are treated as "core" for startup purposes now
+        await mcp_manager.startup_all_servers(discovered_server_configs, {}) 
         service_globally_initialized = mcp_manager.initialized 
     except Exception as e:
         print(f"FastAPI Lifespan: Error during MCP service startup: {str(e)}")
@@ -705,21 +677,23 @@ async def add_user_server(request: AddServerRequest):
         return {"status": "warning", "message": f"Server configuration already running or known for user {user_id}."}
 
     try:
-        dynamic_servers_per_user_map = load_dynamic_servers_per_user()
-        user_specific_configs = dynamic_servers_per_user_map.get(user_id, [])
+        # dynamic_servers_per_user_map = load_dynamic_servers_per_user() # REMOVED
+        # user_specific_configs = dynamic_servers_per_user_map.get(user_id, []) # REMOVED
         
-        is_in_dynamic_json = any(
-             _mcp_config_key(ds_conf) == config_key_to_check for ds_conf in user_specific_configs
-        )
+        # is_in_dynamic_json = any( # REMOVED
+        #      _mcp_config_key(ds_conf) == config_key_to_check for ds_conf in user_specific_configs
+        # )
         
-        if not is_in_dynamic_json:
-            user_specific_configs.append(server_config)
-            dynamic_servers_per_user_map[user_id] = user_specific_configs
-            if not save_dynamic_servers_per_user(dynamic_servers_per_user_map):
-                print(f"Warning: Failed to save new server config to dynamic_servers.json for user {user_id}: {server_config}")
+        # if not is_in_dynamic_json: # REMOVED
+        #     user_specific_configs.append(server_config) # REMOVED
+        #     dynamic_servers_per_user_map[user_id] = user_specific_configs # REMOVED
+        #     if not save_dynamic_servers_per_user(dynamic_servers_per_user_map): # REMOVED
+        #         print(f"Warning: Failed to save new server config to dynamic_servers.json for user {user_id}: {server_config}")
         
         if await mcp_manager.start_single_server(server_config, user_id=user_id):
-            return {"status": "success", "message": f"Server added and started for user {user_id}, configuration saved."}
+            # Message updated as config is not "saved" in JSON anymore, but started.
+            # Persistence is achieved by the .py file existing for the next full service restart.
+            return {"status": "success", "message": f"Server {request.command} {request.args} added and started for user {user_id}. It will restart with the main service if its .py file exists."}
     except Exception as e:
         print(f"Error in add_user_server endpoint: {str(e)}")
         import traceback; print(f"Traceback: {traceback.format_exc()}")
@@ -727,11 +701,11 @@ async def add_user_server(request: AddServerRequest):
 
 @app.get("/admin/servers/list_all_known", response_model=AvailableServersResponse) # New endpoint for global list
 async def list_all_globally_known_servers():
-    global mcp_manager, service_globally_initialized, CORE_SERVER_COMMANDS
+    global mcp_manager, service_globally_initialized
     if not service_globally_initialized or not mcp_manager or not mcp_manager.initialized:
         raise HTTPException(status_code=503, detail="MCP service not initialized")
     
-    all_configs_with_owner = mcp_manager.get_all_globally_known_server_configs(CORE_SERVER_COMMANDS)
+    all_configs_with_owner = mcp_manager.get_all_globally_known_server_configs([]) # Pass empty list for core_server_configs
     server_details_list = []
     for config_dict in all_configs_with_owner:
         config_key = _mcp_config_key(config_dict)
@@ -767,7 +741,7 @@ async def list_all_globally_known_servers():
 
 @app.post("/admin/users/remove_server") # Changed path
 async def remove_server_for_user_or_core(request: RemoveServerRequest):
-    global mcp_manager, service_globally_initialized, CORE_SERVER_COMMANDS
+    global mcp_manager, service_globally_initialized
     if not service_globally_initialized or not mcp_manager or not mcp_manager.initialized:
         raise HTTPException(status_code=503, detail="MCP service not initialized")
 
@@ -781,40 +755,49 @@ async def remove_server_for_user_or_core(request: RemoveServerRequest):
     actions_taken = []
 
     try:
-        if user_id_to_target: # Removing a user's dynamic server
-            dynamic_servers_map = load_dynamic_servers_per_user()
-            user_configs = dynamic_servers_map.get(user_id_to_target, [])
-            original_len = len(user_configs)
+        if user_id_to_target: # Removing a user's dynamic server (This part is less relevant if all servers are from filesystem)
+            # dynamic_servers_map = load_dynamic_servers_per_user() # No longer loading from JSON
+            # user_configs = dynamic_servers_map.get(user_id_to_target, [])
+            # original_len = len(user_configs)
             
-            # Check if it was in this user's dynamic list
-            is_in_user_dynamic_list = any(_mcp_config_key(conf) == config_key_to_remove for conf in user_configs)
+            # Check if it was in this user's dynamic list (This concept changes)
+            # is_in_user_dynamic_list = any(_mcp_config_key(conf) == config_key_to_remove for conf in user_configs)
 
-            if is_in_user_dynamic_list:
-                user_configs = [conf for conf in user_configs if _mcp_config_key(conf) != config_key_to_remove]
-                dynamic_servers_map[user_id_to_target] = user_configs
-                if not user_configs: # Remove user entry if list becomes empty
-                    del dynamic_servers_map[user_id_to_target]
-                
-                if save_dynamic_servers_per_user(dynamic_servers_map):
-                    actions_taken.append(f"Removed from user {user_id_to_target}'s dynamic_servers.json.")
-                else:
-                    actions_taken.append(f"Failed to save update to dynamic_servers.json for user {user_id_to_target}.")
+            # if is_in_user_dynamic_list:
+            #     user_configs = [conf for conf in user_configs if _mcp_config_key(conf) != config_key_to_remove]
+            #     dynamic_servers_map[user_id_to_target] = user_configs
+            #     if not user_configs: # Remove user entry if list becomes empty
+            #         del dynamic_servers_map[user_id_to_target]
             
+            #     if save_dynamic_servers_per_user(dynamic_servers_map):
+            #         actions_taken.append(f"Removed from user {user_id_to_target}'s dynamic_servers.json.")
+            #     else:
+            #         actions_taken.append(f"Failed to save update to dynamic_servers.json for user {user_id_to_target}.")
+            
+            # For now, user-specific removal via this endpoint is less meaningful if all servers are directory-scanned.
+            # This part of the logic might need to be removed or re-thought for the new model.
+            # We can still de-register it from the *running* instance for the user.
             if mcp_manager.remove_tools_for_server_by_config(server_config_to_remove, user_id=user_id_to_target):
-                actions_taken.append(f"De-registered server from active service for user {user_id_to_target}.")
-            
-            if not actions_taken and not is_in_user_dynamic_list : # And not de-registered by above
-                 raise HTTPException(status_code=404, detail=f"Server configuration not found for user {user_id_to_target}.")
+                actions_taken.append(f"De-registered server from active service for user {user_id_to_target}. To prevent restart, delete the .py file.")
+            else:
+                raise HTTPException(status_code=404, detail=f"Server configuration not actively running for user {user_id_to_target}.")
 
-        else: # Removing a core server (from being actively run/tools available, not from CORE_SERVER_COMMANDS list)
-            is_core_config_defined = any(_mcp_config_key(cs_conf) == config_key_to_remove for cs_conf in CORE_SERVER_COMMANDS)
-            if not is_core_config_defined:
-                 raise HTTPException(status_code=404, detail="Specified server configuration is not a defined core server.")
+        else: # Removing a "core" server (which are all now discovered servers)
+            # is_core_config_defined = any(_mcp_config_key(cs_conf) == config_key_to_remove for cs_conf in CORE_SERVER_COMMANDS) # CORE_SERVER_COMMANDS gone
+            # Check if it's a known running server based on discovery
+            is_known_running_server = False
+            for session_config_key in list(mcp_manager.core_config_to_session.keys()): # Iterate over copy
+                if session_config_key == config_key_to_remove:
+                    is_known_running_server = True
+                    break
+            
+            if not is_known_running_server:
+                 raise HTTPException(status_code=404, detail="Specified server configuration is not an actively running discovered server.")
 
             if mcp_manager.remove_tools_for_server_by_config(server_config_to_remove, user_id=None):
-                actions_taken.append("De-registered core server from active service (tools removed). Core definition remains.")
-            else: # If remove_tools_for_server_by_config returns False, it means it wasn't running.
-                actions_taken.append("Core server was not actively running or already de-registered. Core definition remains.")
+                actions_taken.append("De-registered discovered server from active service. To prevent restart, delete the .py file.")
+            else: 
+                actions_taken.append("Discovered server was not actively running or already de-registered. To prevent restart, delete the .py file.")
         
         return {"status": "success", "message": "Server removal processed. " + " ".join(actions_taken)}
     except HTTPException:
@@ -829,13 +812,13 @@ async def remove_server_for_user_or_core(request: RemoveServerRequest):
 
 @app.get("/users/{user_id_path}/servers/available", response_model=AvailableServersResponse)
 async def list_available_servers_for_user(user_id_path: str): # user_id_path is raw from URL
-    global mcp_manager, service_globally_initialized, CORE_SERVER_COMMANDS
+    global mcp_manager, service_globally_initialized
     if not service_globally_initialized or not mcp_manager or not mcp_manager.initialized:
         raise HTTPException(status_code=503, detail="MCP service not initialized")
 
     user_id = sanitize_user_id_for_key(user_id_path) # SANITIZE HERE
-    # These are configs the user *could* enable: their own + all core ones
-    user_plus_core_configs = mcp_manager.get_all_known_server_configs_for_user(user_id, CORE_SERVER_COMMANDS)
+    # These are configs the user *could* enable: their own + all core ones (now all discovered)
+    user_plus_core_configs = mcp_manager.get_all_known_server_configs_for_user(user_id, []) # Pass empty for core_server_configs
     
     server_details_list = []
     for config_dict in user_plus_core_configs:
@@ -887,16 +870,28 @@ async def list_active_servers_for_user(user_id_path: str): # user_id_path is raw
             if conf_session == session:
                 # Found the config for this active user session
                 # Re-fetch the original config dict to get command/args
-                all_dynamic_configs = load_dynamic_servers_per_user()
-                user_dynamic_list = all_dynamic_configs.get(user_id, [])
-                original_config_dict = next((cd for cd in user_dynamic_list if _mcp_config_key(cd) == conf_key), None)
-                if original_config_dict:
-                    tools_from_this_session = [t.name for t in active_tools_list_for_user if active_tool_to_session_map_for_user.get(t.name) == session]
+                # all_dynamic_configs = load_dynamic_servers_per_user() # REMOVED
+                # user_dynamic_list = all_dynamic_configs.get(user_id, []) # REMOVED
+                # Instead, we need to find the config from the initial discovery if MCPManager doesn't store it.
+                # This is a general challenge with removing CORE_SERVER_COMMANDS if full config details are needed later.
+
+                # Let's try to get command/args from the config_key, similar to how it's done for core servers now
+                try:
+                    config_from_key = json.loads(conf_key)
+                    cmd = config_from_key.get("command", "N/A")
+                    args_list = config_from_key.get("args", [])
+                    env_vars = config_from_key.get("env")
+                except json.JSONDecodeError:
+                    cmd = "Error decoding config from key"
+                    args_list = []
+                    env_vars = None
+
+                if conf_key not in active_server_details_map:
                     active_server_details_map[conf_key] = ServerDetail(
                         config_key=conf_key,
-                        command=original_config_dict.get("command", "N/A"),
-                        args=original_config_dict.get("args", []),
-                        env=original_config_dict.get("env"),
+                        command=cmd, # Use parsed from key
+                        args=args_list, # Use parsed from key
+                        env=env_vars, # Use parsed from key
                         is_running=True,
                         tools_provided=tools_from_this_session,
                         owner_user_id=user_id
@@ -909,20 +904,50 @@ async def list_active_servers_for_user(user_id_path: str): # user_id_path is raw
         for conf_key, conf_session in mcp_manager.core_config_to_session.items():
             if conf_session == session:
                 # Found the config for this active core session
-                original_config_dict = next((cd for cd in CORE_SERVER_COMMANDS if _mcp_config_key(cd) == conf_key), None)
-                if original_config_dict:
-                    tools_from_this_session = [t.name for t in active_tools_list_for_user if active_tool_to_session_map_for_user.get(t.name) == session]
-                    # Avoid adding if a user's server with same config_key took precedence (though rare)
-                    if conf_key not in active_server_details_map:
-                        active_server_details_map[conf_key] = ServerDetail(
-                            config_key=conf_key,
-                            command=original_config_dict.get("command", "N/A"),
-                            args=original_config_dict.get("args", []),
-                            env=original_config_dict.get("env"),
-                            is_running=True,
-                            tools_provided=tools_from_this_session,
-                            owner_user_id=None # Core server
-                        )
+                # original_config_dict = next((cd for cd in CORE_SERVER_COMMANDS if _mcp_config_key(cd) == conf_key), None) # CORE_SERVER_COMMANDS gone
+                # We need to reconstruct the original config from how it was discovered or stored if possible
+                # This part is tricky as the original config dict might not be easily available just from the session
+                # For now, let's assume we can get command/args if the session holds the config_key that matches a discovered one.
+                # This requires mcp_manager.core_config_to_session's key to be the one from _mcp_config_key(original_config_dict_from_discovery)
+                
+                # A better way: iterate mcp_manager.core_config_to_session and for each, try to find matching original config dict if we stored it
+                # For now, we'll rely on the fact that the key in core_config_to_session IS the mcp_config_key.
+                # The ServerDetail requires command/args. We only have the key.
+                # This part of the logic needs adjustment: how to get command/args from a config_key?
+                # Simplified: We will assume the config_key is enough for identification and we don't have easy access to original command/args here for *active* core servers display
+                # This is a limitation of not having CORE_SERVER_COMMANDS or a map of discovered_configs by key.
+                # We can iterate the mcp_manager's internal structure that *should* hold the config.
+
+                # Let's refine how we get original_config_dict for core servers
+                # When servers are started, mcp_manager.core_config_to_session is populated.
+                # The key is the _mcp_config_key. We need to find which *discovered* config matches this key.
+                # This is inefficient here. MCPManager should ideally store the config dict with the session.
+
+                # Temporary workaround: If it's a core session, we don't have an easy way to get back to the full config_dict here
+                # without re-scanning or storing more info in MCPManager. For now, we'll show what we can.
+                # This is a known simplification due to removing CORE_SERVER_COMMANDS.
+
+                # Let's try to fetch the command/args from the config_key (which is a JSON string)
+                try:
+                    config_from_key = json.loads(conf_key)
+                    cmd = config_from_key.get("command", "N/A")
+                    args_list = config_from_key.get("args", [])
+                    env_vars = config_from_key.get("env")
+                except json.JSONDecodeError:
+                    cmd = "Error decoding config from key"
+                    args_list = []
+                    env_vars = None
+
+                if conf_key not in active_server_details_map:
+                    active_server_details_map[conf_key] = ServerDetail(
+                        config_key=conf_key,
+                        command=cmd, # Use parsed from key
+                        args=args_list, # Use parsed from key
+                        env=env_vars, # Use parsed from key
+                        is_running=True,
+                        tools_provided=tools_from_this_session,
+                        owner_user_id=user_id
+                    )
                 break
             
     return AvailableServersResponse(servers=list(active_server_details_map.values()))
