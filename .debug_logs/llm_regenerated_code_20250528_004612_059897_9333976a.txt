@@ -1,0 +1,323 @@
+--- Original code provided to LLM for regeneration ---
+python
+import os
+import json
+import requests # Ensure requests is imported for internal tool calls
+import asyncio
+
+async def call_internal_mcp_tool(user_id: str, tool_name: str, arguments: dict):
+    """
+    Helper function to call an MCP internal tool.
+    Returns the parsed JSON result from the tool, or a dictionary with an "error" key if an issue occurs.
+    """
+    mcp_api_key = os.getenv("MCP_INTERNAL_API_KEY")
+    if not mcp_api_key:
+        error_msg = "MCP_INTERNAL_API_KEY not found in environment variables"
+        print(f"Error in call_internal_mcp_tool: {error_msg}")
+        return {"error": error_msg}
+
+    headers = {"X-Internal-API-Key": mcp_api_key, "Content-Type": "application/json"}
+    payload = {
+        "tool_name": tool_name,
+        "arguments": arguments,
+        "user_id_context": user_id
+    }
+    
+    tool_result_str = "{}" # Initialize to ensure it's defined for error reporting
+
+    try:
+        response = await asyncio.to_thread(
+            requests.post,
+            "http://localhost:5001/internal/call_mcp_tool",
+            headers=headers,
+            json=payload,
+            timeout=300 # Timeout for potentially long operations (e.g., image generation)
+        )
+        response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+        
+        try:
+            response_data = response.json() # Parse the outer JSON response from MCP endpoint
+        except json.JSONDecodeError as e:
+            error_msg = f"Failed to parse main JSON response from MCP endpoint for tool {tool_name}: {e}. Response text: {response.text[:500]}"
+            print(f"Error in call_internal_mcp_tool: {error_msg}")
+            return {"error": error_msg}
+            
+        if response_data.get("error"):
+            error_msg = f"Error from MCP endpoint for tool {tool_name}: {response_data['error']}"
+            print(f"Error in call_internal_mcp_tool: {error_msg}")
+            return {"error": error_msg}
+            
+        tool_result_str = response_data.get("result", "{}")
+        if not tool_result_str: # Handle None or empty string for 'result'
+             tool_result_str = "{}"
+             
+        actual_tool_result = json.loads(tool_result_str) # Parse the JSON string in 'result' field
+        return actual_tool_result # This is the direct output of the target tool
+
+    except requests.exceptions.Timeout:
+        error_msg = f"Request to MCP endpoint for tool {tool_name} timed out."
+        print(f"Error in call_internal_mcp_tool: {error_msg}")
+        return {"error": error_msg}
+    except requests.exceptions.RequestException as e:
+        error_msg = f"Request failed for tool {tool_name}: {e}"
+        print(f"Error in call_internal_mcp_tool: {error_msg}")
+        return {"error": error_msg}
+    except json.JSONDecodeError as e: # Handles error in parsing tool_result_str
+        error_msg = f"Failed to parse 'result' JSON string for tool {tool_name}: {e}. 'result' string was: {tool_result_str[:500]}"
+        print(f"Error in call_internal_mcp_tool: {error_msg}")
+        return {"error": error_msg}
+    except Exception as e: # Catch-all for other unexpected errors
+        error_msg = f"An unexpected error occurred in call_internal_mcp_tool for {tool_name}: {e}"
+        print(f"Error in call_internal_mcp_tool: {error_msg}")
+        return {"error": error_msg}
+
+async def generated_function_name(user_id: str):
+    """
+    Generates 10 images of animals, then creates a PDF document containing these images,
+    and returns the URL of the PDF.
+    """
+    # 1. Create a list of 10 distinct animal-related image generation prompts
+    animal_prompts = [
+        'A majestic lion in the savanna',
+        'A colorful parrot on a branch',
+        'A playful dolphin leaping from the water',
+        'A wise old owl perched on a tree',
+        'A fluffy red panda on a bamboo shoot',
+        'A powerful grizzly bear in a forest',
+        'A graceful swan on a lake',
+        'A cheetah sprinting across a plain',
+        'A baby elephant with its mother',
+        'A vibrant clownfish among anemones'
+    ]
+
+    # 2. Call the MCP tool `generate_images_with_prompts`
+    image_gen_args = {
+        "prompts": animal_prompts,
+        "user_number": user_id  # 'user_number' is required by the generate_images_with_prompts tool
+    }
+    print(f"Calling 'generate_images_with_prompts' for user_id: {user_id} with {len(animal_prompts)} prompts.")
+    image_gen_tool_output = await call_internal_mcp_tool(user_id, "generate_images_with_prompts", image_gen_args)
+
+    # Handle errors from the call_internal_mcp_tool or tool-specific errors
+    if isinstance(image_gen_tool_output, dict) and "error" in image_gen_tool_output:
+        return f"Error during image generation MCP call: {image_gen_tool_output['error']}"
+
+    # 3. Extract image URLs from the result of `generate_images_with_prompts`
+    # Expected actual_tool_result structure: {"status": "success", "results": [ ["url1"], ["url2"] ] }
+    if image_gen_tool_output.get("status") != "success":
+        message = image_gen_tool_output.get("message", "Unknown error from image generation tool.")
+        return f"Image generation tool did not report success: Status '{image_gen_tool_output.get('status')}', Message: '{message}'"
+
+    raw_image_results = image_gen_tool_output.get("results")
+    if not isinstance(raw_image_results, list):
+        return f"Image generation result format error: 'results' field is not a list or is missing. Received: {type(raw_image_results)}"
+
+    image_urls = []
+    for item_list in raw_image_results:
+        if isinstance(item_list, list) and len(item_list) > 0 and isinstance(item_list[0], str) and item_list[0]:
+            image_urls.append(item_list[0])
+        else:
+            print(f"Warning: Malformed or empty item in image generation results: {item_list}. Skipping.")
+            
+    if not image_urls:
+        return "No image URLs were successfully extracted from the image generation process."
+    
+    if len(image_urls) < len(animal_prompts):
+         print(f"Warning: Expected {len(animal_prompts)} images, but successfully extracted {len(image_urls)}. Proceeding with available images.")
+    
+    print(f"Successfully extracted {len(image_urls)} image URLs.")
+
+    # 4. Call the MCP tool `create_pdf_document`.
+    pdf_creation_args = {
+        "attachments": image_urls,
+        "doc_name": "animal_gallery.pdf",
+        "user_number": user_id, # 'user_number' is required by the create_pdf_document tool
+        "user_request": "A PDF document displaying generated images of various animals.",
+        "additional_context": "This PDF contains AI-generated images of various animals based on a predefined list of prompts.",
+        "model": "gemini-2.5-pro-preview-05-06",
+        "mcp_tools": []
+    }
+    print(f"Calling 'create_pdf_document' for user_id: {user_id} with {len(image_urls)} attachments.")
+    pdf_creation_tool_output = await call_internal_mcp_tool(user_id, "create_pdf_document", pdf_creation_args)
+
+    # Handle errors from the call_internal_mcp_tool or tool-specific errors
+    if isinstance(pdf_creation_tool_output, dict) and "error" in pdf_creation_tool_output:
+        return f"Error during PDF creation MCP call: {pdf_creation_tool_output['error']}"
+
+    # 5. Return the 'url' string from the result of `create_pdf_document`.
+    # Expected actual_tool_result structure: {"status": "success", "message": "...", "url": "..."}
+    if pdf_creation_tool_output.get("status") != "success":
+        message = pdf_creation_tool_output.get("message", "Unknown error from PDF creation tool.")
+        return f"PDF creation tool did not report success: Status '{pdf_creation_tool_output.get('status')}', Message: '{message}'"
+
+    pdf_url = pdf_creation_tool_output.get("url")
+    if not pdf_url or not isinstance(pdf_url, str):
+        return f"PDF creation result format error: 'url' field is missing, not a string, or empty. Received: '{pdf_url}'"
+        
+    print(f"Successfully created PDF. URL: {pdf_url}")
+    return pdf_url
+--- End of original code ---
+
+--- Edit request: ---
+1. Remove the first line if it is 'python'. 2. In the `pdf_creation_args` dictionary, change the value for the 'model' key from 'gemini-2.5-pro-preview-05-06' to 'gemini-2.5-flash-preview-05-20'. Ensure the rest of the code remains the same.
+---
+
+--- Full LLM response (regenerated code attempt): ---
+```temp.py
+import os
+import json
+import requests # Ensure requests is imported for internal tool calls
+import asyncio
+
+async def call_internal_mcp_tool(user_id: str, tool_name: str, arguments: dict):
+    """
+    Helper function to call an MCP internal tool.
+    Returns the parsed JSON result from the tool, or a dictionary with an "error" key if an issue occurs.
+    """
+    mcp_api_key = os.getenv("MCP_INTERNAL_API_KEY")
+    if not mcp_api_key:
+        error_msg = "MCP_INTERNAL_API_KEY not found in environment variables"
+        print(f"Error in call_internal_mcp_tool: {error_msg}")
+        return {"error": error_msg}
+
+    headers = {"X-Internal-API-Key": mcp_api_key, "Content-Type": "application/json"}
+    payload = {
+        "tool_name": tool_name,
+        "arguments": arguments,
+        "user_id_context": user_id
+    }
+    
+    tool_result_str = "{}" # Initialize to ensure it's defined for error reporting
+
+    try:
+        response = await asyncio.to_thread(
+            requests.post,
+            "http://localhost:5001/internal/call_mcp_tool",
+            headers=headers,
+            json=payload,
+            timeout=300 # Timeout for potentially long operations (e.g., image generation)
+        )
+        response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+        
+        try:
+            response_data = response.json() # Parse the outer JSON response from MCP endpoint
+        except json.JSONDecodeError as e:
+            error_msg = f"Failed to parse main JSON response from MCP endpoint for tool {tool_name}: {e}. Response text: {response.text[:500]}"
+            print(f"Error in call_internal_mcp_tool: {error_msg}")
+            return {"error": error_msg}
+            
+        if response_data.get("error"):
+            error_msg = f"Error from MCP endpoint for tool {tool_name}: {response_data['error']}"
+            print(f"Error in call_internal_mcp_tool: {error_msg}")
+            return {"error": error_msg}
+            
+        tool_result_str = response_data.get("result", "{}")
+        if not tool_result_str: # Handle None or empty string for 'result'
+             tool_result_str = "{}"
+             
+        actual_tool_result = json.loads(tool_result_str) # Parse the JSON string in 'result' field
+        return actual_tool_result # This is the direct output of the target tool
+
+    except requests.exceptions.Timeout:
+        error_msg = f"Request to MCP endpoint for tool {tool_name} timed out."
+        print(f"Error in call_internal_mcp_tool: {error_msg}")
+        return {"error": error_msg}
+    except requests.exceptions.RequestException as e:
+        error_msg = f"Request failed for tool {tool_name}: {e}"
+        print(f"Error in call_internal_mcp_tool: {error_msg}")
+        return {"error": error_msg}
+    except json.JSONDecodeError as e: # Handles error in parsing tool_result_str
+        error_msg = f"Failed to parse 'result' JSON string for tool {tool_name}: {e}. 'result' string was: {tool_result_str[:500]}"
+        print(f"Error in call_internal_mcp_tool: {error_msg}")
+        return {"error": error_msg}
+    except Exception as e: # Catch-all for other unexpected errors
+        error_msg = f"An unexpected error occurred in call_internal_mcp_tool for {tool_name}: {e}"
+        print(f"Error in call_internal_mcp_tool: {error_msg}")
+        return {"error": error_msg}
+
+async def generated_function_name(user_id: str):
+    """
+    Generates 10 images of animals, then creates a PDF document containing these images,
+    and returns the URL of the PDF.
+    """
+    # 1. Create a list of 10 distinct animal-related image generation prompts
+    animal_prompts = [
+        'A majestic lion in the savanna',
+        'A colorful parrot on a branch',
+        'A playful dolphin leaping from the water',
+        'A wise old owl perched on a tree',
+        'A fluffy red panda on a bamboo shoot',
+        'A powerful grizzly bear in a forest',
+        'A graceful swan on a lake',
+        'A cheetah sprinting across a plain',
+        'A baby elephant with its mother',
+        'A vibrant clownfish among anemones'
+    ]
+
+    # 2. Call the MCP tool `generate_images_with_prompts`
+    image_gen_args = {
+        "prompts": animal_prompts,
+        "user_number": user_id  # 'user_number' is required by the generate_images_with_prompts tool
+    }
+    print(f"Calling 'generate_images_with_prompts' for user_id: {user_id} with {len(animal_prompts)} prompts.")
+    image_gen_tool_output = await call_internal_mcp_tool(user_id, "generate_images_with_prompts", image_gen_args)
+
+    # Handle errors from the call_internal_mcp_tool or tool-specific errors
+    if isinstance(image_gen_tool_output, dict) and "error" in image_gen_tool_output:
+        return f"Error during image generation MCP call: {image_gen_tool_output['error']}"
+
+    # 3. Extract image URLs from the result of `generate_images_with_prompts`
+    # Expected actual_tool_result structure: {"status": "success", "results": [ ["url1"], ["url2"] ] }
+    if image_gen_tool_output.get("status") != "success":
+        message = image_gen_tool_output.get("message", "Unknown error from image generation tool.")
+        return f"Image generation tool did not report success: Status '{image_gen_tool_output.get('status')}', Message: '{message}'"
+
+    raw_image_results = image_gen_tool_output.get("results")
+    if not isinstance(raw_image_results, list):
+        return f"Image generation result format error: 'results' field is not a list or is missing. Received: {type(raw_image_results)}"
+
+    image_urls = []
+    for item_list in raw_image_results:
+        if isinstance(item_list, list) and len(item_list) > 0 and isinstance(item_list[0], str) and item_list[0]:
+            image_urls.append(item_list[0])
+        else:
+            print(f"Warning: Malformed or empty item in image generation results: {item_list}. Skipping.")
+            
+    if not image_urls:
+        return "No image URLs were successfully extracted from the image generation process."
+    
+    if len(image_urls) < len(animal_prompts):
+         print(f"Warning: Expected {len(animal_prompts)} images, but successfully extracted {len(image_urls)}. Proceeding with available images.")
+    
+    print(f"Successfully extracted {len(image_urls)} image URLs.")
+
+    # 4. Call the MCP tool `create_pdf_document`.
+    pdf_creation_args = {
+        "attachments": image_urls,
+        "doc_name": "animal_gallery.pdf",
+        "user_number": user_id, # 'user_number' is required by the create_pdf_document tool
+        "user_request": "A PDF document displaying generated images of various animals.",
+        "additional_context": "This PDF contains AI-generated images of various animals based on a predefined list of prompts.",
+        "model": "gemini-2.5-flash-preview-05-20", # Changed model here
+        "mcp_tools": []
+    }
+    print(f"Calling 'create_pdf_document' for user_id: {user_id} with {len(image_urls)} attachments.")
+    pdf_creation_tool_output = await call_internal_mcp_tool(user_id, "create_pdf_document", pdf_creation_args)
+
+    # Handle errors from the call_internal_mcp_tool or tool-specific errors
+    if isinstance(pdf_creation_tool_output, dict) and "error" in pdf_creation_tool_output:
+        return f"Error during PDF creation MCP call: {pdf_creation_tool_output['error']}"
+
+    # 5. Return the 'url' string from the result of `create_pdf_document`.
+    # Expected actual_tool_result structure: {"status": "success", "message": "...", "url": "..."}
+    if pdf_creation_tool_output.get("status") != "success":
+        message = pdf_creation_tool_output.get("message", "Unknown error from PDF creation tool.")
+        return f"PDF creation tool did not report success: Status '{pdf_creation_tool_output.get('status')}', Message: '{message}'"
+
+    pdf_url = pdf_creation_tool_output.get("url")
+    if not pdf_url or not isinstance(pdf_url, str):
+        return f"PDF creation result format error: 'url' field is missing, not a string, or empty. Received: '{pdf_url}'"
+        
+    print(f"Successfully created PDF. URL: {pdf_url}")
+    return pdf_url
+```

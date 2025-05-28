@@ -428,7 +428,8 @@ async def function_calling_loop(
     conversation_history: Optional[List[StandardizedMessage]] = None,
     test_mode=False,
     attachments: Optional[List[Dict[str, Any]]] = None,
-    stream_chunk_handler: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None
+    stream_chunk_handler: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+    final_response_json_schema: Optional[Dict[str, Any]] = None
 ):
     MAX_CONVERSATION_HISTORY_MESSAGES = 30
     model_name = "gemini-2.5-pro-preview-05-06"
@@ -505,6 +506,27 @@ async def function_calling_loop(
         + "\n    - For tools like 'edit_python_code', 'edit_web_app', 'edit_pdf_document', if you use @@ref_ to populate 'additional_context', it is permissible as long as the <PATH_TO_VALUE> resolves to a string (e.g., pointing to a specific text field from a previous tool's output)."
         + "\n    - ALWAYS be strategic: the string passed to 'additional_context' should contain all relevant information needed for the task, structured clearly if possible. Avoid including truly irrelevant data, but prioritize completeness of necessary details over excessive brevity if that detail is required for optimal performance of the next tool."
     )
+
+    # Add instruction about final response schema if provided
+    if final_response_json_schema:
+        try:
+            schema_string = json.dumps(final_response_json_schema, indent=2)
+            system_instruction_text += (
+                "\n\nFINAL RESPONSE JSON SCHEMA ENFORCEMENT:"
+                "\n  - When you are ready to provide the final answer to the user (i.e., you will not be calling any more tools), "
+                "\n  your response text MUST be a single, valid JSON object that strictly conforms to the following JSON schema:"
+                "\n```json"
+                f"\n{schema_string}"
+                "\n```"
+                "\n  - Ensure your entire final textual response is ONLY this JSON object. Do not include any other text, explanations, or markdown formatting outside of this JSON object."
+            )
+        except Exception as e_schema_dump:
+            print(f"Warning: Could not serialize final_response_json_schema to string: {e_schema_dump}")
+            # Optionally, inform the LLM that a schema was intended but couldn't be provided
+            system_instruction_text += (
+                "\n\nFINAL RESPONSE JSON SCHEMA ENFORCEMENT:"
+                "\n  - A JSON schema for the final response was intended, but could not be processed. Please provide your final answer as clearly as possible."
+            )
 
     # Prepare user message with attachments
     user_message_content = user_input

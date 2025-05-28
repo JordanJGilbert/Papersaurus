@@ -1,0 +1,328 @@
+--- Original code provided to LLM for regeneration ---
+python
+import os
+import json
+import requests
+import asyncio
+
+async def call_internal_mcp_tool(user_id: str, tool_name: str, arguments: dict):
+    """
+    Helper function to call an internal MCP tool.
+    Handles API key, headers, payload, and error checking.
+    """
+    mcp_api_key = os.getenv("MCP_INTERNAL_API_KEY")
+    if not mcp_api_key:
+        raise ValueError("MCP_INTERNAL_API_KEY not found in environment variables")
+
+    headers = {"X-Internal-API-Key": mcp_api_key, "Content-Type": "application/json"}
+    payload = {
+        "tool_name": tool_name,
+        "arguments": arguments,
+        "user_id_context": user_id
+    }
+    
+    # Use asyncio.to_thread for blocking requests.post call
+    try:
+        response = await asyncio.to_thread(
+            requests.post,
+            "http://localhost:5001/internal/call_mcp_tool",
+            headers=headers,
+            json=payload,
+            timeout=180 # Increased timeout for potentially long-running operations like image generation/analysis/PDF
+        )
+        response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+        response_data = response.json()
+
+        if response_data.get("error"):
+            raise Exception(f"Error calling internal tool '{tool_name}': {response_data['error']}")
+        
+        # The 'result' field is a JSON string, so it needs to be parsed again
+        tool_result_str = response_data.get("result", "")
+        if not tool_result_str:
+            return {} # Return empty dict if no result string
+
+        actual_tool_result = json.loads(tool_result_str)
+        return actual_tool_result
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Network or request error calling tool '{tool_name}': {e}")
+    except json.JSONDecodeError as e:
+        response_text = response.text if 'response' in locals() else 'N/A'
+        raise Exception(f"Failed to parse JSON response from tool '{tool_name}': {e}. Raw response: {response_text}")
+    except Exception as e:
+        raise e
+
+async def generated_function_name(user_id: str):
+    """
+    Generates 10 coloring book images, analyzes them, and creates a PDF document
+    displaying each image with its analysis.
+    """
+
+    # 1. Define prompts for 10 coloring book images
+    image_prompts = [
+        "simple outline drawing of a friendly dinosaur for a coloring book, clear lines, no shading",
+        "outline of a cheerful robot with simple shapes for a child's coloring book, bold lines",
+        "coloring book page, simple outline of a cute cat playing with a ball of yarn, easy to color",
+        "outline drawing of a happy sun with simple clouds and a rainbow for coloring, bold outlines",
+        "simple outline of a rocket ship flying to the moon for a coloring book, clear segments",
+        "coloring book style, outline of a forest scene with a big tree and two simple animals (deer, rabbit), thick lines",
+        "outline drawing of a fire truck for a coloring book, simple design, clear parts to color",
+        "simple pattern for a coloring book, large geometric shapes with clear, thick lines",
+        "outline of a magical unicorn for a coloring book, majestic but simple, thick black lines",
+        "coloring book page, outline of a smiling monster with big eyes and simple body, cartoon style"
+    ]
+
+    print("Step 1/3: Generating 10 coloring book images...")
+    # Call the generate_images_with_prompts tool
+    image_gen_args = {
+        "user_number": user_id,
+        "prompts": image_prompts
+    }
+    image_gen_result = await call_internal_mcp_tool(user_id, "generate_images_with_prompts", image_gen_args)
+
+    image_urls = []
+    # Extract URLs from the tool's output. Assume output contains an 'images' list of dicts.
+    if image_gen_result and "images" in image_gen_result:
+        for img_info in image_gen_result["images"]:
+            if "url" in img_info:
+                image_urls.append(img_info["url"])
+    
+    if not image_urls:
+        raise Exception("Failed to generate any images or extract image URLs. Image generation result was: " + json.dumps(image_gen_result))
+    
+    print(f"Successfully generated {len(image_urls)} images.")
+
+    # 2. Analyze all 10 generated images
+    print("Step 2/3: Analyzing generated images...")
+    analysis_prompt = "Describe this coloring book image, highlighting the main elements a child would color."
+    analyze_images_args = {
+        "urls": image_urls,
+        "analysis_prompt": analysis_prompt
+    }
+    analysis_result = await call_internal_mcp_tool(user_id, "analyze_images", analyze_images_args)
+
+    image_analysis_data = []
+    # Map analyses back to original URLs. Assume analysis_result contains a 'results' list of dicts with 'url' and 'analysis'.
+    if analysis_result and "results" in analysis_result:
+        # Create a dictionary mapping URL to analysis for easy lookup, handling potential missing data
+        analysis_map = {item.get("url"): item.get("analysis") for item in analysis_result["results"] if item.get("url")}
+        
+        for url in image_urls:
+            # Retrieve analysis for each original image URL, or provide a default if not found
+            analysis_text = analysis_map.get(url, "Analysis not available for this image.")
+            image_analysis_data.append({"url": url, "analysis": analysis_text})
+    else:
+        # Fallback if analysis_result structure is not as expected or empty.
+        # This assumes analysis_result might be a simple list of strings and order is preserved.
+        if isinstance(analysis_result, list) and len(analysis_result) == len(image_urls):
+            for i, url in enumerate(image_urls):
+                image_analysis_data.append({"url": url, "analysis": analysis_result[i]})
+        else:
+            print(f"Warning: Analysis result structure from tool '{tool_name}' not fully as expected or empty. "
+                  "Using placeholder analysis for all images. Raw analysis result: " + json.dumps(analysis_result))
+            for url in image_urls:
+                image_analysis_data.append({"url": url, "analysis": "Analysis not available for this image."})
+
+    if not image_analysis_data:
+        raise Exception("Failed to analyze images or extract analysis data.")
+    print(f"Successfully analyzed {len(image_analysis_data)} images.")
+
+    # 3. Create PDF document
+    print("Step 3/3: Creating PDF document 'coloring_book_analysis.pdf'...")
+    doc_name = "coloring_book_analysis.pdf"
+    pdf_model = "gemini-2.5-flash-preview-05-20"
+    
+    # Construct the additional_context string for the PDF generation tool.
+    # This context will guide the LLM on how to structure the PDF content.
+    additional_context_parts = []
+    for i, data in enumerate(image_analysis_data):
+        additional_context_parts.append(f"### Image {i+1}")
+        additional_context_parts.append(f"Image URL: {data['url']}") # Informative, but the actual image comes from 'attachments'
+        additional_context_parts.append(f"Analysis: {data['analysis']}")
+        additional_context_parts.append("") # Add an empty line for separation between entries
+    
+    pdf_creation_args = {
+        "model": pdf_model,
+        "additional_context": "\n".join(additional_context_parts),
+        "attachments": image_urls, # Pass all generated image URLs here for inclusion in PDF
+        "doc_name": doc_name,
+        "mcp_tools": [], # No other MCP tools are needed for the LLM to be aware of for this PDF content
+        "user_number": user_id,
+        # The user_request specifically guides the LLM on the desired PDF layout
+        "user_request": "Create a PDF document titled 'coloring_book_analysis.pdf'. For each image provided in the 'attachments' list, display the image first, followed immediately by its corresponding analysis text. The analysis text for each image is provided in the 'additional_context' string. Ensure a clear layout where each image and its description are grouped together.",
+    }
+
+    pdf_creation_result = await call_internal_mcp_tool(user_id, "create_pdf_document", pdf_creation_args)
+    
+    if pdf_creation_result:
+        print(f"PDF creation successful. Result: {json.dumps(pdf_creation_result, indent=2)}")
+        return {"status": "success", "pdf_info": pdf_creation_result}
+    else:
+        raise Exception("Failed to create PDF document. PDF creation result was empty.")
+--- End of original code ---
+
+--- Edit request: ---
+Remove the first line that says 'python' as it's causing a NameError.
+---
+
+--- Full LLM response (regenerated code attempt): ---
+```temp.py
+import os
+import json
+import requests
+import asyncio
+
+async def call_internal_mcp_tool(user_id: str, tool_name: str, arguments: dict):
+    """
+    Helper function to call an internal MCP tool.
+    Handles API key, headers, payload, and error checking.
+    """
+    mcp_api_key = os.getenv("MCP_INTERNAL_API_KEY")
+    if not mcp_api_key:
+        raise ValueError("MCP_INTERNAL_API_KEY not found in environment variables")
+
+    headers = {"X-Internal-API-Key": mcp_api_key, "Content-Type": "application/json"}
+    payload = {
+        "tool_name": tool_name,
+        "arguments": arguments,
+        "user_id_context": user_id
+    }
+    
+    # Use asyncio.to_thread for blocking requests.post call
+    try:
+        response = await asyncio.to_thread(
+            requests.post,
+            "http://localhost:5001/internal/call_mcp_tool",
+            headers=headers,
+            json=payload,
+            timeout=180 # Increased timeout for potentially long-running operations like image generation/analysis/PDF
+        )
+        response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+        response_data = response.json()
+
+        if response_data.get("error"):
+            raise Exception(f"Error calling internal tool '{tool_name}': {response_data['error']}")
+        
+        # The 'result' field is a JSON string, so it needs to be parsed again
+        tool_result_str = response_data.get("result", "")
+        if not tool_result_str:
+            return {} # Return empty dict if no result string
+
+        actual_tool_result = json.loads(tool_result_str)
+        return actual_tool_result
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Network or request error calling tool '{tool_name}': {e}")
+    except json.JSONDecodeError as e:
+        response_text = response.text if 'response' in locals() else 'N/A'
+        raise Exception(f"Failed to parse JSON response from tool '{tool_name}': {e}. Raw response: {response_text}")
+    except Exception as e:
+        raise e
+
+async def generated_function_name(user_id: str):
+    """
+    Generates 10 coloring book images, analyzes them, and creates a PDF document
+    displaying each image with its analysis.
+    """
+
+    # 1. Define prompts for 10 coloring book images
+    image_prompts = [
+        "simple outline drawing of a friendly dinosaur for a coloring book, clear lines, no shading",
+        "outline of a cheerful robot with simple shapes for a child's coloring book, bold lines",
+        "coloring book page, simple outline of a cute cat playing with a ball of yarn, easy to color",
+        "outline drawing of a happy sun with simple clouds and a rainbow for coloring, bold outlines",
+        "simple outline of a rocket ship flying to the moon for a coloring book, clear segments",
+        "coloring book style, outline of a forest scene with a big tree and two simple animals (deer, rabbit), thick lines",
+        "outline drawing of a fire truck for a coloring book, simple design, clear parts to color",
+        "simple pattern for a coloring book, large geometric shapes with clear, thick lines",
+        "outline of a magical unicorn for a coloring book, majestic but simple, thick black lines",
+        "coloring book page, outline of a smiling monster with big eyes and simple body, cartoon style"
+    ]
+
+    print("Step 1/3: Generating 10 coloring book images...")
+    # Call the generate_images_with_prompts tool
+    image_gen_args = {
+        "user_number": user_id, # Assuming user_number is expected by the tool for user_id
+        "prompts": image_prompts
+    }
+    image_gen_result = await call_internal_mcp_tool(user_id, "generate_images_with_prompts", image_gen_args)
+
+    image_urls = []
+    # Extract URLs from the tool's output. Assume output contains an 'images' list of dicts.
+    if image_gen_result and "images" in image_gen_result:
+        for img_info in image_gen_result["images"]:
+            if "url" in img_info:
+                image_urls.append(img_info["url"])
+    
+    if not image_urls:
+        raise Exception("Failed to generate any images or extract image URLs. Image generation result was: " + json.dumps(image_gen_result))
+    
+    print(f"Successfully generated {len(image_urls)} images.")
+
+    # 2. Analyze all 10 generated images
+    print("Step 2/3: Analyzing generated images...")
+    analysis_prompt = "Describe this coloring book image, highlighting the main elements a child would color."
+    analyze_images_args = {
+        "urls": image_urls,
+        "analysis_prompt": analysis_prompt
+    }
+    analysis_result = await call_internal_mcp_tool(user_id, "analyze_images", analyze_images_args)
+
+    image_analysis_data = []
+    # Map analyses back to original URLs. Assume analysis_result contains a 'results' list of dicts with 'url' and 'analysis'.
+    if analysis_result and "results" in analysis_result:
+        # Create a dictionary mapping URL to analysis for easy lookup, handling potential missing data
+        analysis_map = {item.get("url"): item.get("analysis") for item in analysis_result["results"] if item.get("url")}
+        
+        for url in image_urls:
+            # Retrieve analysis for each original image URL, or provide a default if not found
+            analysis_text = analysis_map.get(url, "Analysis not available for this image.")
+            image_analysis_data.append({"url": url, "analysis": analysis_text})
+    else:
+        # Fallback if analysis_result structure is not as expected or empty.
+        # This assumes analysis_result might be a simple list of strings and order is preserved.
+        if isinstance(analysis_result, list) and len(analysis_result) == len(image_urls):
+            for i, url in enumerate(image_urls):
+                image_analysis_data.append({"url": url, "analysis": analysis_result[i]})
+        else:
+            # In the original code, tool_name was not defined in this scope, using a generic message
+            print(f"Warning: Analysis result structure from 'analyze_images' tool not fully as expected or empty. "
+                  "Using placeholder analysis for all images. Raw analysis result: " + json.dumps(analysis_result))
+            for url in image_urls:
+                image_analysis_data.append({"url": url, "analysis": "Analysis not available for this image."})
+
+    if not image_analysis_data:
+        raise Exception("Failed to analyze images or extract analysis data.")
+    print(f"Successfully analyzed {len(image_analysis_data)} images.")
+
+    # 3. Create PDF document
+    print("Step 3/3: Creating PDF document 'coloring_book_analysis.pdf'...")
+    doc_name = "coloring_book_analysis.pdf"
+    pdf_model = "gemini-2.5-flash-preview-05-20" # Changed to match the expected format, was gemini-pro before
+    
+    # Construct the additional_context string for the PDF generation tool.
+    # This context will guide the LLM on how to structure the PDF content.
+    additional_context_parts = []
+    for i, data in enumerate(image_analysis_data):
+        additional_context_parts.append(f"### Image {i+1}")
+        additional_context_parts.append(f"Image URL: {data['url']}") # Informative, but the actual image comes from 'attachments'
+        additional_context_parts.append(f"Analysis: {data['analysis']}")
+        additional_context_parts.append("") # Add an empty line for separation between entries
+    
+    pdf_creation_args = {
+        "model": pdf_model,
+        "additional_context": "\n".join(additional_context_parts),
+        "attachments": image_urls, # Pass all generated image URLs here for inclusion in PDF
+        "doc_name": doc_name,
+        "mcp_tools": [], # No other MCP tools are needed for the LLM to be aware of for this PDF content
+        "user_number": user_id, # Assuming user_number is expected by the tool for user_id
+        # The user_request specifically guides the LLM on the desired PDF layout
+        "user_request": "Create a PDF document titled 'coloring_book_analysis.pdf'. For each image provided in the 'attachments' list, display the image first, followed immediately by its corresponding analysis text. The analysis text for each image is provided in the 'additional_context' string. Ensure a clear layout where each image and its description are grouped together.",
+    }
+
+    pdf_creation_result = await call_internal_mcp_tool(user_id, "create_pdf_document", pdf_creation_args)
+    
+    if pdf_creation_result:
+        print(f"PDF creation successful. Result: {json.dumps(pdf_creation_result, indent=2)}")
+        return {"status": "success", "pdf_info": pdf_creation_result}
+    else:
+        raise Exception("Failed to create PDF document. PDF creation result was empty.")
+```

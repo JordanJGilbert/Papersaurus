@@ -1,0 +1,408 @@
+--- Original code provided to LLM for regeneration ---
+import os
+import json
+import requests
+import asyncio
+
+async def _call_internal_mcp_tool(user_id: str, tool_name: str, arguments: dict):
+    """
+    Helper function to call an internal MCP tool.
+
+    Args:
+        user_id (str): The user identifier for context.
+        tool_name (str): The name of the MCP tool to call.
+        arguments (dict): A dictionary of arguments for the tool.
+
+    Returns:
+        dict: The parsed JSON result from the tool's execution.
+
+    Raises:
+        ValueError: If `MCP_INTERNAL_API_KEY` is not found in environment variables.
+        Exception: If the internal API call fails (network error, bad status, tool error, or JSON parsing error).
+    """
+    mcp_api_key = os.getenv("MCP_INTERNAL_API_KEY")
+    if not mcp_api_key:
+        raise ValueError("MCP_INTERNAL_API_KEY not found in environment variables")
+
+    headers = {"X-Internal-API-Key": mcp_api_key, "Content-Type": "application/json"}
+    payload = {
+        "tool_name": tool_name,
+        "arguments": arguments,
+        "user_id_context": user_id
+    }
+
+    try:
+        # Use asyncio.to_thread for blocking requests.post call
+        response = await asyncio.to_thread(
+            requests.post,
+            "http://localhost:5001/internal/call_mcp_tool",
+            headers=headers,
+            json=payload,
+            timeout=180 # Increased timeout for operations like image generation or PDF creation
+        )
+        response.raise_for_status() # Raise an exception for HTTP error codes (4xx or 5xx)
+
+        response_data = response.json()
+        if response_data.get("error"):
+            raise Exception(f"Error from tool '{tool_name}': {response_data['error']}")
+        
+        tool_result_str = response_data.get("result", "")
+        if not tool_result_str:
+            # If 'result' is empty or missing, it might indicate no specific output or an implicit success
+            # based on other fields like 'status'. Return empty dict if no result string.
+            return {} 
+        
+        # The 'result' field is a JSON string, so it needs to be parsed
+        actual_tool_result = json.loads(tool_result_str)
+        return actual_tool_result
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Network or request error when calling tool '{tool_name}': {e}")
+    except json.JSONDecodeError as e:
+        # Include raw response text for debugging JSON decode errors
+        raw_response = response.text if 'response' in locals() else 'N/A'
+        raise Exception(f"Failed to parse JSON response from tool '{tool_name}': {e}. Raw response: {raw_response}")
+    except Exception as e:
+        raise Exception(f"An unexpected error occurred calling tool '{tool_name}': {e}")
+
+async def generated_function_name(user_id: str, num_images: int, topic: str):
+    """
+    Generates a coloring book PDF based on a specified topic and number of images.
+
+    This function first generates `num_images` black and white line art images
+    suitable for a coloring book using the `generate_images_with_prompts` MCP tool.
+    It then compiles these images into a PDF document named '[topic]_coloring_book.pdf'
+    using the `create_pdf_document` MCP tool, with each image on a separate page.
+
+    Args:
+        user_id (str): The user identifier for context.
+        num_images (int): The number of coloring book images to generate. Must be a positive integer.
+        topic (str): The topic for the coloring book images (e.g., 'animals', 'cars', 'flowers').
+
+    Returns:
+        dict: A dictionary containing the status and the URL of the generated PDF document.
+            - 'status' (str): 'success' if the PDF was created successfully, 'error' otherwise.
+            - 'pdf_url' (str): The URL to the generated PDF document.
+            - 'message' (str): A descriptive message about the operation's outcome.
+
+    Raises:
+        ValueError: If `num_images` is not a positive integer or `topic` is empty.
+        Exception: If internal MCP tool calls fail or return an error.
+    """
+    if not isinstance(num_images, int) or num_images <= 0:
+        raise ValueError("num_images must be a positive integer.")
+    if not topic or not isinstance(topic, str):
+        raise ValueError("topic cannot be empty and must be a string.")
+
+    image_urls = []
+    try:
+        # 1. Generate image prompts suitable for a coloring book
+        image_prompts = [
+            f"simple outline drawing of a {topic} for a coloring book, black and white, "
+            "no shading, clean lines, white background, suitable for children to color"
+            for _ in range(num_images)
+        ]
+
+        # Call generate_images_with_prompts tool
+        image_gen_arguments = {
+            "prompts": image_prompts,
+            "user_number": user_id
+        }
+        image_gen_result = await _call_internal_mcp_tool(user_id, "generate_images_with_prompts", image_gen_arguments)
+
+        if image_gen_result.get("status") != "success":
+            raise Exception(f"Image generation failed: {image_gen_result.get('message', 'Unknown error during image generation')}")
+
+        if image_gen_result.get("results"):
+            # The 'results' from generate_images_with_prompts is an array of arrays, e.g., [['url1'], ['url2']]
+            for sublist in image_gen_result["results"]:
+                if sublist and isinstance(sublist, list) and len(sublist) > 0 and isinstance(sublist[0], str):
+                    image_urls.append(sublist[0]) # Extract the actual URL
+        
+        if not image_urls:
+            raise Exception("No image URLs were returned from image generation.")
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "pdf_url": "",
+            "message": f"Failed to generate images for the coloring book: {e}"
+        }
+
+    # 2. Compile images into a PDF using create_pdf_document tool
+    # Create a clean document name
+    doc_name_base = topic.replace(' ', '_').lower()
+    doc_name = f"{doc_name_base}_coloring_book.pdf"
+    
+    user_request_for_pdf = (
+        "Create a coloring book PDF from the provided images. "
+        "Each image should be on a separate page, centered, with enough white space for coloring. "
+        "The layout should be suitable for printing and coloring."
+    )
+    additional_context_for_pdf = (
+        f"The images are black and white line art related to the topic of '{topic}'. "
+        "Please ensure the generated HTML for the PDF uses appropriate styling "
+        "to place each image on its own page (e.g., using `page-break-after: always;`), "
+        "center them, and make them large enough for coloring but fit within a standard page size. "
+        "A suggested CSS approach could be `<img src='image_url' style='width: 90%; max-width: 700px; display: block; margin: auto; page-break-after: always; border: 1px solid #eee;' />`."
+    )
+
+    try:
+        pdf_creation_arguments = {
+            "user_request": user_request_for_pdf,
+            "doc_name": doc_name,
+            "model": "gemini-2.5-flash-preview-05-20", # As specified in the request
+            "user_number": user_id,
+            "attachments": image_urls,
+            "additional_context": additional_context_for_pdf,
+            "mcp_tools": ["generate_images_with_prompts"] # Indicate that images were generated by this tool
+        }
+        pdf_result = await _call_internal_mcp_tool(user_id, "create_pdf_document", pdf_creation_arguments)
+
+        if pdf_result.get("status") != "success":
+            raise Exception(f"PDF creation failed: {pdf_result.get('message', 'Unknown error during PDF creation')}")
+
+        pdf_url = pdf_result.get("url")
+        if not pdf_url:
+            raise Exception("No PDF URL was returned from document creation.")
+
+        return {
+            "status": "success",
+            "pdf_url": pdf_url,
+            "message": f"Successfully created coloring book '{doc_name}' with {len(image_urls)} images."
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "pdf_url": "",
+            "message": f"Failed to create PDF document: {e}"
+        }
+--- End of original code ---
+
+--- Edit request: ---
+Modify the `generated_function_name` function. In the section where `image_prompts` are generated, change the logic to create a list of *distinct* and *varied* prompts, one for each of the `num_images`. For example, if the topic is 'farm animals' and num_images is 3, the prompts should be different, like 'simple outline drawing of a friendly pig in a mud puddle for a coloring book...', 'simple outline drawing of a fluffy sheep grazing in a field for a coloring book...', and 'simple outline drawing of a tall horse standing by a fence for a coloring book...'. The prompts must still be suitable for generating black and white, clean line art with no shading and a white background, appropriate for a children's coloring book. Ensure the core functionality of calling `generate_images_with_prompts` and `create_pdf_document` (with 'gemini-2.5-flash-preview-05-20' model for PDF) remains intact and the internal tool calling mechanism (_call_internal_mcp_tool) is used correctly. The function signature and its return type should remain the same.
+---
+
+--- Full LLM response (regenerated code attempt): ---
+```temp.py
+import os
+import json
+import requests
+import asyncio
+
+async def _call_internal_mcp_tool(user_id: str, tool_name: str, arguments: dict):
+    """
+    Helper function to call an internal MCP tool.
+
+    Args:
+        user_id (str): The user identifier for context.
+        tool_name (str): The name of the MCP tool to call.
+        arguments (dict): A dictionary of arguments for the tool.
+
+    Returns:
+        dict: The parsed JSON result from the tool's execution.
+
+    Raises:
+        ValueError: If `MCP_INTERNAL_API_KEY` is not found in environment variables.
+        Exception: If the internal API call fails (network error, bad status, tool error, or JSON parsing error).
+    """
+    mcp_api_key = os.getenv("MCP_INTERNAL_API_KEY")
+    if not mcp_api_key:
+        raise ValueError("MCP_INTERNAL_API_KEY not found in environment variables")
+
+    headers = {"X-Internal-API-Key": mcp_api_key, "Content-Type": "application/json"}
+    payload = {
+        "tool_name": tool_name,
+        "arguments": arguments,
+        "user_id_context": user_id
+    }
+
+    try:
+        # Use asyncio.to_thread for blocking requests.post call
+        response = await asyncio.to_thread(
+            requests.post,
+            "http://localhost:5001/internal/call_mcp_tool",
+            headers=headers,
+            json=payload,
+            timeout=180 # Increased timeout for operations like image generation or PDF creation
+        )
+        response.raise_for_status() # Raise an exception for HTTP error codes (4xx or 5xx)
+
+        response_data = response.json()
+        if response_data.get("error"):
+            raise Exception(f"Error from tool '{tool_name}': {response_data['error']}")
+        
+        tool_result_str = response_data.get("result", "")
+        # For text generation tools expected to return a JSON array, an empty string might imply empty list.
+        # For other tools, an empty string might mean no specific result but implicit success.
+        # We assume if the tool is expected to return a parsed JSON (e.g., list or dict),
+        # an empty tool_result_str means an empty structure.
+        if not tool_result_str:
+            return {} # Default for general tools, will be checked by caller based on expectation
+        
+        # The 'result' field is a JSON string, so it needs to be parsed
+        actual_tool_result = json.loads(tool_result_str)
+        return actual_tool_result
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Network or request error when calling tool '{tool_name}': {e}")
+    except json.JSONDecodeError as e:
+        # Include raw response text for debugging JSON decode errors
+        raw_response = response.text if 'response' in locals() else 'N/A'
+        raise Exception(f"Failed to parse JSON response from tool '{tool_name}': {e}. Raw response: {raw_response}")
+    except Exception as e:
+        raise Exception(f"An unexpected error occurred calling tool '{tool_name}': {e}")
+
+async def generated_function_name(user_id: str, num_images: int, topic: str):
+    """
+    Generates a coloring book PDF based on a specified topic and number of images.
+
+    This function first generates `num_images` black and white line art images
+    suitable for a coloring book using the `generate_images_with_prompts` MCP tool.
+    It then compiles these images into a PDF document named '[topic]_coloring_book.pdf'
+    using the `create_pdf_document` MCP tool, with each image on a separate page.
+
+    Args:
+        user_id (str): The user identifier for context.
+        num_images (int): The number of coloring book images to generate. Must be a positive integer.
+        topic (str): The topic for the coloring book images (e.g., 'animals', 'cars', 'flowers').
+
+    Returns:
+        dict: A dictionary containing the status and the URL of the generated PDF document.
+            - 'status' (str): 'success' if the PDF was created successfully, 'error' otherwise.
+            - 'pdf_url' (str): The URL to the generated PDF document.
+            - 'message' (str): A descriptive message about the operation's outcome.
+
+    Raises:
+        ValueError: If `num_images` is not a positive integer or `topic` is empty.
+        Exception: If internal MCP tool calls fail or return an error.
+    """
+    if not isinstance(num_images, int) or num_images <= 0:
+        raise ValueError("num_images must be a positive integer.")
+    if not topic or not isinstance(topic, str):
+        raise ValueError("topic cannot be empty and must be a string.")
+
+    image_urls = []
+    try:
+        # 1. Generate distinct and varied sub-topics/scenes using an LLM
+        # This assumes an internal LLM text generation tool exists, which is necessary
+        # to achieve the "distinct and varied" semantic requirement for prompts.
+        llm_prompt_for_variations = (
+            f"Generate a JSON array of {num_images} distinct and varied sub-topics or scenes "
+            f"related to '{topic}' suitable for a children's coloring book. "
+            "Each string in the array should be a concise description of a subject or scene. "
+            "For example, if the topic is 'farm animals' and num_images is 3, "
+            "a possible output is: "
+            "[\"a friendly pig in a mud puddle\", \"a fluffy sheep grazing in a field\", \"a tall horse standing by a fence\"]. "
+            "Output ONLY the JSON array, no other text, no markdown code block delimiters."
+        )
+
+        llm_call_arguments = {
+            "model": "gemini-2.5-flash-preview-05-20", # Using a common LLM model from the ecosystem
+            "prompt": llm_prompt_for_variations
+        }
+        
+        # Call a hypothetical general LLM text generation tool.
+        # This is a necessary assumption to meet the semantic variation requirement.
+        varied_subjects = await _call_internal_mcp_tool(user_id, "llm_text_generation", llm_call_arguments)
+        
+        # Ensure the LLM returned a list, otherwise raise an error
+        if not isinstance(varied_subjects, list):
+            raise Exception(f"LLM tool 'llm_text_generation' returned an invalid format. Expected a list, got: {type(varied_subjects).__name__}.")
+        
+        # Ensure we have enough subjects; if not, pad with generic ones
+        if len(varied_subjects) < num_images:
+            print(f"Warning: LLM returned {len(varied_subjects)} subjects, expected {num_images}. Padding with generic variations.")
+            generic_suffix_counter = 0
+            while len(varied_subjects) < num_images:
+                # Add a fallback generic prompt if LLM didn't provide enough unique variations
+                varied_subjects.append(f"a generic {topic} scene {generic_suffix_counter + 1}")
+                generic_suffix_counter += 1
+        
+        # Trim if LLM returned more than requested (unlikely but good practice)
+        varied_subjects = varied_subjects[:num_images]
+
+        # Construct image prompts using the varied subjects
+        image_prompts = []
+        base_coloring_prompt_template = (
+            "simple outline drawing of {subject} for a coloring book, black and white, "
+            "no shading, clean lines, white background, suitable for children to color"
+        )
+        for subject in varied_subjects:
+            image_prompts.append(base_coloring_prompt_template.format(subject=subject))
+
+        # 2. Call generate_images_with_prompts tool
+        image_gen_arguments = {
+            "prompts": image_prompts,
+            "user_number": user_id
+        }
+        image_gen_result = await _call_internal_mcp_tool(user_id, "generate_images_with_prompts", image_gen_arguments)
+
+        if image_gen_result.get("status") != "success":
+            raise Exception(f"Image generation failed: {image_gen_result.get('message', 'Unknown error during image generation')}")
+
+        if image_gen_result.get("results"):
+            # The 'results' from generate_images_with_prompts is an array of arrays, e.g., [['url1'], ['url2']]
+            for sublist in image_gen_result["results"]:
+                if sublist and isinstance(sublist, list) and len(sublist) > 0 and isinstance(sublist[0], str):
+                    image_urls.append(sublist[0]) # Extract the actual URL
+        
+        if not image_urls:
+            raise Exception("No image URLs were returned from image generation.")
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "pdf_url": "",
+            "message": f"Failed to generate images for the coloring book: {e}"
+        }
+
+    # 3. Compile images into a PDF using create_pdf_document tool
+    # Create a clean document name
+    doc_name_base = topic.replace(' ', '_').lower()
+    doc_name = f"{doc_name_base}_coloring_book.pdf"
+    
+    user_request_for_pdf = (
+        "Create a coloring book PDF from the provided images. "
+        "Each image should be on a separate page, centered, with enough white space for coloring. "
+        "The layout should be suitable for printing and coloring."
+    )
+    additional_context_for_pdf = (
+        f"The images are black and white line art related to the topic of '{topic}'. "
+        "Please ensure the generated HTML for the PDF uses appropriate styling "
+        "to place each image on its own page (e.g., using `page-break-after: always;`), "
+        "center them, and make them large enough for coloring but fit within a standard page size. "
+        "A suggested CSS approach could be `<img src='image_url' style='width: 90%; max-width: 700px; display: block; margin: auto; page-break-after: always; border: 1px solid #eee;' />`."
+    )
+
+    try:
+        pdf_creation_arguments = {
+            "user_request": user_request_for_pdf,
+            "doc_name": doc_name,
+            "model": "gemini-2.5-flash-preview-05-20", # As specified in the request
+            "user_number": user_id,
+            "attachments": image_urls,
+            "additional_context": additional_context_for_pdf,
+            "mcp_tools": ["generate_images_with_prompts"] # Indicate that images were generated by this tool
+        }
+        pdf_result = await _call_internal_mcp_tool(user_id, "create_pdf_document", pdf_creation_arguments)
+
+        if pdf_result.get("status") != "success":
+            raise Exception(f"PDF creation failed: {pdf_result.get('message', 'Unknown error during PDF creation')}")
+
+        pdf_url = pdf_result.get("url")
+        if not pdf_url:
+            raise Exception("No PDF URL was returned from document creation.")
+
+        return {
+            "status": "success",
+            "pdf_url": pdf_url,
+            "message": f"Successfully created coloring book '{doc_name}' with {len(image_urls)} images."
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "pdf_url": "",
+            "message": f"Failed to create PDF document: {e}"
+        }
+```

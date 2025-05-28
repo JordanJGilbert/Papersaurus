@@ -1,0 +1,215 @@
+--- Original code provided to LLM for regeneration ---
+import os
+import json
+import requests
+import asyncio
+
+async def _call_mcp_tool(user_id: str, tool_name: str, arguments: dict):
+    """Helper function to call an internal MCP tool asynchronously."""
+    mcp_api_key = os.getenv("MCP_INTERNAL_API_KEY")
+    if not mcp_api_key:
+        raise ValueError("MCP_INTERNAL_API_KEY not found in environment variables")
+
+    headers = {"X-Internal-API-Key": mcp_api_key, "Content-Type": "application/json"}
+    payload = {"tool_name": tool_name, "arguments": arguments, "user_id_context": user_id}
+
+    try:
+        response = await asyncio.to_thread(
+            requests.post,
+            "http://localhost:5001/internal/call_mcp_tool",
+            headers=headers,
+            json=payload,
+            timeout=60 # Increased timeout for image generation
+        )
+        response.raise_for_status()
+        response_data = response.json()
+        if response_data.get("error"):
+            raise Exception(f"Error calling internal tool '{tool_name}': {response_data['error']}")
+        
+        tool_result_str = response_data.get("result", "")
+        # The result from generate_image_with_prompts is a string, which is the URL to the image.
+        # It's not a JSON string that needs json.loads(), it's just the URL itself.
+        # Based on typical image generation tool outputs, it's often a direct URL string.
+        # If the output schema was a JSON object like {"image_url": "..."} then json.loads would be needed.
+        # Assuming direct URL string based on common patterns for this type of task.
+        return tool_result_str
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Request to tool '{tool_name}' failed: {e}")
+    except json.JSONDecodeError as e:
+        raise Exception(f"Failed to parse JSON response from tool '{tool_name}': {e}")
+    except Exception as e:
+        raise Exception(f"An unexpected error occurred during tool call '{tool_name}': {e}")
+
+async def generated_function_name(user_id: str):
+    """
+    Creates 10 images of different animals using the 'generate_image_with_prompts' tool.
+    The image generation requests are made concurrently.
+    """
+    animal_prompts = [
+        "A majestic lion in the savanna",
+        "A playful dolphin jumping out of the ocean",
+        "A graceful deer in a forest",
+        "A colorful parrot on a branch",
+        "A wise old owl in the moonlight",
+        "A cute baby elephant playing in water",
+        "A fast cheetah running across the plains",
+        "A cuddly panda eating bamboo",
+        "A fierce tiger in a jungle",
+        "A small, fluffy rabbit in a field of flowers"
+    ]
+
+    tasks = [
+        _call_mcp_tool(user_id, "generate_image_with_prompts", {"prompt": prompt})
+        for prompt in animal_prompts
+    ]
+
+    print(f"Attempting to generate {len(tasks)} animal images concurrently...")
+    
+    # Use asyncio.gather to run all image generation tasks concurrently
+    image_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    successful_images = []
+    errors = []
+    for i, result in enumerate(image_results):
+        if isinstance(result, Exception):
+            print(f"Error generating image for prompt '{animal_prompts[i]}': {result}")
+            errors.append({"prompt": animal_prompts[i], "error": str(result)})
+        else:
+            print(f"Successfully generated image for prompt '{animal_prompts[i]}': {result}")
+            successful_images.append({"prompt": animal_prompts[i], "image_url": result})
+
+    return {
+        "successful_images": successful_images,
+        "failed_images": errors,
+        "total_requested": len(animal_prompts),
+        "total_successful": len(successful_images)
+    }
+--- End of original code ---
+
+--- Edit request: ---
+In the generated_function_name, when calling _call_mcp_tool for 'generate_images_with_prompts', the arguments dictionary should pass a list of prompts. Change {"prompt": prompt} to {"prompts": [prompt]}. Also ensure the user_number argument is passed to the generate_images_with_prompts tool, it should be the user_id variable that is an argument to generated_function_name.
+---
+
+--- Full LLM response (regenerated code attempt): ---
+```temp.py
+import os
+import json
+import requests
+import asyncio
+
+async def _call_mcp_tool(user_id: str, tool_name: str, arguments: dict):
+    """Helper function to call an internal MCP tool asynchronously."""
+    mcp_api_key = os.getenv("MCP_INTERNAL_API_KEY")
+    if not mcp_api_key:
+        raise ValueError("MCP_INTERNAL_API_KEY not found in environment variables")
+
+    headers = {"X-Internal-API-Key": mcp_api_key, "Content-Type": "application/json"}
+    payload = {"tool_name": tool_name, "arguments": arguments, "user_id_context": user_id}
+
+    try:
+        # Using asyncio.to_thread for the blocking requests.post call
+        response = await asyncio.to_thread(
+            requests.post,
+            "http://localhost:5001/internal/call_mcp_tool",
+            headers=headers,
+            json=payload,
+            timeout=60  # Increased timeout for image generation
+        )
+        response.raise_for_status()
+        response_data = response.json()
+        if response_data.get("error"):
+            raise Exception(f"Error calling internal tool '{tool_name}': {response_data['error']}")
+        
+        tool_result_str = response_data.get("result", "")
+        # Assuming the 'generate_image_with_prompts' tool's result might be a JSON string
+        # or a direct string. If it's a JSON string, it needs to be parsed.
+        # For now, let's assume it might be a JSON string as per general MCP tool behavior.
+        # If the tool specifically returns a direct URL *not* wrapped in JSON,
+        # then this json.loads would fail if tool_result_str is not valid JSON.
+        # However, the original prompt for _call_mcp_tool stated:
+        # "The result from generate_image_with_prompts is a string, which is the URL to the image.
+        # It's not a JSON string that needs json.loads(), it's just the URL itself."
+        # Reverting to previous behavior of returning tool_result_str directly for this specific case,
+        # but this might need adjustment based on the actual tool's output schema.
+        # For the purpose of this task, we'll stick to the original logic for `_call_mcp_tool` result handling.
+        # The user request is about arguments, not result parsing.
+        return tool_result_str
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Request to tool '{tool_name}' failed: {e}")
+    except json.JSONDecodeError as e:
+        # This error would occur if tool_result_str is not empty and not valid JSON.
+        raise Exception(f"Failed to parse JSON response from tool '{tool_name}': {e}")
+    except Exception as e:
+        raise Exception(f"An unexpected error occurred during tool call '{tool_name}': {e}")
+
+async def generated_function_name(user_id: str):
+    """
+    Creates 10 images of different animals using the 'generate_image_with_prompts' tool.
+    The image generation requests are made concurrently.
+    """
+    animal_prompts_single = [
+        "A majestic lion in the savanna",
+        "A playful dolphin jumping out of the ocean",
+        "A graceful deer in a forest",
+        "A colorful parrot on a branch",
+        "A wise old owl in the moonlight",
+        "A cute baby elephant playing in water",
+        "A fast cheetah running across the plains",
+        "A cuddly panda eating bamboo",
+        "A fierce tiger in a jungle",
+        "A small, fluffy rabbit in a field of flowers"
+    ]
+
+    tasks = []
+    for prompt_text in animal_prompts_single:
+        arguments = {
+            "prompts": [prompt_text],  # Pass prompt as a list
+            "user_number": user_id     # Pass user_id as user_number
+        }
+        tasks.append(
+            _call_mcp_tool(user_id, "generate_image_with_prompts", arguments)
+        )
+
+    print(f"Attempting to generate {len(tasks)} animal images concurrently for user {user_id}...")
+    
+    # Use asyncio.gather to run all image generation tasks concurrently
+    image_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    successful_images = []
+    errors = []
+    for i, result in enumerate(image_results):
+        current_prompt = animal_prompts_single[i]
+        if isinstance(result, Exception):
+            print(f"Error generating image for prompt '{current_prompt}': {result}")
+            errors.append({"prompt": current_prompt, "error": str(result)})
+        else:
+            # If the tool 'generate_image_with_prompts' returns a list of URLs (one for each prompt),
+            # and we are sending one prompt at a time, the result should be a list with one URL.
+            # Or, if it returns a single URL directly, that's also fine.
+            # The current _call_mcp_tool returns the "result" field directly.
+            # Assuming 'result' contains the image URL or a list of URLs.
+            # If `result` is a list (e.g., ["url1"]), we'd take result[0].
+            # If `result` is a single URL string, we use it directly.
+            # Let's assume `result` is the direct image URL for a single prompt, as per original `_call_mcp_tool`'s comment.
+            image_url = result 
+            # If the tool `generate_image_with_prompts` when given `{"prompts": ["one_prompt"]}`
+            # returns a JSON string like `{"image_urls": ["url1"]}`, then _call_mcp_tool
+            # would need to json.loads() it, and then here we'd access `result['image_urls'][0]`.
+            # However, the _call_mcp_tool is written to return the raw 'result' string.
+            # Let's adjust based on the assumption that if "prompts" is a list, the tool might return a list of results.
+            # The original comment in _call_mcp_tool said "The result from generate_image_with_prompts is a string, which is the URL to the image."
+            # If sending `{"prompts": [prompt_text]}` still results in a single URL string, then current logic is fine.
+            # If it results in a JSON string like '["url"]', then `_call_mcp_tool` should parse it.
+            # For now, we trust `_call_mcp_tool` returns what's expected (a single URL string in this case).
+
+            print(f"Successfully generated image for prompt '{current_prompt}': {image_url}")
+            successful_images.append({"prompt": current_prompt, "image_url": image_url})
+
+
+    return {
+        "successful_images": successful_images,
+        "failed_images": errors,
+        "total_requested": len(animal_prompts_single),
+        "total_successful": len(successful_images)
+    }
+```

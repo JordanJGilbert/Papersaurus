@@ -1,0 +1,225 @@
+--- Original code provided to LLM for regeneration ---
+python
+import os
+import json
+import requests
+import asyncio
+
+async def generated_function_name(user_id: str):
+    """
+    Generates 10 images of different animals using the 'generate_images_with_prompts' tool.
+
+    Args:
+        user_id (str): The unique identifier for the user, used for context
+                       in internal tool calls.
+
+    Returns:
+        dict: A dictionary containing the status of the image generation,
+              a message, and a list of generated image URLs if successful.
+              Example:
+              {
+                  "status": "success",
+                  "message": "Images generated successfully.",
+                  "image_urls": [["url1"], ["url2"], ..., ["url10"]]
+              }
+              If an error occurs:
+              {
+                  "status": "error",
+                  "message": "Error description."
+              }
+    """
+    prompts = [
+        "A majestic lion in the savanna, golden hour, realistic",
+        "A playful dolphin jumping out of the ocean at sunset, vibrant colors",
+        "A wise old owl perched on a moonlit branch, detailed feathers, mystical atmosphere",
+        "A sleek black panther moving silently through a dense jungle, high contrast, nocturnal",
+        "A colorful parrot flying through a rainforest, vivid plumage, motion blur",
+        "A curious red fox in a snowy forest, soft light, winter wonderland",
+        "A giant panda eating bamboo, close-up, serene expression",
+        "A cute baby elephant walking with its mother, dusty plains, heartwarming scene",
+        "A graceful swan on a calm lake, reflective water, elegant pose",
+        "A speedy cheetah chasing its prey across open plains, dynamic action, blurred background"
+    ]
+
+    mcp_api_key = os.getenv("MCP_INTERNAL_API_KEY")
+    if not mcp_api_key:
+        raise ValueError("MCP_INTERNAL_API_KEY not found in environment variables")
+
+    headers = {"X-Internal-API-Key": mcp_api_key, "Content-Type": "application/json"}
+    payload = {
+        "tool_name": "generate_images_with_prompts",
+        "arguments": {
+            "user_number": user_id,
+            "prompts": prompts
+        },
+        "user_id_context": user_id
+    }
+
+    try:
+        # Use asyncio.to_thread to run the synchronous requests.post call in a separate thread,
+        # preventing blocking of the event loop.
+        response = await asyncio.to_thread(
+            requests.post,
+            "http://localhost:5001/internal/call_mcp_tool",
+            headers=headers,
+            json=payload,
+            timeout=180  # Increased timeout for potentially long image generation tasks (3 minutes)
+        )
+        response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+        response_data = response.json()
+
+        if response_data.get("error"):
+            # If the tool call itself returned an error
+            raise Exception(f"Error from internal tool 'generate_images_with_prompts': {response_data['error']}")
+
+        tool_result_str = response_data.get("result", "")
+        if not tool_result_str:
+            # If the tool returned no result string
+            return {"status": "error", "message": "No result found from image generation tool."}
+
+        actual_tool_result = json.loads(tool_result_str)
+        print(f"Tool call result: {actual_tool_result}")
+
+        # The output_schema for generate_images_with_prompts has a 'results' field
+        # which is an array of arrays of strings (image URLs).
+        if actual_tool_result.get("status") == "success":
+            return {
+                "status": "success",
+                "message": actual_tool_result.get("message", "Images generated successfully."),
+                "image_urls": actual_tool_result.get("results", [])
+            }
+        else:
+            # If the tool executed but reported an internal error (e.g., failed to generate some images)
+            return {
+                "status": "error",
+                "message": actual_tool_result.get("message", "Failed to generate images."),
+                "image_urls": [] # Return empty list on error
+            }
+
+    except requests.exceptions.Timeout:
+        return {"status": "error", "message": "Request to image generation tool timed out after 180 seconds."}
+    except requests.exceptions.RequestException as e:
+        # Catch any network-related or HTTP errors
+        return {"status": "error", "message": f"Network or HTTP error during image generation: {e}"}
+    except json.JSONDecodeError as e:
+        # Catch errors during JSON parsing of the response
+        return {"status": "error", "message": f"Failed to parse JSON response from image generation tool: {e}"}
+    except Exception as e:
+        # Catch any other unexpected errors
+        return {"status": "error", "message": f"An unexpected error occurred: {e}"}
+--- End of original code ---
+
+--- Edit request: ---
+Remove the leading "python\n" line from the beginning of the code if it exists. Ensure the code starts directly with import statements or the function definition.
+---
+
+--- Full LLM response (regenerated code attempt): ---
+```temp.py
+import os
+import json
+import requests
+import asyncio
+
+async def generated_function_name(user_id: str):
+    """
+    Generates 10 images of different animals using the 'generate_images_with_prompts' tool.
+
+    Args:
+        user_id (str): The unique identifier for the user, used for context
+                       in internal tool calls.
+
+    Returns:
+        dict: A dictionary containing the status of the image generation,
+              a message, and a list of generated image URLs if successful.
+              Example:
+              {
+                  "status": "success",
+                  "message": "Images generated successfully.",
+                  "image_urls": [["url1"], ["url2"], ..., ["url10"]]
+              }
+              If an error occurs:
+              {
+                  "status": "error",
+                  "message": "Error description."
+              }
+    """
+    prompts = [
+        "A majestic lion in the savanna, golden hour, realistic",
+        "A playful dolphin jumping out of the ocean at sunset, vibrant colors",
+        "A wise old owl perched on a moonlit branch, detailed feathers, mystical atmosphere",
+        "A sleek black panther moving silently through a dense jungle, high contrast, nocturnal",
+        "A colorful parrot flying through a rainforest, vivid plumage, motion blur",
+        "A curious red fox in a snowy forest, soft light, winter wonderland",
+        "A giant panda eating bamboo, close-up, serene expression",
+        "A cute baby elephant walking with its mother, dusty plains, heartwarming scene",
+        "A graceful swan on a calm lake, reflective water, elegant pose",
+        "A speedy cheetah chasing its prey across open plains, dynamic action, blurred background"
+    ]
+
+    mcp_api_key = os.getenv("MCP_INTERNAL_API_KEY")
+    if not mcp_api_key:
+        raise ValueError("MCP_INTERNAL_API_KEY not found in environment variables")
+
+    headers = {"X-Internal-API-Key": mcp_api_key, "Content-Type": "application/json"}
+    payload = {
+        "tool_name": "generate_images_with_prompts",
+        "arguments": {
+            "user_number": user_id,
+            "prompts": prompts
+        },
+        "user_id_context": user_id
+    }
+
+    try:
+        # Use asyncio.to_thread to run the synchronous requests.post call in a separate thread,
+        # preventing blocking of the event loop.
+        response = await asyncio.to_thread(
+            requests.post,
+            "http://localhost:5001/internal/call_mcp_tool",
+            headers=headers,
+            json=payload,
+            timeout=180  # Increased timeout for potentially long image generation tasks (3 minutes)
+        )
+        response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+        response_data = response.json()
+
+        if response_data.get("error"):
+            # If the tool call itself returned an error
+            raise Exception(f"Error from internal tool 'generate_images_with_prompts': {response_data['error']}")
+
+        tool_result_str = response_data.get("result", "")
+        if not tool_result_str:
+            # If the tool returned no result string
+            return {"status": "error", "message": "No result found from image generation tool."}
+
+        actual_tool_result = json.loads(tool_result_str)
+        print(f"Tool call result: {actual_tool_result}")
+
+        # The output_schema for generate_images_with_prompts has a 'results' field
+        # which is an array of arrays of strings (image URLs).
+        if actual_tool_result.get("status") == "success":
+            return {
+                "status": "success",
+                "message": actual_tool_result.get("message", "Images generated successfully."),
+                "image_urls": actual_tool_result.get("results", [])
+            }
+        else:
+            # If the tool executed but reported an internal error (e.g., failed to generate some images)
+            return {
+                "status": "error",
+                "message": actual_tool_result.get("message", "Failed to generate images."),
+                "image_urls": [] # Return empty list on error
+            }
+
+    except requests.exceptions.Timeout:
+        return {"status": "error", "message": "Request to image generation tool timed out after 180 seconds."}
+    except requests.exceptions.RequestException as e:
+        # Catch any network-related or HTTP errors
+        return {"status": "error", "message": f"Network or HTTP error during image generation: {e}"}
+    except json.JSONDecodeError as e:
+        # Catch errors during JSON parsing of the response
+        return {"status": "error", "message": f"Failed to parse JSON response from image generation tool: {e}"}
+    except Exception as e:
+        # Catch any other unexpected errors
+        return {"status": "error", "message": f"An unexpected error occurred: {e}"}
+```

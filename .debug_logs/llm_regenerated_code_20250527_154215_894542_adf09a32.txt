@@ -1,0 +1,183 @@
+--- Original code provided to LLM for regeneration ---
+python
+import requests
+import json
+
+def generated_function_name(user_number: str):
+    """
+    Generates 15 images of different animals using the generate_images_with_prompts tool.
+
+    Args:
+        user_number (str): The user's unique identifier.
+
+    Returns:
+        dict: The result from the generate_images_with_prompts tool, 
+              or an error dictionary if the request fails.
+    """
+    animal_names = [
+        'lion', 'tiger', 'elephant', 'zebra', 'giraffe', 'panda', 'koala',
+        'kangaroo', 'penguin', 'dolphin', 'shark', 'eagle', 'owl', 'wolf', 'fox'
+    ]
+
+    prompts = [
+        f"A photorealistic image of a majestic {animal_name} in its natural habitat."
+        for animal_name in animal_names
+    ]
+
+    # Define the schema for the expected response from the generate_images_with_prompts tool
+    response_schema = {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+            "results": {
+                "type": "array",
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "format": "url"
+                    }
+                }
+            },
+            "message": {
+                "type": "string"
+            },
+            "status": {
+                "type": "string",
+                "enum": ["success", "error"]
+            }
+        }
+    }
+
+    # Construct the natural language query string for the tool invocation
+    # The prompts list needs to be serialized to a JSON string for inclusion in the query text
+    prompts_str = json.dumps(prompts)
+    query_text = (
+        f"Please use the 'generate_images_with_prompts' tool with the following parameters: "
+        f"prompts={prompts_str} and user_number='{user_number}'."
+    )
+
+    payload = {
+        'query': query_text,
+        'final_response_json_schema': response_schema
+    }
+
+    try:
+        # Make the HTTP POST request to the /query endpoint
+        response = requests.post('http://localhost:5000/query', json=payload, timeout=120)
+        response.raise_for_status()  # Raise an exception for HTTP errors (4xx or 5xx)
+        data = response.json()
+
+        if data.get('error'):
+            # If the query endpoint returns an error, propagate it
+            return {"status": "error", "message": data['error']}
+        else:
+            # The actual result from the tool is returned as a JSON string in 'data['result']'
+            # It needs to be parsed back into a Python dictionary/list
+            tool_result = json.loads(data['result'])
+            return tool_result
+
+    except requests.exceptions.RequestException as e:
+        # Handle network-related errors (e.g., connection refused, timeout)
+        return {"status": "error", "message": f"Network or request error: {e}"}
+    except json.JSONDecodeError as e:
+        # Handle errors if the response content is not valid JSON
+        return {"status": "error", "message": f"JSON decoding error: {e}, Response content: {response.text}"}
+    except Exception as e:
+        # Catch any other unexpected errors
+        return {"status": "error", "message": f"An unexpected error occurred: {e}"}
+--- End of original code ---
+
+--- Edit request: ---
+Remove the first line if it is just the word "python". The rest of the code should remain unchanged.
+---
+
+--- Full LLM response (regenerated code attempt): ---
+```temp.py
+import requests
+import json
+
+def generated_function_name(user_number: str):
+    """
+    Generates 15 images of different animals using the generate_images_with_prompts tool.
+
+    Args:
+        user_number (str): The user's unique identifier.
+
+    Returns:
+        dict: The result from the generate_images_with_prompts tool, 
+              or an error dictionary if the request fails.
+    """
+    animal_names = [
+        'lion', 'tiger', 'elephant', 'zebra', 'giraffe', 'panda', 'koala',
+        'kangaroo', 'penguin', 'dolphin', 'shark', 'eagle', 'owl', 'wolf', 'fox'
+    ]
+
+    prompts = [
+        f"A photorealistic image of a majestic {animal_name} in its natural habitat."
+        for animal_name in animal_names
+    ]
+
+    # Define the schema for the expected response from the generate_images_with_prompts tool
+    response_schema = {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+            "results": {
+                "type": "array",
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "format": "url"
+                    }
+                }
+            },
+            "message": {
+                "type": "string"
+            },
+            "status": {
+                "type": "string",
+                "enum": ["success", "error"]
+            }
+        }
+    }
+
+    # Construct the natural language query string for the tool invocation
+    # The prompts list needs to be serialized to a JSON string for inclusion in the query text
+    prompts_str = json.dumps(prompts)
+    query_text = (
+        f"Please use the 'generate_images_with_prompts' tool with the following parameters: "
+        f"prompts={prompts_str} and user_number='{user_number}'."
+    )
+
+    payload = {
+        'query': query_text,
+        'final_response_json_schema': response_schema
+    }
+
+    try:
+        # Make the HTTP POST request to the /query endpoint
+        response = requests.post('http://localhost:5000/query', json=payload, timeout=120)
+        response.raise_for_status()  # Raise an exception for HTTP errors (4xx or 5xx)
+        data = response.json()
+
+        if data.get('error'):
+            # If the query endpoint returns an error, propagate it
+            return {"status": "error", "message": data['error']}
+        else:
+            # The actual result from the tool is returned as a JSON string in 'data['result']'
+            # It needs to be parsed back into a Python dictionary/list
+            tool_result = json.loads(data['result'])
+            return tool_result
+
+    except requests.exceptions.RequestException as e:
+        # Handle network-related errors (e.g., connection refused, timeout)
+        return {"status": "error", "message": f"Network or request error: {e}"}
+    except json.JSONDecodeError as e:
+        # Handle errors if the response content is not valid JSON
+        return {"status": "error", "message": f"JSON decoding error: {e}, Response content: {response.text}"}
+    except Exception as e:
+        # Catch any other unexpected errors
+        return {"status": "error", "message": f"An unexpected error occurred: {e}"}
+```

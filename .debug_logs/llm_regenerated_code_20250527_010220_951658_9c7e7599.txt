@@ -1,0 +1,488 @@
+--- Original code provided to LLM for regeneration ---
+import requests
+import json
+import os
+
+def call_mcp_tool(
+    tool_name: str,
+    tool_arguments: dict,
+    expected_response_schema: dict,
+    mcp_query_url: str,
+    user_number: str
+) -> dict:
+    """
+    Helper function to call an AST tool via the http://localhost:5000/query endpoint.
+
+    Args:
+        tool_name: The name of the AST tool to call (e.g., 'generate_images_with_prompts').
+        tool_arguments: A dictionary of arguments for the specific tool.
+        expected_response_schema: The JSON schema for the expected *result* from the /query endpoint,
+                                  which should be the output of the tool.
+        mcp_query_url: The URL of the query endpoint.
+        user_number: The user's unique identifier.
+
+    Returns:
+        A dictionary containing 'status' ('success' or 'error') and 'data' (if success) or 'error' message (if error).
+    """
+    # Construct the natural language query string for the /query endpoint.
+    # This string tells the system which tool to use and its arguments.
+    query_instruction = f"Please use the '{tool_name}' tool. Its arguments are: {json.dumps(tool_arguments)}"
+
+    payload = {
+        'query': query_instruction,
+        'final_response_json_schema': expected_response_schema,
+        'model': 'gemini-2.5-flash-preview-05-20',
+        'sender': 'generated_function_name',
+        'stream': False
+    }
+
+    print(f"DEBUG: Calling MCP tool: {tool_name}")
+    # print(f"DEBUG: Payload: {json.dumps(payload, indent=2)}") # Uncomment for detailed payload debugging
+
+    try:
+        response = requests.post(mcp_query_url, json=payload, timeout=90) # Increased timeout for image/PDF generation
+        response.raise_for_status()  # Raise an exception for HTTP errors (4xx or 5xx)
+
+        response_data = response.json()
+        # print(f"DEBUG: Raw Response from MCP: {json.dumps(response_data, indent=2)}") # Uncomment for raw response debugging
+
+        if response_data.get('error'):
+            return {"status": "error", "error": f"Error from query endpoint: {response_data['error']}"}
+        elif 'result' in response_data:
+            try:
+                # The 'result' field contains a JSON string that matches the expected_response_schema
+                structured_result = json.loads(response_data['result'])
+                return {"status": "success", "data": structured_result}
+            except json.JSONDecodeError:
+                return {"status": "error", "error": f"Failed to parse JSON string in 'result' field: {response_data.get('result', 'N/A')}"}
+        else:
+            return {"status": "error", "error": f"Unexpected response structure from query endpoint: No 'result' or 'error' field. Response: {response_data}"}
+
+    except requests.exceptions.Timeout:
+        return {"status": "error", "error": f"Request to {mcp_query_url} timed out after 90 seconds."}
+    except requests.exceptions.ConnectionError as e:
+        return {"status": "error", "error": f"Connection error when calling {mcp_query_url}: {e}"}
+    except requests.exceptions.RequestException as e:
+        return {"status": "error", "error": f"HTTP Request failed for {mcp_query_url}: {e}"}
+    except Exception as e:
+        return {"status": "error", "error": f"An unexpected error occurred in call_mcp_tool: {e}"}
+
+
+def generated_function_name(num_images: int, theme: str = 'animals') -> str:
+    """
+    Generates a coloring book PDF based on a specified number of images and a theme.
+    It first generates line art images and then compiles them into a PDF document.
+
+    Args:
+        num_images: The number of images to generate for the coloring book (1 to 10).
+        theme: The theme for the coloring book images (e.g., 'animals', 'cars', 'fantasy creatures').
+
+    Returns:
+        The URL of the generated PDF document, or an error message string if any step fails.
+    """
+    if not (1 <= num_images <= 10):
+        return "Error: num_images must be an integer between 1 and 10."
+
+    mcp_query_url = os.getenv('MCP_QUERY_URL', 'http://localhost:5000/query')
+    user_number = os.getenv('USER_NUMBER', 'test_user_123')
+
+    # 1. Construct prompts for image generation
+    image_prompts = []
+    for i in range(num_images):
+        image_prompts.append(
+            f"Simple black and white line art of a cute {theme} character, no shading, clean lines, "
+            f"coloring book style. Perfect for children's coloring book, page {i+1}."
+        )
+
+    # Define the expected JSON schema for the 'generate_images_with_prompts' tool's output
+    generate_images_schema = {
+        "type": "object",
+        "properties": {
+            "status": {"type": "string", "description": "Status of the image generation operation"},
+            "results": {
+                "type": "array",
+                "description": "A list of lists, where each inner list contains URLs for the generated image(s) for a prompt.",
+                "items": {
+                    "type": "array",
+                    "items": {"type": "string", "format": "uri", "description": "URL of a generated image"}
+                }
+            }
+        },
+        "required": ["status", "results"]
+    }
+
+    # 2. Call generate_images_with_prompts tool
+    print(f"Attempting to generate {num_images} images for '{theme}' theme...")
+    image_gen_args = {
+        "prompts": image_prompts,
+        "user_number": user_number
+    }
+    image_gen_response = call_mcp_tool(
+        tool_name="generate_images_with_prompts",
+        tool_arguments=image_gen_args,
+        expected_response_schema=generate_images_schema,
+        mcp_query_url=mcp_query_url,
+        user_number=user_number
+    )
+
+    if image_gen_response["status"] == "error":
+        return f"Error during image generation: {image_gen_response['error']}"
+
+    generated_results = image_gen_response["data"].get("results")
+    if not generated_results:
+        return "Error: Image generation succeeded but returned no 'results' data."
+
+    # Flatten the list of lists to get a single list of URLs
+    image_urls = [url[0] for url in generated_results if url and len(url) > 0]
+
+    if len(image_urls) != num_images:
+        return (f"Error: Expected to generate {num_images} images but received {len(image_urls)}. "
+                f"Generated URLs: {image_urls}")
+
+    print(f"Successfully generated {len(image_urls)} image URLs.")
+
+    # Define the expected JSON schema for the 'create_pdf_document' tool's output
+    create_pdf_schema = {
+        "type": "object",
+        "properties": {
+            "status": {"type": "string", "description": "Status of the PDF creation operation"},
+            "message": {"type": "string", "description": "A descriptive message about the PDF creation"},
+            "url": {"type": "string", "format": "uri", "description": "The URL of the created PDF document"},
+            "html_content": {"type": "string", "description": "The HTML content used to generate the PDF"}
+        },
+        "required": ["status", "message", "url"]
+    }
+
+    # 3. Call create_pdf_document tool
+    doc_name = f"{theme.replace(' ', '_')}_coloring_book_{num_images}_pages" # Replace spaces for cleaner filename
+    user_request_text = (
+        f"Create a coloring book with {num_images} pages, featuring simple line art "
+        f"images of {theme} for coloring. Each image should be on a new page, full-page size, "
+        f"and clearly visible for coloring."
+    )
+    additional_context_text = (
+        f"This is a request to create a PDF coloring book. It should contain {num_images} pages, "
+        f"each with a black and white line art image of the '{theme}' theme. "
+        f"Ensure images are large, centered, and suitable for printing and coloring by children. "
+        f"No text, just the images for coloring."
+    )
+
+    pdf_creation_args = {
+        "doc_name": doc_name,
+        "user_request": user_request_text,
+        "attachments": image_urls,
+        "user_number": user_number,
+        "model": "gemini-2.5-flash-preview-05-20",
+        "additional_context": additional_context_text
+    }
+
+    print(f"Attempting to create PDF document '{doc_name}.pdf'...")
+    pdf_creation_response = call_mcp_tool(
+        tool_name="create_pdf_document",
+        tool_arguments=pdf_creation_args,
+        expected_response_schema=create_pdf_schema,
+        mcp_query_url=mcp_query_url,
+        user_number=user_number
+    )
+
+    if pdf_creation_response["status"] == "error":
+        return f"Error during PDF document creation: {pdf_creation_response['error']}"
+
+    pdf_url = pdf_creation_response["data"].get("url")
+    if not pdf_url:
+        return "Error: PDF creation succeeded but returned no 'url' for the document."
+
+    print(f"Successfully created coloring book PDF: {pdf_url}")
+    return pdf_url
+--- End of original code ---
+
+--- Edit request: ---
+Modify the Python function `generated_function_name` to include an image quality control (QC) step.
+
+After successfully generating images with `generate_images_with_prompts` and obtaining their URLs, and before creating the PDF:
+1.  Call the `analyze_images` AST. tool using the `call_mcp_tool` helper function.
+    *   The `urls` argument will be the list of image URLs from the previous step.
+    *   The `analysis_prompt` should be: "Is this image a black and white line art drawing suitable for a coloring book? It MUST have no colors, no colored backgrounds, minimal or no shading, and clear outlines. Respond with only 'YES' if suitable, or 'NO - [brief reason]' if not. Example reasons: 'NO - contains color', 'NO - too much shading', 'NO - not line art'."
+    *   Define an appropriate `expected_response_schema` for `analyze_images` for the `call_mcp_tool` function.
+2.  Process the results from `analyze_images`:
+    *   Create a new list called `suitable_image_urls`.
+    *   Iterate through the analysis results for each image. If an image's analysis text starts with 'YES' (case-insensitive check after stripping whitespace), add its URL to `suitable_image_urls`.
+3.  Error Handling & PDF Creation:
+    *   If `suitable_image_urls` is empty after QC (meaning no images passed), the function should print a message and return an error string like "Error: No suitable images passed quality control for theme '{theme}'."
+    *   The subsequent call to `create_pdf_document` should use this `suitable_image_urls` list for its `attachments`.
+    *   The `doc_name` for `create_pdf_document` should be updated to reflect the QC and the actual number of suitable images, e.g., f"{theme.replace(' ', '_')}_coloring_book_{len(suitable_image_urls)}_pages_qc".
+    *   The `user_request` and `additional_context` for `create_pdf_document` should also be updated to mention that these are quality-controlled images and state the number of images being included.
+    *   Ensure the `model` argument for `create_pdf_document` remains 'gemini-2.5-flash-preview-05-20'.
+
+General instructions:
+*   Ensure all new calls to `call_mcp_tool` for `analyze_images` are correctly set up with arguments, schema, etc.
+*   Maintain error handling for all tool calls.
+*   The function should still return the PDF URL on success or an error message string on failure.
+---
+
+--- Full LLM response (regenerated code attempt): ---
+```temp.py
+import requests
+import json
+import os
+
+def call_mcp_tool(
+    tool_name: str,
+    tool_arguments: dict,
+    expected_response_schema: dict,
+    mcp_query_url: str,
+    user_number: str
+) -> dict:
+    """
+    Helper function to call an AST tool via the http://localhost:5000/query endpoint.
+
+    Args:
+        tool_name: The name of the AST tool to call (e.g., 'generate_images_with_prompts').
+        tool_arguments: A dictionary of arguments for the specific tool.
+        expected_response_schema: The JSON schema for the expected *result* from the /query endpoint,
+                                  which should be the output of the tool.
+        mcp_query_url: The URL of the query endpoint.
+        user_number: The user's unique identifier.
+
+    Returns:
+        A dictionary containing 'status' ('success' or 'error') and 'data' (if success) or 'error' message (if error).
+    """
+    # Construct the natural language query string for the /query endpoint.
+    # This string tells the system which tool to use and its arguments.
+    query_instruction = f"Please use the '{tool_name}' tool. Its arguments are: {json.dumps(tool_arguments)}"
+
+    payload = {
+        'query': query_instruction,
+        'final_response_json_schema': expected_response_schema,
+        'model': 'gemini-2.5-flash-preview-05-20',
+        'sender': 'generated_function_name',
+        'stream': False
+    }
+
+    print(f"DEBUG: Calling MCP tool: {tool_name}")
+    # print(f"DEBUG: Payload: {json.dumps(payload, indent=2)}") # Uncomment for detailed payload debugging
+
+    try:
+        response = requests.post(mcp_query_url, json=payload, timeout=90) # Increased timeout for image/PDF generation
+        response.raise_for_status()  # Raise an exception for HTTP errors (4xx or 5xx)
+
+        response_data = response.json()
+        # print(f"DEBUG: Raw Response from MCP: {json.dumps(response_data, indent=2)}") # Uncomment for raw response debugging
+
+        if response_data.get('error'):
+            return {"status": "error", "error": f"Error from query endpoint: {response_data['error']}"}
+        elif 'result' in response_data:
+            try:
+                # The 'result' field contains a JSON string that matches the expected_response_schema
+                structured_result = json.loads(response_data['result'])
+                return {"status": "success", "data": structured_result}
+            except json.JSONDecodeError:
+                return {"status": "error", "error": f"Failed to parse JSON string in 'result' field: {response_data.get('result', 'N/A')}"}
+        else:
+            return {"status": "error", "error": f"Unexpected response structure from query endpoint: No 'result' or 'error' field. Response: {response_data}"}
+
+    except requests.exceptions.Timeout:
+        return {"status": "error", "error": f"Request to {mcp_query_url} timed out after 90 seconds."}
+    except requests.exceptions.ConnectionError as e:
+        return {"status": "error", "error": f"Connection error when calling {mcp_query_url}: {e}"}
+    except requests.exceptions.RequestException as e:
+        return {"status": "error", "error": f"HTTP Request failed for {mcp_query_url}: {e}"}
+    except Exception as e:
+        return {"status": "error", "error": f"An unexpected error occurred in call_mcp_tool: {e}"}
+
+
+def generated_function_name(num_images: int, theme: str = 'animals') -> str:
+    """
+    Generates a coloring book PDF based on a specified number of images and a theme.
+    It first generates line art images, performs quality control, and then compiles
+    suitable images into a PDF document.
+
+    Args:
+        num_images: The number of images to generate for the coloring book (1 to 10).
+        theme: The theme for the coloring book images (e.g., 'animals', 'cars', 'fantasy creatures').
+
+    Returns:
+        The URL of the generated PDF document, or an error message string if any step fails.
+    """
+    if not (1 <= num_images <= 10):
+        return "Error: num_images must be an integer between 1 and 10."
+
+    mcp_query_url = os.getenv('MCP_QUERY_URL', 'http://localhost:5000/query')
+    user_number = os.getenv('USER_NUMBER', 'test_user_123')
+
+    # 1. Construct prompts for image generation
+    image_prompts = []
+    for i in range(num_images):
+        image_prompts.append(
+            f"Simple black and white line art of a cute {theme} character, no shading, clean lines, "
+            f"coloring book style. Perfect for children's coloring book, page {i+1}."
+        )
+
+    # Define the expected JSON schema for the 'generate_images_with_prompts' tool's output
+    generate_images_schema = {
+        "type": "object",
+        "properties": {
+            "status": {"type": "string", "description": "Status of the image generation operation"},
+            "results": {
+                "type": "array",
+                "description": "A list of lists, where each inner list contains URLs for the generated image(s) for a prompt.",
+                "items": {
+                    "type": "array",
+                    "items": {"type": "string", "format": "uri", "description": "URL of a generated image"}
+                }
+            }
+        },
+        "required": ["status", "results"]
+    }
+
+    # 2. Call generate_images_with_prompts tool
+    print(f"Attempting to generate {num_images} images for '{theme}' theme...")
+    image_gen_args = {
+        "prompts": image_prompts,
+        "user_number": user_number
+    }
+    image_gen_response = call_mcp_tool(
+        tool_name="generate_images_with_prompts",
+        tool_arguments=image_gen_args,
+        expected_response_schema=generate_images_schema,
+        mcp_query_url=mcp_query_url,
+        user_number=user_number
+    )
+
+    if image_gen_response["status"] == "error":
+        return f"Error during image generation: {image_gen_response['error']}"
+
+    generated_results = image_gen_response["data"].get("results")
+    if not generated_results:
+        return "Error: Image generation succeeded but returned no 'results' data."
+
+    # Flatten the list of lists to get a single list of URLs
+    image_urls = [url[0] for url in generated_results if url and len(url) > 0]
+
+    if len(image_urls) != num_images:
+        return (f"Error: Expected to generate {num_images} images but received {len(image_urls)}. "
+                f"Generated URLs: {image_urls}")
+
+    print(f"Successfully generated {len(image_urls)} image URLs.")
+
+    # 3. Perform Image Quality Control (QC) using analyze_images tool
+    print(f"Performing quality control on {len(image_urls)} generated images...")
+
+    # Define the expected JSON schema for the 'analyze_images' tool's output
+    analyze_images_schema = {
+        "type": "object",
+        "properties": {
+            "status": {"type": "string"},
+            "results": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "status": {"type": "string"},
+                        "analysis": {"type": "string"},
+                        "url": {"type": "string", "format": "uri"},
+                        "message": {"type": "string"}
+                    },
+                    "required": ["status", "analysis", "url"]
+                }
+            }
+        },
+        "required": ["status", "results"]
+    }
+
+    analysis_prompt = (
+        "Is this image a black and white line art drawing suitable for a coloring book? "
+        "It MUST have no colors, no colored backgrounds, minimal or no shading, and clear outlines. "
+        "Respond with only 'YES' if suitable, or 'NO - [brief reason]' if not. "
+        "Example reasons: 'NO - contains color', 'NO - too much shading', 'NO - not line art'."
+    )
+
+    image_analysis_args = {
+        "urls": image_urls,
+        "analysis_prompt": analysis_prompt,
+        "user_number": user_number
+    }
+
+    image_analysis_response = call_mcp_tool(
+        tool_name="analyze_images",
+        tool_arguments=image_analysis_args,
+        expected_response_schema=analyze_images_schema,
+        mcp_query_url=mcp_query_url,
+        user_number=user_number
+    )
+
+    if image_analysis_response["status"] == "error":
+        return f"Error during image analysis (QC): {image_analysis_response['error']}"
+
+    analysis_results = image_analysis_response["data"].get("results")
+    if not analysis_results:
+        return "Error: Image analysis succeeded but returned no 'results' data."
+
+    suitable_image_urls = []
+    for result in analysis_results:
+        if result.get("status") == "success" and result.get("analysis", "").strip().lower().startswith("yes"):
+            suitable_image_urls.append(result["url"])
+        else:
+            print(f"DEBUG: Image {result.get('url')} failed QC: {result.get('analysis', 'No analysis provided')}")
+
+    if not suitable_image_urls:
+        return f"Error: No suitable images passed quality control for theme '{theme}'."
+
+    print(f"Successfully identified {len(suitable_image_urls)} suitable images after QC.")
+
+    # Define the expected JSON schema for the 'create_pdf_document' tool's output
+    create_pdf_schema = {
+        "type": "object",
+        "properties": {
+            "status": {"type": "string", "description": "Status of the PDF creation operation"},
+            "message": {"type": "string", "description": "A descriptive message about the PDF creation"},
+            "url": {"type": "string", "format": "uri", "description": "The URL of the created PDF document"},
+            "html_content": {"type": "string", "description": "The HTML content used to generate the PDF"}
+        },
+        "required": ["status", "message", "url"]
+    }
+
+    # 4. Call create_pdf_document tool with QC-passed images
+    doc_name = f"{theme.replace(' ', '_')}_coloring_book_{len(suitable_image_urls)}_pages_qc"
+    user_request_text = (
+        f"Create a coloring book with {len(suitable_image_urls)} quality-controlled pages, "
+        f"featuring simple line art images of {theme} for coloring. Each image should be on a new page, "
+        f"full-page size, and clearly visible for coloring. These images have passed a quality check "
+        f"to ensure they are black and white line art."
+    )
+    additional_context_text = (
+        f"This is a request to create a PDF coloring book. It should contain {len(suitable_image_urls)} pages, "
+        f"each with a black and white line art image of the '{theme}' theme. "
+        f"These images have been quality-controlled to be suitable for coloring books. "
+        f"Ensure images are large, centered, and suitable for printing and coloring by children. "
+        f"No text, just the images for coloring."
+    )
+
+    pdf_creation_args = {
+        "doc_name": doc_name,
+        "user_request": user_request_text,
+        "attachments": suitable_image_urls,  # Use suitable images
+        "user_number": user_number,
+        "model": "gemini-2.5-flash-preview-05-20",
+        "additional_context": additional_context_text
+    }
+
+    print(f"Attempting to create PDF document '{doc_name}.pdf' with {len(suitable_image_urls)} images...")
+    pdf_creation_response = call_mcp_tool(
+        tool_name="create_pdf_document",
+        tool_arguments=pdf_creation_args,
+        expected_response_schema=create_pdf_schema,
+        mcp_query_url=mcp_query_url,
+        user_number=user_number
+    )
+
+    if pdf_creation_response["status"] == "error":
+        return f"Error during PDF document creation: {pdf_creation_response['error']}"
+
+    pdf_url = pdf_creation_response["data"].get("url")
+    if not pdf_url:
+        return "Error: PDF creation succeeded but returned no 'url' for the document."
+
+    print(f"Successfully created coloring book PDF: {pdf_url}")
+    return pdf_url
+```

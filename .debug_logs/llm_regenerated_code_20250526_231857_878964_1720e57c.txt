@@ -1,0 +1,197 @@
+--- Original code provided to LLM for regeneration ---
+# Potentially some module-level imports if they were in the original or are newly required
+
+async def generated_function_name(topic: str, num_images: int, user_number: str):
+    """
+    Generates prompts for coloring book pages, creates images using an MCP tool,
+    and then compiles these images into a PDF coloring book using another MCP tool.
+    This function effectively creates a coloring book PDF based on a given topic.
+
+    Args:
+        topic: The theme of the coloring book (e.g., "dinosaurs", "space").
+        num_images: The number of images/pages to include in the coloring book.
+        user_number: Identifier for the user requesting the generation, passed to MCP tools.
+
+    Returns:
+        The URL of the generated PDF coloring book, or None if creation failed or num_images is not positive.
+    """
+
+    if num_images <= 0:
+        # It's not meaningful to create a coloring book with no pages or a negative number of pages.
+        return None
+
+    # 1. Generate `num_images` prompts for coloring book pages related to the `topic`.
+    prompts = []
+    # A list of varied prompt templates to ensure diverse styling requests for coloring pages.
+    base_prompt_templates = [
+        "Coloring book page of {topic}.", # Generic
+        "Outline drawing of {topic} for coloring.", # Specific style
+        "Simple black and white illustration of {topic}, suitable for a children's coloring book.", # Target audience and style
+        "Easy-to-color line art featuring {topic}.", # Difficulty and style
+        "Child-friendly coloring page showcasing {topic}, with clear bold outlines for easy coloring." # Audience and specific features
+    ]
+
+    for i in range(num_images):
+        # Cycle through the templates for variety.
+        template = base_prompt_templates[i % len(base_prompt_templates)]
+        # Format the template with the given topic.
+        prompt_text = template.format(topic=topic)
+        # Add a unique identifier to each prompt (e.g., "Image 1 of N").
+        # This helps in generating varied images, especially if num_images > len(base_prompt_templates).
+        prompt_text += f" (Image {i+1} of {num_images})"
+        prompts.append(prompt_text)
+
+    # 2. Use the `generate_images_with_prompts` MCP tool to create these images.
+    image_generation_args = {
+        "prompts": prompts,
+        "user_number": user_number
+        # Note: If the image generation tool supports specific parameters for "coloring book style"
+        # (e.g., "line_art_only: true", "style: outline"), those could be added here.
+        # The current implementation relies on the prompts to convey this intent.
+    }
+    
+    # _call_mcp_tool is assumed to be an async function available in the execution environment.
+    image_generation_response = await _call_mcp_tool('generate_images_with_prompts', image_generation_args)
+
+    # 3. Collect the URLs of the generated images.
+    # Assuming the tool's response is a dictionary with an 'image_urls' key,
+    # which holds a list of URL strings.
+    image_urls = image_generation_response.get('image_urls', [])
+
+    if not image_urls:
+        # If no image URLs were returned, it's not possible to create the PDF.
+        # This could be due to an issue with the image generation tool or if it found no images.
+        # In a production system, logging this event would be advisable.
+        return None
+
+    # 4. Use the `create_pdf_document` MCP tool to create a PDF document.
+    
+    # Prepare a document name. Replacing spaces with underscores is a common practice for filenames.
+    # Making it lowercase is also a common convention. User requested "[topic]_coloring_book".
+    sane_topic_for_filename = topic.replace(' ', '_').lower()
+    doc_name = f"{sane_topic_for_filename}_coloring_book"
+
+    # Arguments for the PDF creation tool.
+    pdf_creation_args = {
+        "doc_name": doc_name,
+        "attachments": image_urls, # This must be a list of image URLs.
+        "user_request": f"A coloring book about {topic}", # User-facing request description.
+        "additional_context": ( # More detailed context for the PDF creation process.
+            f"This PDF is intended as a coloring book. It should contain the {len(image_urls)} attached images, "
+            f"formatted one per page, suitable for printing and coloring. The topic is '{topic}'."
+        ),
+        "user_number": user_number, # Forwarding the user identifier.
+        "model": "gemini-2.5-flash-preview-05-20" # Added model parameter
+    }
+    
+    pdf_creation_response = await _call_mcp_tool('create_pdf_document', pdf_creation_args)
+
+    # 5. The function should return the URL of the generated PDF.
+    # Assuming the tool's response is a dictionary with a 'pdf_url' key.
+    pdf_url = pdf_creation_response.get('pdf_url')
+
+    return pdf_url
+--- End of original code ---
+
+--- Edit request: ---
+Correct the image URL extraction. Change `image_urls = image_generation_response.get('image_urls', [])` to `results = image_generation_response.get('results', [])
+image_urls = [item[0] for item in results if isinstance(item, list) and len(item) > 0]` to correctly parse the nested list of URLs returned by `generate_images_with_prompts`.
+---
+
+--- Full LLM response (regenerated code attempt): ---
+```temp.py
+# Potentially some module-level imports if they were in the original or are newly required
+
+async def generated_function_name(topic: str, num_images: int, user_number: str):
+    """
+    Generates prompts for coloring book pages, creates images using an MCP tool,
+    and then compiles these images into a PDF coloring book using another MCP tool.
+    This function effectively creates a coloring book PDF based on a given topic.
+
+    Args:
+        topic: The theme of the coloring book (e.g., "dinosaurs", "space").
+        num_images: The number of images/pages to include in the coloring book.
+        user_number: Identifier for the user requesting the generation, passed to MCP tools.
+
+    Returns:
+        The URL of the generated PDF coloring book, or None if creation failed or num_images is not positive.
+    """
+
+    if num_images <= 0:
+        # It's not meaningful to create a coloring book with no pages or a negative number of pages.
+        return None
+
+    # 1. Generate `num_images` prompts for coloring book pages related to the `topic`.
+    prompts = []
+    # A list of varied prompt templates to ensure diverse styling requests for coloring pages.
+    base_prompt_templates = [
+        "Coloring book page of {topic}.", # Generic
+        "Outline drawing of {topic} for coloring.", # Specific style
+        "Simple black and white illustration of {topic}, suitable for a children's coloring book.", # Target audience and style
+        "Easy-to-color line art featuring {topic}.", # Difficulty and style
+        "Child-friendly coloring page showcasing {topic}, with clear bold outlines for easy coloring." # Audience and specific features
+    ]
+
+    for i in range(num_images):
+        # Cycle through the templates for variety.
+        template = base_prompt_templates[i % len(base_prompt_templates)]
+        # Format the template with the given topic.
+        prompt_text = template.format(topic=topic)
+        # Add a unique identifier to each prompt (e.g., "Image 1 of N").
+        # This helps in generating varied images, especially if num_images > len(base_prompt_templates).
+        prompt_text += f" (Image {i+1} of {num_images})"
+        prompts.append(prompt_text)
+
+    # 2. Use the `generate_images_with_prompts` MCP tool to create these images.
+    image_generation_args = {
+        "prompts": prompts,
+        "user_number": user_number
+        # Note: If the image generation tool supports specific parameters for "coloring book style"
+        # (e.g., "line_art_only: true", "style: outline"), those could be added here.
+        # The current implementation relies on the prompts to convey this intent.
+    }
+    
+    # _call_mcp_tool is assumed to be an async function available in the execution environment.
+    image_generation_response = await _call_mcp_tool('generate_images_with_prompts', image_generation_args)
+
+    # 3. Collect the URLs of the generated images.
+    # The `generate_images_with_prompts` tool returns image URLs in a nested list format like 
+    # `{"results": [["url1"], ["url2"] ...]}`.
+    results = image_generation_response.get('results', [])
+    image_urls = [item[0] for item in results if isinstance(item, list) and len(item) > 0]
+
+
+    if not image_urls:
+        # If no image URLs were returned, it's not possible to create the PDF.
+        # This could be due to an issue with the image generation tool or if it found no images.
+        # In a production system, logging this event would be advisable.
+        return None
+
+    # 4. Use the `create_pdf_document` MCP tool to create a PDF document.
+    
+    # Prepare a document name. Replacing spaces with underscores is a common practice for filenames.
+    # Making it lowercase is also a common convention. User requested "[topic]_coloring_book".
+    sane_topic_for_filename = topic.replace(' ', '_').lower()
+    doc_name = f"{sane_topic_for_filename}_coloring_book"
+
+    # Arguments for the PDF creation tool.
+    pdf_creation_args = {
+        "doc_name": doc_name,
+        "attachments": image_urls, # This must be a list of image URLs.
+        "user_request": f"A coloring book about {topic}", # User-facing request description.
+        "additional_context": ( # More detailed context for the PDF creation process.
+            f"This PDF is intended as a coloring book. It should contain the {len(image_urls)} attached images, "
+            f"formatted one per page, suitable for printing and coloring. The topic is '{topic}'."
+        ),
+        "user_number": user_number, # Forwarding the user identifier.
+        "model": "gemini-2.5-flash-preview-05-20" # Added model parameter
+    }
+    
+    pdf_creation_response = await _call_mcp_tool('create_pdf_document', pdf_creation_args)
+
+    # 5. The function should return the URL of the generated PDF.
+    # Assuming the tool's response is a dictionary with a 'pdf_url' key.
+    pdf_url = pdf_creation_response.get('pdf_url')
+
+    return pdf_url
+```

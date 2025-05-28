@@ -1,0 +1,996 @@
+--- Original code provided to LLM for regeneration ---
+import requests
+import json
+import os
+import asyncio # New import needed for async operations
+
+def call_mcp_tool(
+    tool_name: str,
+    tool_arguments: dict,
+    expected_response_schema: dict,
+    mcp_query_url: str,
+    user_number: str
+) -> dict:
+    """
+    Helper function to call an AST tool via the http://localhost:5000/query endpoint.
+
+    Args:
+        tool_name: The name of the AST tool to call (e.g., 'generate_images_with_prompts').
+        tool_arguments: A dictionary of arguments for the specific tool.
+        expected_response_schema: The JSON schema for the expected *result* from the /query endpoint,
+                                  which should be the output of the tool.
+        mcp_query_url: The URL of the query endpoint.
+        user_number: The user's unique identifier.
+
+    Returns:
+        A dictionary containing 'status' ('success' or 'error') and 'data' (if success) or 'error' message (if error).
+    """
+    # Construct the natural language query string for the /query endpoint.
+    # This string tells the system which tool to use and its arguments.
+    query_instruction = f"Please use the '{tool_name}' tool. Its arguments are: {json.dumps(tool_arguments)}"
+
+    payload = {
+        'query': query_instruction,
+        'final_response_json_schema': expected_response_schema,
+        'model': 'gemini-2.5-flash-preview-05-20',
+        'sender': 'generated_function_name',
+        'stream': False
+    }
+
+    print(f"DEBUG: Calling MCP tool: {tool_name}")
+    # print(f"DEBUG: Payload: {json.dumps(payload, indent=2)}") # Uncomment for detailed payload debugging
+
+    try:
+        response = requests.post(mcp_query_url, json=payload, timeout=90) # Increased timeout for image/PDF generation
+        response.raise_for_status()  # Raise an exception for HTTP errors (4xx or 5xx)
+
+        response_data = response.json()
+        # print(f"DEBUG: Raw Response from MCP: {json.dumps(response_data, indent=2)}") # Uncomment for raw response debugging
+
+        if response_data.get('error'):
+            return {"status": "error", "error": f"Error from query endpoint: {response_data['error']}"}
+        elif 'result' in response_data:
+            try:
+                # The 'result' field contains a JSON string that matches the expected_response_schema
+                structured_result = json.loads(response_data['result'])
+                return {"status": "success", "data": structured_result}
+            except json.JSONDecodeError:
+                return {"status": "error", "error": f"Failed to parse JSON string in 'result' field: {response_data.get('result', 'N/A')}"}
+        else:
+            return {"status": "error", "error": f"Unexpected response structure from query endpoint: No 'result' or 'error' field. Response: {response_data}"}
+
+    except requests.exceptions.Timeout:
+        return {"status": "error", "error": f"Request to {mcp_query_url} timed out after 90 seconds."}
+    except requests.exceptions.ConnectionError as e:
+        return {"status": "error", "error": f"Connection error when calling {mcp_query_url}: {e}"}
+    except requests.exceptions.RequestException as e:
+        return {"status": "error", "error": f"HTTP Request failed for {mcp_query_url}: {e}"}
+    except Exception as e:
+        return {"status": "error", "error": f"An unexpected error occurred in call_mcp_tool: {e}"}
+
+
+async def generate_list_of_strings_via_llm(meta_prompt: str, num_expected_strings: int, theme_for_description: str, mcp_query_url: str, user_number: str) -> list[str] | None:
+    """
+    Generates a list of strings using an LLM via the http://localhost:5000/query endpoint.
+
+    Args:
+        meta_prompt: The natural language prompt for the LLM to generate the strings.
+        num_expected_strings: The number of strings expected in the list.
+        theme_for_description: The theme used for describing the image prompts in the schema.
+        mcp_query_url: The URL of the query endpoint.
+        user_number: The user's unique identifier.
+
+    Returns:
+        A list of generated strings, or None if generation fails or the response is invalid.
+    """
+    llm_response_schema = {
+        "type": "object",
+        "properties": {
+            "image_prompts": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": f"A list of {num_expected_strings} unique image prompts for the theme '{theme_for_description}'."
+            }
+        },
+        "required": ["image_prompts"]
+    }
+
+    payload = {
+        'query': meta_prompt,
+        'final_response_json_schema': llm_response_schema,
+        'model': 'gemini-2.5-pro-preview-05-06', # Capable model for prompt generation
+        'sender': 'generate_list_of_strings_via_llm',
+        'stream': False
+    }
+
+    print(f"DEBUG: Calling LLM for prompt generation with meta_prompt: {meta_prompt[:100]}...")
+
+    try:
+        response = requests.post(mcp_query_url, json=payload, timeout=60)
+        response.raise_for_status()
+
+        response_data = response.json()
+
+        if response_data.get('error'):
+            print(f"Error from LLM query endpoint: {response_data['error']}")
+            return None
+        elif 'result' in response_data:
+            try:
+                structured_result = json.loads(response_data['result'])
+                generated_prompts = structured_result.get('image_prompts')
+
+                if not isinstance(generated_prompts, list):
+                    print(f"Warning: LLM response 'image_prompts' is not a list. Response: {structured_result}")
+                    return None
+                
+                if len(generated_prompts) < num_expected_strings:
+                    print(f"Warning: LLM returned {len(generated_prompts)} prompts, but {num_expected_strings} were expected. This might lead to fewer pages than requested.")
+                
+                return generated_prompts
+            except json.JSONDecodeError:
+                print(f"Error: Failed to parse JSON string from LLM result field: {response_data.get('result', 'N/A')}")
+                return None
+        else:
+            print(f"Error: Unexpected response structure from LLM query endpoint: No 'result' or 'error' field. Response: {response_data}")
+            return None
+
+    except requests.exceptions.Timeout:
+        print(f"Error: Request to {mcp_query_url} for LLM prompt generation timed out after 60 seconds.")
+        return None
+    except requests.exceptions.ConnectionError as e:
+        print(f"Error: Connection error when calling {mcp_query_url} for LLM: {e}")
+        return None
+    except requests.exceptions.RequestException as e:
+        print(f"Error: HTTP Request failed for LLM prompt generation at {mcp_query_url}: {e}")
+        return None
+    except Exception as e:
+        print(f"An unexpected error occurred in generate_list_of_strings_via_llm: {e}")
+        return None
+
+
+async def generated_function_name(num_images: int, theme: str = 'animals', include_text_in_images: bool = False, include_color_title_page: bool = False) -> str:
+    """
+    Generates a coloring book PDF based on a specified number of images and a theme,
+    with options for a color title page and text integrated into coloring images.
+
+    Args:
+        num_images: The number of coloring pages to generate (0 to 50).
+                    If 0, only a title page will be generated if requested.
+        theme: The theme for the coloring book images (e.g., 'animals', 'cars', 'fantasy creatures').
+        include_text_in_images: If True, adds the theme word as line art text into coloring pages.
+        include_color_title_page: If True, attempts to generate and include a color title page.
+
+    Returns:
+        The URL of the generated PDF document, or an error message string if any step fails.
+    """
+    if num_images < 0:
+        return "Error: num_images cannot be negative."
+    if num_images > 50:
+        return "Error: num_images must be an integer between 0 and 50."
+    if num_images == 0 and not include_color_title_page:
+        return "Error: No content requested (num_images is 0 and include_color_title_page is False)."
+
+    mcp_query_url = os.getenv('MCP_QUERY_URL', 'http://localhost:5000/query')
+    user_number = os.getenv('USER_NUMBER', 'test_user_123')
+
+    # Define the expected JSON schema for the 'generate_images_with_prompts' tool's output
+    generate_images_schema = {
+        "type": "object",
+        "properties": {
+            "status": {"type": "string", "description": "Status of the image generation operation"},
+            "results": {
+                "type": "array",
+                "description": "A list of lists, where each inner list contains URLs for the generated image(s) for a prompt.",
+                "items": {
+                    "type": "array",
+                    "items": {"type": "string", "format": "uri", "description": "URL of a generated image"}
+                }
+            }
+        },
+        "required": ["status", "results"]
+    }
+
+    title_page_url = None
+    if include_color_title_page:
+        # 1. Generate Title Page
+        title_page_prompt = (
+            f"Vibrant and colorful title page for a coloring book about '{theme}'. "
+            f"Include the text '{theme.title()} Coloring Book' in a fun, bold font. "
+            f"Kid-friendly illustration style. This is a title page and should be in full color, high quality."
+        )
+        print(f"Attempting to generate color title page for '{theme}' theme...")
+        title_page_gen_args = {
+            "prompts": [title_page_prompt],
+            "user_number": user_number
+        }
+        title_page_gen_response = call_mcp_tool(
+            tool_name="generate_images_with_prompts",
+            tool_arguments=title_page_gen_args,
+            expected_response_schema=generate_images_schema,
+            mcp_query_url=mcp_query_url,
+            user_number=user_number
+        )
+
+        if title_page_gen_response["status"] == "error":
+            print(f"Warning: Failed to generate title page: {title_page_gen_response['error']}")
+            if num_images == 0:
+                return f"Error: Only title page requested, but it failed to generate: {title_page_gen_response['error']}"
+        else:
+            title_gen_results = title_page_gen_response["data"].get("results")
+            if title_gen_results and title_gen_results[0] and len(title_gen_results[0]) > 0:
+                title_page_url = title_gen_results[0][0]
+                print(f"Successfully generated title page URL: {title_page_url}")
+            else:
+                print("Warning: Title page generation succeeded but returned no valid URL.")
+                if num_images == 0:
+                    return "Error: Only title page requested, but generation returned no valid URL."
+
+    # 2. Construct prompts for coloring page image generation
+    final_image_prompts = []
+    if num_images > 0:
+        # Try to generate diverse prompts using LLM
+        meta_prompt_for_llm = (
+            f"Generate {num_images} unique and distinct text prompts for creating black and white line art images "
+            f"for a children's coloring book. The theme is '{theme}'. Each prompt must describe a different specific "
+            f"scene, character, or object related to the theme, ensuring variety. For example, if the theme is "
+            f"'forest animals', prompts could be: 'A cute squirrel holding a large acorn on a branch', "
+            f"'A friendly bear cub peeking from behind a tall pine tree', 'A wise owl with big eyes sitting on a "
+            f"crescent moon with stars around'. Ensure prompts are concise, focus on simple line art, and are "
+            f"suitable for children. Do not include numbering or prefixes like 'Prompt 1:' in the output strings."
+        )
+
+        llm_generated_base_prompts = await generate_list_of_strings_via_llm(
+            meta_prompt=meta_prompt_for_llm,
+            num_expected_strings=num_images,
+            theme_for_description=theme,
+            mcp_query_url=mcp_query_url,
+            user_number=user_number
+        )
+
+        base_prompts_to_use = []
+        if llm_generated_base_prompts and len(llm_generated_base_prompts) >= num_images:
+            base_prompts_to_use = llm_generated_base_prompts[:num_images] # Take exactly num_images if more are returned
+            print(f"Successfully obtained {len(base_prompts_to_use)} diverse base prompts from LLM.")
+        else:
+            print("Warning: LLM failed to generate sufficient diverse prompts or returned invalid data. Falling back to simple templated prompts.")
+            # Fallback to original simple templated prompts if LLM generation fails or is insufficient
+            for i in range(num_images):
+                base_prompts_to_use.append(f"Simple black and white line art of a cute {theme} character.")
+
+        # Refine and finalize image_prompts list
+        for i in range(len(base_prompts_to_use)):
+            base_prompt = base_prompts_to_use[i]
+            refined_prompt = base_prompt
+
+            if include_text_in_images:
+                refined_prompt += (
+                    f", with the word '{theme.title()}' clearly integrated into the image as large, hollow, "
+                    f"black and white line art text suitable for coloring."
+                )
+            
+            # Append the standard coloring book style suffix and page number
+            refined_prompt += (
+                f" No solid colors, no colored backgrounds, minimal or no shading, clean lines, coloring book style. "
+                f"Perfect for children's coloring book, page {i+1}."
+            )
+            final_image_prompts.append(refined_prompt)
+
+        # 3. Call generate_images_with_prompts tool for coloring pages
+        print(f"Attempting to generate {len(final_image_prompts)} coloring pages for '{theme}' theme...")
+        image_gen_args = {
+            "prompts": final_image_prompts, # Use the new diverse/final prompts
+            "user_number": user_number
+        }
+        image_gen_response = call_mcp_tool(
+            tool_name="generate_images_with_prompts",
+            tool_arguments=image_gen_args,
+            expected_response_schema=generate_images_schema,
+            mcp_query_url=mcp_query_url,
+            user_number=user_number
+        )
+
+        if image_gen_response["status"] == "error":
+            return f"Error during coloring page image generation: {image_gen_response['error']}"
+
+        generated_results = image_gen_response["data"].get("results")
+        if not generated_results:
+            return "Error: Coloring page image generation succeeded but returned no 'results' data."
+
+        # Flatten the list of lists to get a single list of URLs
+        image_urls = [url[0] for url in generated_results if url and len(url) > 0]
+
+        print(f"Successfully generated {len(image_urls)} coloring page URLs.")
+    else:
+        image_urls = []
+        print("No coloring pages requested (num_images is 0).")
+
+    # 4. Perform Image Quality Control (QC) using analyze_images tool on coloring pages
+    suitable_image_urls = []
+    if image_urls:
+        print(f"Performing quality control on {len(image_urls)} generated coloring pages...")
+
+        # Define the expected JSON schema for the 'analyze_images' tool's output
+        analyze_images_schema = {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string"},
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "status": {"type": "string"},
+                            "analysis": {"type": "string"},
+                            "url": {"type": "string", "format": "uri"},
+                            "message": {"type": "string"}
+                        },
+                        "required": ["status", "analysis", "url"]
+                    }
+                }
+            },
+            "required": ["status", "results"]
+        }
+
+        if include_text_in_images:
+            analysis_prompt = (
+                "Is this image a black and white line art drawing suitable for a coloring book, "
+                "potentially including clear, hollow, black and white line art text that is also suitable for coloring? "
+                "The main drawing and any text MUST have no solid colors, no colored backgrounds, minimal or no shading, "
+                "and clear outlines. Respond with only 'YES' if suitable, or 'NO - [brief reason]'."
+            )
+        else:
+            analysis_prompt = (
+                "Is this image a black and white line art drawing suitable for a coloring book? "
+                "It MUST have no solid colors, no colored backgrounds, minimal or no shading, and clear outlines. "
+                "Respond with only 'YES' if suitable, or 'NO - [brief reason]'."
+            )
+
+        image_analysis_args = {
+            "urls": image_urls,
+            "analysis_prompt": analysis_prompt,
+            "user_number": user_number
+        }
+
+        image_analysis_response = call_mcp_tool(
+            tool_name="analyze_images",
+            tool_arguments=image_analysis_args,
+            expected_response_schema=analyze_images_schema,
+            mcp_query_url=mcp_query_url,
+            user_number=user_number
+        )
+
+        if image_analysis_response["status"] == "error":
+            return f"Error during coloring page image analysis (QC): {image_analysis_response['error']}"
+
+        analysis_results = image_analysis_response["data"].get("results")
+        if not analysis_results:
+            return "Error: Coloring page image analysis succeeded but returned no 'results' data."
+
+        for result in analysis_results:
+            if result.get("status") == "success" and result.get("analysis", "").strip().lower().startswith("yes"):
+                suitable_image_urls.append(result["url"])
+            else:
+                print(f"DEBUG: Image {result.get('url')} failed QC: {result.get('analysis', 'No analysis provided')}")
+
+        print(f"Successfully identified {len(suitable_image_urls)} suitable coloring page images after QC.")
+    else:
+        print("No coloring pages to perform QC on.")
+
+    # Prepare final attachments for PDF creation
+    final_attachments = []
+    if title_page_url:
+        final_attachments.append(title_page_url)
+    final_attachments.extend(suitable_image_urls)
+
+    if not final_attachments:
+        return f"Error: No images available to create PDF after QC and title page processing for theme '{theme}'."
+
+    # Define the expected JSON schema for the 'create_pdf_document' tool's output
+    create_pdf_schema = {
+        "type": "object",
+        "properties": {
+            "status": {"type": "string", "description": "Status of the PDF creation operation"},
+            "message": {"type": "string", "description": "A descriptive message about the PDF creation"},
+            "url": {"type": "string", "format": "uri", "description": "The URL of the created PDF document"},
+            "html_content": {"type": "string", "description": "The HTML content used to generate the PDF"}
+        },
+        "required": ["status", "message", "url"]
+    }
+
+    # 5. Call create_pdf_document tool with all suitable images
+    doc_name_parts = [theme.replace(' ', '_'), "coloring_book"]
+    if len(suitable_image_urls) > 0:
+        doc_name_parts.append(f"{len(suitable_image_urls)}_pages")
+    if title_page_url:
+        doc_name_parts.append("with_title")
+    if include_text_in_images:
+        doc_name_parts.append("with_text")
+    doc_name_parts.append("qc")
+    doc_name = "_".join(doc_name_parts)
+
+    user_request_text = "Create a PDF document. "
+    if title_page_url:
+        user_request_text += "The first page is a color title page. "
+    if suitable_image_urls:
+        user_request_text += f"The following {len(suitable_image_urls)} pages are black and white line art coloring pages about '{theme}'. "
+        if include_text_in_images:
+            user_request_text += "These coloring pages include integrated line art text. "
+        user_request_text += "Each coloring page image should be on a new page, full-page size. All coloring pages have passed quality control for line art suitability."
+    else:
+        user_request_text += f"This PDF consists only of a title page about '{theme}'."
+
+    additional_context_text = (
+        f"This is a request to create a PDF coloring book. "
+    )
+    if title_page_url:
+        additional_context_text += "It starts with a full-color title page. "
+    if suitable_image_urls:
+        additional_context_text += f"It contains {len(suitable_image_urls)} additional pages, each with a black and white line art image of the '{theme}' theme. "
+        if include_text_in_images:
+            additional_context_text += "These coloring images also integrate line art text. "
+        additional_context_text += (
+            "These images have been quality-controlled to be suitable for coloring books. "
+            "Ensure images are large, centered, and suitable for printing and coloring by children. "
+            "No additional text on coloring pages, just the images for coloring."
+        )
+    else:
+        additional_context_text += "The PDF contains only the title page."
+
+
+    pdf_creation_args = {
+        "doc_name": doc_name,
+        "user_request": user_request_text,
+        "attachments": final_attachments,
+        "user_number": user_number,
+        "model": "gemini-2.5-flash-preview-05-20",
+        "additional_context": additional_context_text
+    }
+
+    print(f"Attempting to create PDF document '{doc_name}.pdf' with {len(final_attachments)} total pages...")
+    pdf_creation_response = call_mcp_tool(
+        tool_name="create_pdf_document",
+        tool_arguments=pdf_creation_args,
+        expected_response_schema=create_pdf_schema,
+        mcp_query_url=mcp_query_url,
+        user_number=user_number
+    )
+
+    if pdf_creation_response["status"] == "error":
+        return f"Error during PDF document creation: {pdf_creation_response['error']}"
+
+    pdf_url = pdf_creation_response["data"].get("url")
+    if not pdf_url:
+        return "Error: PDF creation succeeded but returned no 'url' for the document."
+
+    print(f"Successfully created coloring book PDF: {pdf_url}")
+    return pdf_url
+--- End of original code ---
+
+--- Edit request: ---
+Modify the Python script to support unique, LLM-generated text per coloring page and enhance text quality control.
+
+1.  **Update `generate_list_of_strings_via_llm` Meta-Prompt Generation:**
+    a.  In `generated_function_name`, when constructing `meta_prompt_for_llm` (if `num_images > 0` and the LLM path is taken for diverse prompts):
+        *   The `meta_prompt_for_llm` needs to change. It should now instruct the LLM to generate prompts where *each prompt itself includes instructions for specific, short, relevant text (1-4 words) to be embedded as line art within that image*. The LLM should also be responsible for ensuring this text is simple and correctly spelled within the prompt it generates.
+        *   New `meta_prompt_for_llm` example: `f"Generate {{num_images}} unique and distinct text prompts for creating black and white line art images for a children's coloring book. The theme is '{theme}'. Each prompt must describe a different specific scene, character, or object related to the theme AND **must include a short, simple, correctly-spelled text phrase (1-4 words) relevant to that specific image, with instructions for it to be embedded as clear, hollow, black and white line art suitable for coloring.** For example, for theme 'space', a prompt might be: 'An astronaut floating next to a friendly alien on Mars, with the words \"Cosmic Pals\" as large, hollow, black and white line art text integrated into the scene.' Or for theme 'garden', 'A smiling sunflower with a busy bee buzzing nearby, with the text \"Bloom Bright\" as clear, hollow, line art text.' Ensure variety. Do not include numbering or prefixes like 'Prompt 1:' in the output strings."`
+
+2.  **Modify `generated_function_name` for Refining LLM Prompts:**
+    a.  When iterating through `base_prompts_to_use` (the prompts received from the LLM via `generate_list_of_strings_via_llm`):
+        *   The section `if include_text_in_images:` that previously appended `f", with the word '{theme.title()}"..."` should be **REMOVED**. The expectation is now that `base_prompt` from the LLM *already contains* the specific text instruction if `include_text_in_images` is intended for that call flow (which it is, if we are generating diverse prompts that should include text).
+        *   The logic that appends the general styling suffix (`f" No solid colors, no colored backgrounds... page {{i+1}}."`) should **REMAIN** to ensure the image generation tool still produces a B&W coloring page from the LLM's creative prompt.
+    b.  **Important:** If the fallback to simple templated prompts is used (because `generate_list_of_strings_via_llm` failed), and `include_text_in_images` is `True`, the *original* fallback logic of appending `f", with the word '{theme.title()}"..."` should still apply to those simple fallback prompts. This means the `if include_text_in_images:` block for adding generic theme text needs to be conditional on *whether the LLM prompt generation was successful or if we are in the fallback scenario*.
+        *   A simple way: when using LLM prompts, assume they have text if `include_text_in_images` is true. When using fallback prompts, explicitly add the theme title text if `include_text_in_images` is true.
+
+3.  **Update Quality Control `analysis_prompt` in `generated_function_name`:**
+    a.  When `include_text_in_images` is `True`, the `analysis_prompt` for `analyze_images` (for coloring pages) MUST be updated to:
+        `"Is this image a black and white line art drawing suitable for a coloring book? It MUST have no solid colors, no colored backgrounds, minimal or no shading, and clear outlines. If text is present, it MUST be clearly legible, correctly spelled, well-integrated, and itself be black and white line art suitable for coloring. Respond with only 'YES' if all conditions are met, or 'NO - [brief reason including specific issues with text if any, e.g., 'NO - text illegible', 'NO - text misspelled as XZY', 'NO - text poorly integrated', 'NO - image has color']'."`
+    b.  The `analysis_prompt` for when `include_text_in_images` is `False` should remain the same as it is currently.
+
+4.  **Update `user_request` and `additional_context` for `create_pdf_document`:**
+    a.  In `generated_function_name`, when `include_text_in_images` is `True` and prompts were successfully generated by the LLM (meaning unique text per image is expected):
+        *   Modify the part of `user_request_text` that says `"These coloring pages include integrated line art text. "` to something like `"These coloring pages include unique, image-specific integrated line art text. "`.
+        *   Similarly, modify `additional_context_text` from `"These coloring images also integrate line art text. "` to `"These coloring images also integrate unique, image-specific line art text. "`.
+    b.  If using fallback prompts with generic theme text, the existing descriptions are fine.
+
+Ensure all other functionalities (title page, max pages, etc.) remain intact.
+---
+
+--- Full LLM response (regenerated code attempt): ---
+```temp.py
+import requests
+import json
+import os
+import asyncio # New import needed for async operations
+
+def call_mcp_tool(
+    tool_name: str,
+    tool_arguments: dict,
+    expected_response_schema: dict,
+    mcp_query_url: str,
+    user_number: str
+) -> dict:
+    """
+    Helper function to call an AST tool via the http://localhost:5000/query endpoint.
+
+    Args:
+        tool_name: The name of the AST tool to call (e.g., 'generate_images_with_prompts').
+        tool_arguments: A dictionary of arguments for the specific tool.
+        expected_response_schema: The JSON schema for the expected *result* from the /query endpoint,
+                                  which should be the output of the tool.
+        mcp_query_url: The URL of the query endpoint.
+        user_number: The user's unique identifier.
+
+    Returns:
+        A dictionary containing 'status' ('success' or 'error') and 'data' (if success) or 'error' message (if error).
+    """
+    # Construct the natural language query string for the /query endpoint.
+    # This string tells the system which tool to use and its arguments.
+    query_instruction = f"Please use the '{tool_name}' tool. Its arguments are: {json.dumps(tool_arguments)}"
+
+    payload = {
+        'query': query_instruction,
+        'final_response_json_schema': expected_response_schema,
+        'model': 'gemini-2.5-flash-preview-05-20',
+        'sender': 'generated_function_name',
+        'stream': False
+    }
+
+    print(f"DEBUG: Calling MCP tool: {tool_name}")
+    # print(f"DEBUG: Payload: {json.dumps(payload, indent=2)}") # Uncomment for detailed payload debugging
+
+    try:
+        response = requests.post(mcp_query_url, json=payload, timeout=90) # Increased timeout for image/PDF generation
+        response.raise_for_status()  # Raise an exception for HTTP errors (4xx or 5xx)
+
+        response_data = response.json()
+        # print(f"DEBUG: Raw Response from MCP: {json.dumps(response_data, indent=2)}") # Uncomment for raw response debugging
+
+        if response_data.get('error'):
+            return {"status": "error", "error": f"Error from query endpoint: {response_data['error']}"}
+        elif 'result' in response_data:
+            try:
+                # The 'result' field contains a JSON string that matches the expected_response_schema
+                structured_result = json.loads(response_data['result'])
+                return {"status": "success", "data": structured_result}
+            except json.JSONDecodeError:
+                return {"status": "error", "error": f"Failed to parse JSON string in 'result' field: {response_data.get('result', 'N/A')}"}
+        else:
+            return {"status": "error", "error": f"Unexpected response structure from query endpoint: No 'result' or 'error' field. Response: {response_data}"}
+
+    except requests.exceptions.Timeout:
+        return {"status": "error", "error": f"Request to {mcp_query_url} timed out after 90 seconds."}
+    except requests.exceptions.ConnectionError as e:
+        return {"status": "error", "error": f"Connection error when calling {mcp_query_url}: {e}"}
+    except requests.exceptions.RequestException as e:
+        return {"status": "error", "error": f"HTTP Request failed for {mcp_query_url}: {e}"}
+    except Exception as e:
+        return {"status": "error", "error": f"An unexpected error occurred in call_mcp_tool: {e}"}
+
+
+async def generate_list_of_strings_via_llm(meta_prompt: str, num_expected_strings: int, theme_for_description: str, mcp_query_url: str, user_number: str) -> list[str] | None:
+    """
+    Generates a list of strings using an LLM via the http://localhost:5000/query endpoint.
+
+    Args:
+        meta_prompt: The natural language prompt for the LLM to generate the strings.
+        num_expected_strings: The number of strings expected in the list.
+        theme_for_description: The theme used for describing the image prompts in the schema.
+        mcp_query_url: The URL of the query endpoint.
+        user_number: The user's unique identifier.
+
+    Returns:
+        A list of generated strings, or None if generation fails or the response is invalid.
+    """
+    llm_response_schema = {
+        "type": "object",
+        "properties": {
+            "image_prompts": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": f"A list of {num_expected_strings} unique image prompts for the theme '{theme_for_description}'."
+            }
+        },
+        "required": ["image_prompts"]
+    }
+
+    payload = {
+        'query': meta_prompt,
+        'final_response_json_schema': llm_response_schema,
+        'model': 'gemini-2.5-pro-preview-05-06', # Capable model for prompt generation
+        'sender': 'generate_list_of_strings_via_llm',
+        'stream': False
+    }
+
+    print(f"DEBUG: Calling LLM for prompt generation with meta_prompt: {meta_prompt[:100]}...")
+
+    try:
+        response = requests.post(mcp_query_url, json=payload, timeout=60)
+        response.raise_for_status()
+
+        response_data = response.json()
+
+        if response_data.get('error'):
+            print(f"Error from LLM query endpoint: {response_data['error']}")
+            return None
+        elif 'result' in response_data:
+            try:
+                structured_result = json.loads(response_data['result'])
+                generated_prompts = structured_result.get('image_prompts')
+
+                if not isinstance(generated_prompts, list):
+                    print(f"Warning: LLM response 'image_prompts' is not a list. Response: {structured_result}")
+                    return None
+                
+                if len(generated_prompts) < num_expected_strings:
+                    print(f"Warning: LLM returned {len(generated_prompts)} prompts, but {num_expected_strings} were expected. This might lead to fewer pages than requested.")
+                
+                return generated_prompts
+            except json.JSONDecodeError:
+                print(f"Error: Failed to parse JSON string from LLM result field: {response_data.get('result', 'N/A')}")
+                return None
+        else:
+            print(f"Error: Unexpected response structure from LLM query endpoint: No 'result' or 'error' field. Response: {response_data}")
+            return None
+
+    except requests.exceptions.Timeout:
+        print(f"Error: Request to {mcp_query_url} for LLM prompt generation timed out after 60 seconds.")
+        return None
+    except requests.exceptions.ConnectionError as e:
+        print(f"Error: Connection error when calling {mcp_query_url} for LLM: {e}")
+        return None
+    except requests.exceptions.RequestException as e:
+        print(f"Error: HTTP Request failed for LLM prompt generation at {mcp_query_url}: {e}")
+        return None
+    except Exception as e:
+        print(f"An unexpected error occurred in generate_list_of_strings_via_llm: {e}")
+        return None
+
+
+async def generated_function_name(num_images: int, theme: str = 'animals', include_text_in_images: bool = False, include_color_title_page: bool = False) -> str:
+    """
+    Generates a coloring book PDF based on a specified number of images and a theme,
+    with options for a color title page and text integrated into coloring images.
+
+    Args:
+        num_images: The number of coloring pages to generate (0 to 50).
+                    If 0, only a title page will be generated if requested.
+        theme: The theme for the coloring book images (e.g., 'animals', 'cars', 'fantasy creatures').
+        include_text_in_images: If True, adds the theme word as line art text into coloring pages.
+        include_color_title_page: If True, attempts to generate and include a color title page.
+
+    Returns:
+        The URL of the generated PDF document, or an error message string if any step fails.
+    """
+    if num_images < 0:
+        return "Error: num_images cannot be negative."
+    if num_images > 50:
+        return "Error: num_images must be an integer between 0 and 50."
+    if num_images == 0 and not include_color_title_page:
+        return "Error: No content requested (num_images is 0 and include_color_title_page is False)."
+
+    mcp_query_url = os.getenv('MCP_QUERY_URL', 'http://localhost:5000/query')
+    user_number = os.getenv('USER_NUMBER', 'test_user_123')
+
+    # Define the expected JSON schema for the 'generate_images_with_prompts' tool's output
+    generate_images_schema = {
+        "type": "object",
+        "properties": {
+            "status": {"type": "string", "description": "Status of the image generation operation"},
+            "results": {
+                "type": "array",
+                "description": "A list of lists, where each inner list contains URLs for the generated image(s) for a prompt.",
+                "items": {
+                    "type": "array",
+                    "items": {"type": "string", "format": "uri", "description": "URL of a generated image"}
+                }
+            }
+        },
+        "required": ["status", "results"]
+    }
+
+    title_page_url = None
+    if include_color_title_page:
+        # 1. Generate Title Page
+        title_page_prompt = (
+            f"Vibrant and colorful title page for a coloring book about '{theme}'. "
+            f"Include the text '{theme.title()} Coloring Book' in a fun, bold font. "
+            f"Kid-friendly illustration style. This is a title page and should be in full color, high quality."
+        )
+        print(f"Attempting to generate color title page for '{theme}' theme...")
+        title_page_gen_args = {
+            "prompts": [title_page_prompt],
+            "user_number": user_number
+        }
+        title_page_gen_response = call_mcp_tool(
+            tool_name="generate_images_with_prompts",
+            tool_arguments=title_page_gen_args,
+            expected_response_schema=generate_images_schema,
+            mcp_query_url=mcp_query_url,
+            user_number=user_number
+        )
+
+        if title_page_gen_response["status"] == "error":
+            print(f"Warning: Failed to generate title page: {title_page_gen_response['error']}")
+            if num_images == 0:
+                return f"Error: Only title page requested, but it failed to generate: {title_page_gen_response['error']}"
+        else:
+            title_gen_results = title_page_gen_response["data"].get("results")
+            if title_gen_results and title_gen_results[0] and len(title_gen_results[0]) > 0:
+                title_page_url = title_gen_results[0][0]
+                print(f"Successfully generated title page URL: {title_page_url}")
+            else:
+                print("Warning: Title page generation succeeded but returned no valid URL.")
+                if num_images == 0:
+                    return "Error: Only title page requested, but generation returned no valid URL."
+
+    # 2. Construct prompts for coloring page image generation
+    final_image_prompts = []
+    using_llm_for_unique_text = False # Flag to track if LLM-generated unique text prompts are used
+
+    if num_images > 0:
+        base_prompts_to_use = []
+        # Construct meta-prompt for LLM based on whether text is included
+        if include_text_in_images:
+            meta_prompt_for_llm = (
+                f"Generate {num_images} unique and distinct text prompts for creating black and white line art images "
+                f"for a children's coloring book. The theme is '{theme}'. Each prompt must describe a different specific "
+                f"scene, character, or object related to the theme AND **must include a short, simple, correctly-spelled "
+                f"text phrase (1-4 words) relevant to that specific image, with instructions for it to be embedded as "
+                f"clear, hollow, black and white line art suitable for coloring.** For example, for theme 'space', "
+                f"a prompt might be: 'An astronaut floating next to a friendly alien on Mars, with the words \"Cosmic Pals\" "
+                f"as large, hollow, black and white line art text integrated into the scene.' Or for theme 'garden', "
+                f"'A smiling sunflower with a busy bee buzzing nearby, with the text \"Bloom Bright\" as clear, "
+                f"hollow, line art text.' Ensure variety. Do not include numbering or prefixes like 'Prompt 1:' in the output strings."
+            )
+        else:
+            meta_prompt_for_llm = (
+                f"Generate {num_images} unique and distinct text prompts for creating black and white line art images "
+                f"for a children's coloring book. The theme is '{theme}'. Each prompt must describe a different specific "
+                f"scene, character, or object related to the theme, ensuring variety. For example, if the theme is "
+                f"'forest animals', prompts could be: 'A cute squirrel holding a large acorn on a branch', "
+                f"'A friendly bear cub peeking from behind a tall pine tree', 'A wise owl with big eyes sitting on a "
+                f"crescent moon with stars around'. Ensure prompts are concise, focus on simple line art, and are "
+                f"suitable for children. Do not include numbering or prefixes like 'Prompt 1:' in the output strings."
+            )
+
+        llm_generated_base_prompts = await generate_list_of_strings_via_llm(
+            meta_prompt=meta_prompt_for_llm,
+            num_expected_strings=num_images,
+            theme_for_description=theme,
+            mcp_query_url=mcp_query_url,
+            user_number=user_number
+        )
+
+        if llm_generated_base_prompts and len(llm_generated_base_prompts) >= num_images:
+            base_prompts_to_use = llm_generated_base_prompts[:num_images] # Take exactly num_images if more are returned
+            using_llm_for_unique_text = include_text_in_images # Only true if LLM succeeded AND text was requested
+            print(f"Successfully obtained {len(base_prompts_to_use)} diverse base prompts from LLM.")
+        else:
+            print("Warning: LLM failed to generate sufficient diverse prompts or returned invalid data. Falling back to simple templated prompts.")
+            # Fallback to original simple templated prompts if LLM generation fails or is insufficient
+            for i in range(num_images):
+                base_prompts_to_use.append(f"Simple black and white line art of a cute {theme} character.")
+            using_llm_for_unique_text = False # If fallback, not using unique LLM text
+
+        # Refine and finalize image_prompts list
+        for i in range(len(base_prompts_to_use)):
+            base_prompt = base_prompts_to_use[i]
+            refined_prompt = base_prompt
+
+            # If not using LLM-generated unique text (i.e., fallback scenario) AND text is requested, append generic theme text
+            if not using_llm_for_unique_text and include_text_in_images:
+                refined_prompt += (
+                    f", with the word '{theme.title()}' clearly integrated into the image as large, hollow, "
+                    f"black and white line art text suitable for coloring."
+                )
+            
+            # Append the standard coloring book style suffix and page number
+            refined_prompt += (
+                f" No solid colors, no colored backgrounds, minimal or no shading, clean lines, coloring book style. "
+                f"Perfect for children's coloring book, page {i+1}."
+            )
+            final_image_prompts.append(refined_prompt)
+
+        # 3. Call generate_images_with_prompts tool for coloring pages
+        print(f"Attempting to generate {len(final_image_prompts)} coloring pages for '{theme}' theme...")
+        image_gen_args = {
+            "prompts": final_image_prompts, # Use the new diverse/final prompts
+            "user_number": user_number
+        }
+        image_gen_response = call_mcp_tool(
+            tool_name="generate_images_with_prompts",
+            tool_arguments=image_gen_args,
+            expected_response_schema=generate_images_schema,
+            mcp_query_url=mcp_query_url,
+            user_number=user_number
+        )
+
+        if image_gen_response["status"] == "error":
+            return f"Error during coloring page image generation: {image_gen_response['error']}"
+
+        generated_results = image_gen_response["data"].get("results")
+        if not generated_results:
+            return "Error: Coloring page image generation succeeded but returned no 'results' data."
+
+        # Flatten the list of lists to get a single list of URLs
+        image_urls = [url[0] for url in generated_results if url and len(url) > 0]
+
+        print(f"Successfully generated {len(image_urls)} coloring page URLs.")
+    else:
+        image_urls = []
+        print("No coloring pages requested (num_images is 0).")
+
+    # 4. Perform Image Quality Control (QC) using analyze_images tool on coloring pages
+    suitable_image_urls = []
+    if image_urls:
+        print(f"Performing quality control on {len(image_urls)} generated coloring pages...")
+
+        # Define the expected JSON schema for the 'analyze_images' tool's output
+        analyze_images_schema = {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string"},
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "status": {"type": "string"},
+                            "analysis": {"type": "string"},
+                            "url": {"type": "string", "format": "uri"},
+                            "message": {"type": "string"}
+                        },
+                        "required": ["status", "analysis", "url"]
+                    }
+                }
+            },
+            "required": ["status", "results"]
+        }
+
+        if include_text_in_images:
+            # Updated analysis_prompt for when text is included with more stringent checks
+            analysis_prompt = (
+                "Is this image a black and white line art drawing suitable for a coloring book? "
+                "It MUST have no solid colors, no colored backgrounds, minimal or no shading, and clear outlines. "
+                "If text is present, it MUST be clearly legible, correctly spelled, well-integrated, "
+                "and itself be black and white line art suitable for coloring. "
+                "Respond with only 'YES' if all conditions are met, or 'NO - [brief reason including specific issues "
+                "with text if any, e.g., 'NO - text illegible', 'NO - text misspelled as XZY', 'NO - text poorly integrated', "
+                "'NO - image has color']'."
+            )
+        else:
+            analysis_prompt = (
+                "Is this image a black and white line art drawing suitable for a coloring book? "
+                "It MUST have no solid colors, no colored backgrounds, minimal or no shading, and clear outlines. "
+                "Respond with only 'YES' if suitable, or 'NO - [brief reason]'."
+            )
+
+        image_analysis_args = {
+            "urls": image_urls,
+            "analysis_prompt": analysis_prompt,
+            "user_number": user_number
+        }
+
+        image_analysis_response = call_mcp_tool(
+            tool_name="analyze_images",
+            tool_arguments=image_analysis_args,
+            expected_response_schema=analyze_images_schema,
+            mcp_query_url=mcp_query_url,
+            user_number=user_number
+        )
+
+        if image_analysis_response["status"] == "error":
+            return f"Error during coloring page image analysis (QC): {image_analysis_response['error']}"
+
+        analysis_results = image_analysis_response["data"].get("results")
+        if not analysis_results:
+            return "Error: Coloring page image analysis succeeded but returned no 'results' data."
+
+        for result in analysis_results:
+            if result.get("status") == "success" and result.get("analysis", "").strip().lower().startswith("yes"):
+                suitable_image_urls.append(result["url"])
+            else:
+                print(f"DEBUG: Image {result.get('url')} failed QC: {result.get('analysis', 'No analysis provided')}")
+
+        print(f"Successfully identified {len(suitable_image_urls)} suitable coloring page images after QC.")
+    else:
+        print("No coloring pages to perform QC on.")
+
+    # Prepare final attachments for PDF creation
+    final_attachments = []
+    if title_page_url:
+        final_attachments.append(title_page_url)
+    final_attachments.extend(suitable_image_urls)
+
+    if not final_attachments:
+        return f"Error: No images available to create PDF after QC and title page processing for theme '{theme}'."
+
+    # Define the expected JSON schema for the 'create_pdf_document' tool's output
+    create_pdf_schema = {
+        "type": "object",
+        "properties": {
+            "status": {"type": "string", "description": "Status of the PDF creation operation"},
+            "message": {"type": "string", "description": "A descriptive message about the PDF creation"},
+            "url": {"type": "string", "format": "uri", "description": "The URL of the created PDF document"},
+            "html_content": {"type": "string", "description": "The HTML content used to generate the PDF"}
+        },
+        "required": ["status", "message", "url"]
+    }
+
+    # 5. Call create_pdf_document tool with all suitable images
+    doc_name_parts = [theme.replace(' ', '_'), "coloring_book"]
+    if len(suitable_image_urls) > 0:
+        doc_name_parts.append(f"{len(suitable_image_urls)}_pages")
+    if title_page_url:
+        doc_name_parts.append("with_title")
+    if include_text_in_images:
+        if using_llm_for_unique_text:
+            doc_name_parts.append("with_unique_text")
+        else:
+            doc_name_parts.append("with_text") # generic theme text (fallback)
+    doc_name_parts.append("qc")
+    doc_name = "_".join(doc_name_parts)
+
+    user_request_text = "Create a PDF document. "
+    if title_page_url:
+        user_request_text += "The first page is a color title page. "
+    if suitable_image_urls:
+        user_request_text += f"The following {len(suitable_image_urls)} pages are black and white line art coloring pages about '{theme}'. "
+        if include_text_in_images:
+            if using_llm_for_unique_text:
+                user_request_text += "These coloring pages include unique, image-specific integrated line art text. "
+            else:
+                user_request_text += "These coloring pages include integrated line art text. " # Generic text for fallback
+        user_request_text += "Each coloring page image should be on a new page, full-page size. All coloring pages have passed quality control for line art suitability."
+    else:
+        user_request_text += f"This PDF consists only of a title page about '{theme}'."
+
+    additional_context_text = (
+        f"This is a request to create a PDF coloring book. "
+    )
+    if title_page_url:
+        additional_context_text += "It starts with a full-color title page. "
+    if suitable_image_urls:
+        additional_context_text += f"It contains {len(suitable_image_urls)} additional pages, each with a black and white line art image of the '{theme}' theme. "
+        if include_text_in_images:
+            if using_llm_for_unique_text:
+                additional_context_text += "These coloring images also integrate unique, image-specific line art text. "
+            else:
+                additional_context_text += "These coloring images also integrate line art text. " # Generic text for fallback
+        additional_context_text += (
+            "These images have been quality-controlled to be suitable for coloring books. "
+            "Ensure images are large, centered, and suitable for printing and coloring by children. "
+            "No additional text on coloring pages, just the images for coloring."
+        )
+    else:
+        additional_context_text += "The PDF contains only the title page."
+
+
+    pdf_creation_args = {
+        "doc_name": doc_name,
+        "user_request": user_request_text,
+        "attachments": final_attachments,
+        "user_number": user_number,
+        "model": "gemini-2.5-flash-preview-05-20",
+        "additional_context": additional_context_text
+    }
+
+    print(f"Attempting to create PDF document '{doc_name}.pdf' with {len(final_attachments)} total pages...")
+    pdf_creation_response = call_mcp_tool(
+        tool_name="create_pdf_document",
+        tool_arguments=pdf_creation_args,
+        expected_response_schema=create_pdf_schema,
+        mcp_query_url=mcp_query_url,
+        user_number=user_number
+    )
+
+    if pdf_creation_response["status"] == "error":
+        return f"Error during PDF document creation: {pdf_creation_response['error']}"
+
+    pdf_url = pdf_creation_response["data"].get("url")
+    if not pdf_url:
+        return "Error: PDF creation succeeded but returned no 'url' for the document."
+
+    print(f"Successfully created coloring book PDF: {pdf_url}")
+    return pdf_url
+```

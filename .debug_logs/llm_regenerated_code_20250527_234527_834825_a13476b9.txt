@@ -1,0 +1,139 @@
+--- Original code provided to LLM for regeneration ---
+python
+import os
+import json
+import requests
+import asyncio
+
+async def call_internal_mcp_tool(user_id: str, tool_name: str, arguments: dict):
+    mcp_api_key = os.getenv("MCP_INTERNAL_API_KEY")
+    if not mcp_api_key:
+        raise ValueError("MCP_INTERNAL_API_KEY not found in environment variables")
+
+    headers = {"X-Internal-API-Key": mcp_api_key, "Content-Type": "application/json"}
+    payload = {"tool_name": tool_name, "arguments": arguments, "user_id_context": user_id}
+    
+    try:
+        response = await asyncio.to_thread(
+            requests.post,
+            "http://localhost:5001/internal/call_mcp_tool",
+            headers=headers,
+            json=payload,
+            timeout=60 # Increased timeout for image generation
+        )
+        response.raise_for_status()
+        response_data = response.json()
+        if response_data.get("error"):
+            raise Exception(f"Error calling internal tool '{tool_name}': {response_data['error']}")
+        
+        tool_result_str = response_data.get("result", "")
+        actual_tool_result = json.loads(tool_result_str) if tool_result_str else {}
+        return actual_tool_result
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Request failed for tool '{tool_name}': {e}")
+    except json.JSONDecodeError as e:
+        raise Exception(f"Failed to parse JSON response for tool '{tool_name}': {e}")
+
+async def generated_function_name(user_id: str):
+    """
+    Generates 5 distinct images of dogs using the generate_images_with_prompts tool.
+    
+    Args:
+        user_id (str): The user's unique identifier.
+        
+    Returns:
+        dict: A dictionary containing information about the generated images, 
+              or an error message if the generation fails.
+    """
+    dog_prompts = [
+        "A golden retriever puppy playing in a sunny park with a ball, high quality, photorealistic",
+        "A fierce German shepherd guarding its owner, in a dark forest, detailed, cinematic lighting",
+        "A cute pug wearing a tiny hat and sunglasses, sitting on a skateboard, cartoon style",
+        "A fluffy white poodle with a stylish haircut, posing elegantly in a studio, artistic portrait",
+        "A curious beagle sniffing flowers in a vibrant garden, natural light, serene atmosphere"
+    ]
+
+    tool_arguments = {
+        "user_number": user_id,
+        "prompts": dog_prompts
+    }
+
+    try:
+        # Call the generate_images_with_prompts tool once with all 5 prompts
+        result = await call_internal_mcp_tool(user_id, "generate_images_with_prompts", tool_arguments)
+        return {"status": "success", "images_generated": result}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+--- End of original code ---
+
+--- Edit request: ---
+Remove the first line that says 'python' as it's causing a NameError.
+---
+
+--- Full LLM response (regenerated code attempt): ---
+```temp.py
+import os
+import json
+import requests
+import asyncio
+
+async def call_internal_mcp_tool(user_id: str, tool_name: str, arguments: dict):
+    mcp_api_key = os.getenv("MCP_INTERNAL_API_KEY")
+    if not mcp_api_key:
+        raise ValueError("MCP_INTERNAL_API_KEY not found in environment variables")
+
+    headers = {"X-Internal-API-Key": mcp_api_key, "Content-Type": "application/json"}
+    payload = {"tool_name": tool_name, "arguments": arguments, "user_id_context": user_id}
+    
+    try:
+        response = await asyncio.to_thread(
+            requests.post,
+            "http://localhost:5001/internal/call_mcp_tool",
+            headers=headers,
+            json=payload,
+            timeout=60 # Increased timeout for image generation
+        )
+        response.raise_for_status()
+        response_data = response.json()
+        if response_data.get("error"):
+            raise Exception(f"Error calling internal tool '{tool_name}': {response_data['error']}")
+        
+        tool_result_str = response_data.get("result", "")
+        actual_tool_result = json.loads(tool_result_str) if tool_result_str else {}
+        return actual_tool_result
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Request failed for tool '{tool_name}': {e}")
+    except json.JSONDecodeError as e:
+        raise Exception(f"Failed to parse JSON response for tool '{tool_name}': {e}")
+
+async def generated_function_name(user_id: str):
+    """
+    Generates 5 distinct images of dogs using the generate_images_with_prompts tool.
+    
+    Args:
+        user_id (str): The user's unique identifier.
+        
+    Returns:
+        dict: A dictionary containing information about the generated images, 
+              or an error message if the generation fails.
+    """
+    dog_prompts = [
+        "A golden retriever puppy playing in a sunny park with a ball, high quality, photorealistic",
+        "A fierce German shepherd guarding its owner, in a dark forest, detailed, cinematic lighting",
+        "A cute pug wearing a tiny hat and sunglasses, sitting on a skateboard, cartoon style",
+        "A fluffy white poodle with a stylish haircut, posing elegantly in a studio, artistic portrait",
+        "A curious beagle sniffing flowers in a vibrant garden, natural light, serene atmosphere"
+    ]
+
+    tool_arguments = {
+        "user_number": user_id,
+        "prompts": dog_prompts
+    }
+
+    try:
+        # Call the generate_images_with_prompts tool once with all 5 prompts
+        result = await call_internal_mcp_tool(user_id, "generate_images_with_prompts", tool_arguments)
+        return {"status": "success", "images_generated": result}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+```

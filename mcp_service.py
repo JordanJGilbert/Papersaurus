@@ -11,7 +11,7 @@ import uvicorn
 from fastapi import FastAPI, Request, HTTPException, Security, Depends, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager, AsyncExitStack
 from collections import defaultdict
@@ -54,6 +54,33 @@ def _mcp_config_key(config: dict) -> str:
     if env is None:
         env = {}
     return json.dumps({"command": config.get("command"), "args": args, "env": env}, sort_keys=True)
+
+def generate_tools_schemas_json(user_id: str) -> str:
+    """
+    Generate a JSON string containing available tools with their schemas for the given user.
+    Format: [{"name": "tool_name", "description": "...", "input_schema": {...}}]
+    The description includes detailed information about expected outputs from the tool's docstring.
+    """
+    global mcp_manager
+    if not mcp_manager or not mcp_manager.initialized:
+        return "[]"
+    
+    tools_list, _ = mcp_manager.get_tools_for_user_query(user_id)
+    schemas_data = []
+    
+    for tool_obj in tools_list:
+        schema_entry = {
+            "name": tool_obj.name,
+            "description": tool_obj.description,  # This should include output format info in the docstring
+            "input_schema": tool_obj.inputSchema if tool_obj.inputSchema else {}
+        }
+        schemas_data.append(schema_entry)
+    
+    try:
+        return json.dumps(schemas_data, indent=2)
+    except Exception as e:
+        print(f"Error serializing tools schemas: {e}")
+        return "[]"
 
 # Assume a sanitization function similar to test_server.py's sanitize_for_path
 # For user IDs, we primarily care about removing '+' for key consistency.
@@ -110,29 +137,6 @@ class MCPManager:
         # print(f"MCPManager: Default core server config keys set to: {self.default_core_server_config_keys}")
         pass # No default core server keys based on a static list anymore
 
-    def load_user_preferences_from_file(self):
-        if os.path.exists(USER_PREFS_JSON_PATH):
-            try:
-                with open(USER_PREFS_JSON_PATH, 'r') as f:
-                    loaded_prefs = json.load(f)
-                    if isinstance(loaded_prefs, dict):
-                        self.user_server_preferences = loaded_prefs
-                    else:
-                        self.user_server_preferences = {}
-            except Exception as e:
-                print(f"Error loading user preferences: {e}")
-                self.user_server_preferences = {}
-        else:
-            self.user_server_preferences = {}
-        print(f"Loaded {len(self.user_server_preferences)} user preference entries.")
-
-    def save_user_preferences_to_file(self):
-        try:
-            with open(USER_PREFS_JSON_PATH, 'w') as f:
-                json.dump(self.user_server_preferences, f, indent=4)
-            print(f"Saved {len(self.user_server_preferences)} user preference entries.")
-        except Exception as e:
-            print(f"Error saving user preferences: {e}")
 
     async def start_single_server(self, server_config: Dict[str, Any], user_id: Optional[str] = None) -> bool:
         """
@@ -419,10 +423,18 @@ async def lifespan(app: FastAPI):
         for filename in os.listdir(servers_dir):
             if filename.endswith(".py") and filename != "__init__.py": # Ignore __init__.py
                 script_path = os.path.join("mcp_client", "mcp_servers", filename) # Path relative to workspace root for StdioServerParameters
+                
+                # Prepare environment variables for the server
+                server_env = {}
+                # Pass the MCP_INTERNAL_API_KEY to all discovered servers.
+                # The python_code_execution_server.py will use this to call /internal/call_mcp_tool
+                if INTERNAL_API_KEY:
+                    server_env["MCP_INTERNAL_API_KEY"] = INTERNAL_API_KEY
+                
                 discovered_server_configs.append({
                     "command": "python",
                     "args": [script_path],
-                    "env": {} # Default empty env, can be enhanced later if needed
+                    "env": server_env # Pass the prepared env
                 })
         print(f"Discovered {len(discovered_server_configs)} potential server scripts in {servers_dir}.")
     else:
@@ -458,13 +470,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Pydantic Models ---
+# --- Pydantic Models --- Pydantic v2 uses model_validator
+from pydantic import model_validator
+
+class DirectToolCallPayload(BaseModel):
+    tool_name: str
+    arguments: Dict[str, Any]
+
 class QueryRequest(BaseModel):
-    query: str
+    query: Optional[str] = None
+    direct_tool_call: Optional[DirectToolCallPayload] = None
     sender: Optional[str] = None # Will be treated as user_id
     attachments: Optional[List[Dict[str, Any]]] = None
-    model: Optional[str] = "gpt-4.1-2025-04-14" # Default model, will be overridden if Gemini is chosen by logic
-    stream: Optional[bool] = False # ADDED to request streaming
+    model: Optional[str] = "gemini-2.5-flash-preview-05-20" # Default model
+    stream: Optional[bool] = False
+    final_response_json_schema: Optional[Dict[str, Any]] = Field(default=None, description="An optional JSON schema that the final response from the LLM should adhere to (for natural language queries).")
+
+    @model_validator(mode='before')
+    def check_query_or_direct_call(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        query, direct_tool_call = values.get('query'), values.get('direct_tool_call')
+        if query is None and direct_tool_call is None:
+            raise ValueError('Either query or direct_tool_call must be provided')
+        if query is not None and direct_tool_call is not None:
+            raise ValueError('Provide either query or direct_tool_call, not both')
+        return values
 
 class AddServerRequest(BaseModel):
     user_id: str # Explicit user_id for adding a server
@@ -559,88 +588,208 @@ async def handle_query(request: QueryRequest):
     print(f"MCP_SERVICE_LOG: Received query request: {request.model_dump_json(indent=2)}")
     global mcp_manager, service_globally_initialized
     if not service_globally_initialized or not mcp_manager or not mcp_manager.initialized:
-        # For streaming requests, can't easily return HTTPExcept in body if headers already sent.
-        # This check happens before stream setup, so HTTPException is fine.
         raise HTTPException(status_code=503, detail="MCP service not initialized")
     
-    raw_user_id = request.sender or "default_user_for_chatbot" # Default user_id for chatbot if not provided by frontend
+    raw_user_id = request.sender or "default_user_for_query" 
     user_id = sanitize_user_id_for_key(raw_user_id)
-    
-    user_specific_mcp_tools_list, user_specific_mcp_tool_to_session_map = mcp_manager.get_tools_for_user_query(user_id)
 
-    # Determine which model to use for this query - for now, assume Gemini for streaming
-    # This logic can be expanded later based on request.model or other factors
-    # For this task, if request.stream is True, we are targeting Gemini via the adapter in function_calling_loop.
-    query_model = request.model
-    if request.stream: # If streaming, imply Gemini for now as it's the one we set up for streaming
-        # The actual model selection happens inside function_calling_loop based on its internal logic for now
-        # or could be passed if function_calling_loop is updated to accept model_name.
-        print(f"Streaming requested for user {user_id}. Will use Gemini via adapter.")
+    if request.direct_tool_call:
+        # --- Handle Direct Tool Call ---
+        if request.stream:
+            # Streaming is typically for LLM responses, not direct tool calls which are synchronous.
+            # If streaming is requested with a direct tool call, it's likely a client error.
+            # However, some tools *might* support streaming internally. For now, disallow for simplicity.
+            # Or, we could allow it and let the tool handle it, but the response model might be tricky.
+            # For now, returning an error if stream=True with direct_tool_call.
+            # This can be revisited if tools themselves need to stream back to the Python code that called /query.
+            return QueryResponse(result="", error="Streaming is not supported for direct_tool_call requests to /query endpoint.")
 
-    if request.stream:
-        async def stream_generator():
-            queue = asyncio.Queue()
-            
-            async def stream_chunk_handler_for_service(chunk: Dict[str, Any]):
-                # This handler is called by function_calling_loop (via LLM adapter) for each stream chunk
-                await queue.put(json.dumps(chunk) + "\n")
-                # Do NOT put None on the queue here or set finished_event.
-                # The function_calling_loop task will signal its completion.
-            
-            async def run_function_calling_and_signal_completion():
-                try:
-                    await function_calling_loop(
-                        user_input=request.query,
-                        mcp_tools_list=user_specific_mcp_tools_list,
-                        mcp_tool_to_session_map=user_specific_mcp_tool_to_session_map,
-                        user_number=user_id,
-                        attachments=request.attachments,
-                        stream_chunk_handler=stream_chunk_handler_for_service
-                    )
-                except Exception as e:
-                    # If function_calling_loop itself raises an unhandled exception,
-                    # try to send an error chunk before signaling completion.
-                    print(f"ERROR in function_calling_loop task: {e}")
-                    traceback.print_exc() # Log the full traceback
-                    try:
-                        error_chunk = {"type": "error", "content": f"Unhandled error in backend processing: {str(e)}"}
-                        await queue.put(json.dumps(error_chunk) + "\n")
-                    except Exception as e_cb:
-                        print(f"Failed to send final error chunk to queue: {e_cb}")
-                finally:
-                    # Signal that function_calling_loop (and thus all its streaming turns) is complete.
-                    await queue.put(None) 
-            
-            # Run function_calling_loop in a background task
-            loop_task = asyncio.create_task(run_function_calling_and_signal_completion())
-            
-            while True:
-                item = await queue.get()
-                if item is None: # End of stream signal from run_function_calling_and_signal_completion
-                    break
-                yield item
-                queue.task_done()
-            
-            await loop_task # Ensure the background task is awaited/cleaned up if it hasn't finished
+        tool_name = request.direct_tool_call.tool_name
+        arguments = request.direct_tool_call.arguments
+        
+        # Inject user_id into arguments if 'user_number' is a common pattern and not already present.
+        # The LLM should ideally be instructed to include it from its context.
+        # if 'user_number' not in arguments and user_id:
+        #     arguments['user_number'] = user_id
 
-        return StreamingResponse(stream_generator(), media_type="application/x-ndjson")
-    else: # Non-streaming case (original behavior)
+        target_session: Optional[ClientSession] = None
+        # Check core tools first, then user-specific tools
+        if tool_name in mcp_manager.core_tool_to_session:
+            target_session = mcp_manager.core_tool_to_session[tool_name]
+        elif user_id in mcp_manager.user_tool_to_session and \
+             tool_name in mcp_manager.user_tool_to_session[user_id]:
+            target_session = mcp_manager.user_tool_to_session[user_id][tool_name]
+
+        if not target_session:
+            return QueryResponse(result="", error=f"Tool '{tool_name}' not found or not accessible for user '{user_id}'.")
+
         try:
-            result, updated_history, error = await function_calling_loop(
-                user_input=request.query,
-                mcp_tools_list=user_specific_mcp_tools_list,
-                mcp_tool_to_session_map=user_specific_mcp_tool_to_session_map,
-                user_number=user_id, 
-                attachments=request.attachments,
-                stream_chunk_handler=None # Explicitly None for non-streaming
-            )
-            # user_conversations[user_id] = updated_history # History now managed within function_calling_loop
-            return QueryResponse(result=result, error=error)
+            print(f"MCP_SERVICE_LOG: Executing direct tool call '{tool_name}' for user '{user_id}' with args: {arguments}")
+            # mcp.types.ToolResponse is expected from call_tool
+            tool_call_response_obj: types.ToolResponse = await target_session.call_tool(tool_name, arguments=arguments)
+            
+            actual_tool_payload_dict: Optional[Dict[str, Any]] = None
+            response_error_str: Optional[str] = None
+            response_result_str: str = ""
+
+            # Logic adapted from /internal/call_mcp_tool to extract payload
+            if hasattr(tool_call_response_obj, 'content') and \
+               isinstance(tool_call_response_obj.content, list) and \
+               len(tool_call_response_obj.content) > 0 and \
+               hasattr(tool_call_response_obj.content[0], 'text') and \
+               isinstance(tool_call_response_obj.content[0].text, str):
+                try:
+                    # Attempt to parse the text content as JSON, assuming it's the tool's structured output
+                    actual_tool_payload_dict = json.loads(tool_call_response_obj.content[0].text)
+                except json.JSONDecodeError:
+                    # If it's not JSON, it could be a simple string response from a tool, or an error.
+                    # For direct tool calls, we generally expect a structured (dict) response.
+                    # If tools can return plain text, this needs more sophisticated handling or clearer contracts.
+                    response_error_str = f"Tool '{tool_name}' returned non-JSON text content via TextContent: {tool_call_response_obj.content[0].text[:200]}"
+            # FastMCP might return the dict directly if the server tool returns a dict
+            elif isinstance(tool_call_response_obj, dict):
+                 actual_tool_payload_dict = tool_call_response_obj
+            else:
+                response_error_str = f"Unexpected response type from tool '{tool_name}': {type(tool_call_response_obj)}. Expected a dictionary or ToolResponse with parsable TextContent."
+
+            if actual_tool_payload_dict is not None:
+                if "error" in actual_tool_payload_dict and actual_tool_payload_dict["error"] is not None:
+                    # If the tool's payload itself indicates an error
+                    response_error_str = str(actual_tool_payload_dict["error"])
+                # Always serialize the full payload as the result, even if it contains an "error" key,
+                # so the calling Python code can inspect it.
+                try:
+                    response_result_str = json.dumps(actual_tool_payload_dict)
+                except TypeError as te:
+                    err_detail = f"TypeError serializing tool payload for '{tool_name}': {str(te)}. Payload: {str(actual_tool_payload_dict)[:200]}"
+                    print(f"MCP_SERVICE_LOG: {err_detail}")
+                    if not response_error_str: response_error_str = err_detail
+                    # Fallback to string representation if JSON dump fails for some reason
+                    if not response_result_str: response_result_str = str(actual_tool_payload_dict)
+
+            if response_error_str and not response_result_str:
+                 # Ensure result is empty if only an error string was generated (no payload to serialize)
+                 response_result_str = ""
+            
+            print(f"MCP_SERVICE_LOG: Direct tool call '{tool_name}' completed. Result string: '{response_result_str[:200]}...', Error: {response_error_str}")
+            return QueryResponse(result=response_result_str, error=response_error_str)
+
         except Exception as e:
-            print(f"Error processing non-streaming query for {user_id}: {str(e)}")
             import traceback
-            print(f"Traceback: {traceback.format_exc()}")
-            return QueryResponse(result="", error=f"Error processing query: {str(e)}")
+            error_full_traceback = traceback.format_exc()
+            print(f"MCP_SERVICE_LOG: Error during direct tool call '{tool_name}' for user '{user_id}': {str(e)}\n{error_full_traceback}")
+            return QueryResponse(result="", error=f"Error executing tool '{tool_name}': {str(e)}")
+    
+    elif request.query:
+        # --- Handle Natural Language Query (existing logic) ---
+        user_specific_mcp_tools_list, user_specific_mcp_tool_to_session_map = mcp_manager.get_tools_for_user_query(user_id)
+        final_response_schema = request.final_response_json_schema
+
+        query_model = request.model
+        if request.stream: # If streaming, imply Gemini for now as it's the one we set up for streaming
+            # The actual model selection happens inside function_calling_loop based on its internal logic for now
+            # or could be passed if function_calling_loop is updated to accept model_name.
+            print(f"Streaming requested for user {user_id}. Will use Gemini via adapter.")
+
+        if request.stream:
+            async def stream_generator():
+                queue = asyncio.Queue()
+                
+                async def stream_chunk_handler_for_service(chunk: Dict[str, Any]):
+                    # This handler is called by function_calling_loop (via LLM adapter) for each stream chunk
+                    await queue.put(json.dumps(chunk) + "\n")
+                    # Do NOT put None on the queue here or set finished_event.
+                    # The function_calling_loop task will signal its completion.
+                
+                async def run_function_calling_and_signal_completion():
+                    try:
+                        await function_calling_loop(
+                            user_input=request.query,
+                            mcp_tools_list=user_specific_mcp_tools_list,
+                            mcp_tool_to_session_map=user_specific_mcp_tool_to_session_map,
+                            user_number=user_id,
+                            attachments=request.attachments,
+                            stream_chunk_handler=stream_chunk_handler_for_service,
+                            final_response_json_schema=final_response_schema # Pass the schema
+                        )
+                    except Exception as e:
+                        # If function_calling_loop itself raises an unhandled exception,
+                        # try to send an error chunk before signaling completion.
+                        print(f"ERROR in function_calling_loop task: {e}")
+                        traceback.print_exc() # Log the full traceback
+                        try:
+                            error_chunk = {"type": "error", "content": f"Unhandled error in backend processing: {str(e)}"}
+                            await queue.put(json.dumps(error_chunk) + "\n")
+                        except Exception as e_cb:
+                            print(f"Failed to send final error chunk to queue: {e_cb}")
+                    finally:
+                        # Signal that function_calling_loop (and thus all its streaming turns) is complete.
+                        await queue.put(None) 
+                
+                # Run function_calling_loop in a background task
+                loop_task = asyncio.create_task(run_function_calling_and_signal_completion())
+                
+                while True:
+                    item = await queue.get()
+                    if item is None: # End of stream signal from run_function_calling_and_signal_completion
+                        break
+                    yield item
+                    queue.task_done()
+                
+                await loop_task # Ensure the background task is awaited/cleaned up if it hasn't finished
+
+            return StreamingResponse(stream_generator(), media_type="application/x-ndjson")
+        else: # Non-streaming case (original behavior)
+            try:
+                result, updated_history, error = await function_calling_loop(
+                    user_input=request.query,
+                    mcp_tools_list=user_specific_mcp_tools_list,
+                    mcp_tool_to_session_map=user_specific_mcp_tool_to_session_map,
+                    user_number=user_id, 
+                    attachments=request.attachments,
+                    stream_chunk_handler=None, # Explicitly None for non-streaming
+                    final_response_json_schema=final_response_schema # Pass the schema
+                )
+
+                if request.final_response_json_schema and error is None and result:
+                    extracted_json_string = None
+                    # Try to parse the result directly as JSON first
+                    try:
+                        json.loads(result) # Validate if 'result' itself is a JSON string
+                        extracted_json_string = result # It's already good JSON
+                        print(f"MCP Service: Validated LLM response as direct JSON for user {user_id}.")
+                    except json.JSONDecodeError:
+                        # If direct parsing fails, try to extract from markdown
+                        import re
+                        match = re.search(r"```json\s*([\s\S]*?)\s*```", result, re.DOTALL)
+                        if match:
+                            potential_json = match.group(1).strip()
+                            try:
+                                json.loads(potential_json) # Validate
+                                extracted_json_string = potential_json
+                                print(f"MCP Service: Extracted and validated JSON from LLM response (markdown) for user {user_id}.")
+                            except json.JSONDecodeError as je:
+                                print(f"Warning: MCP Service: Extracted content (markdown) for user {user_id} was not valid JSON: {je}. Original LLM output will be used.")
+                        # else: # No markdown found, and direct parse failed
+                            # The original 'result' will be used, and a warning will be printed below if it's still not good.
+
+                    if extracted_json_string is not None:
+                        result = extracted_json_string
+                    else:
+                        # This warning means neither direct parse nor markdown extraction yielded valid JSON
+                        # For natural language queries, the result might be plain text if no schema was enforced or if the LLM failed to adhere.
+                        if request.final_response_json_schema: # Only print this warning if a schema was expected
+                            print(f"Warning: MCP Service: final_response_json_schema was provided for user {user_id} (NL Query), but LLM output was not a direct JSON string nor a valid JSON markdown block. Passing original LLM output.")
+            
+                return QueryResponse(result=result, error=error)
+            except Exception as e:
+                print(f"Error processing non-streaming query for {user_id}: {str(e)}")
+                import traceback
+                print(f"Traceback: {traceback.format_exc()}")
+                return QueryResponse(result="", error=f"Error processing query: {str(e)}")
+    else:
+        # This case should be caught by the Pydantic validator in QueryRequest
+        return QueryResponse(result="", error="Invalid request: Neither query nor direct_tool_call was provided.")
 
 @app.post("/clear/{user_id_path}") # Changed sender to user_id_path to avoid confusion
 async def clear_user_history(user_id_path: str): # user_id_path is raw from URL

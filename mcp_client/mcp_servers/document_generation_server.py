@@ -326,7 +326,7 @@ async def create_web_app(
         description="A list of attachment URLs. These will be processed and potentially included or referenced in the web application. Base64 encoded data is no longer supported."
     )] = None,
     user_request: Annotated[Optional[str], Field(
-        description="The user's primary request detailing what the web app should do, its purpose, or content. This is the main input for generation."
+        description="The user's exact request as they stated it, without any technical details or modifications. The powerful AI will handle all technical implementation."
     )] = None,
     model: Annotated[MODELS_LITERAL, Field(
         description="The LLM model to use for HTML generation."
@@ -349,6 +349,24 @@ async def create_web_app(
     including design, interactivity, and advanced features. The LLM should focus on conveying the user's core request,
     any relevant contextual information, and attachments. Avoid adding prescriptive instructions on *how* to build or
     style the web app, unless these are specific, explicit user requirements.
+
+    Returns:
+        dict: A dictionary with the following structure:
+        {
+            "status": str,      # "success" or "error"
+            "message": str,     # Human-readable description of the result
+            "url": str          # URL to access the created web app (only on success)
+        }
+        
+        On success:
+        - status: "success"
+        - message: Confirmation message with app name and URL
+        - url: Direct URL to access the web application
+        
+        On error:
+        - status: "error"
+        - message: Description of the error that occurred
+        - url: Not present
     """
     # Use default user number if empty
     if not user_number or user_number == "--user_number_not_needed--":
@@ -566,6 +584,9 @@ async def create_pdf_document(
     doc_name: Annotated[Optional[str], Field(
         description="The desired name for the PDF document. If not provided, a name will be generated (e.g., 'financial_report'). Use underscores for spaces."
     )] = None,
+    user_request: Annotated[Optional[str], Field(
+        description="The user's exact request as they stated it, without any technical details or modifications. The powerful AI will handle all technical implementation."
+    )] = None,
     attachments: Annotated[Optional[List[str]], Field(
         description="A list of attachment URLs (e.g., for images) to be included or referenced in the PDF document. Base64 encoded data is no longer supported."
     )] = None,
@@ -594,6 +615,9 @@ async def create_pdf_document(
     # --- Sanitize inputs ---
     user_id_safe = sanitize_for_path(user_number)
     doc_name = doc_name or f"pdf-doc-{str(uuid.uuid4())[:8]}"
+    # Remove .pdf extension if it already exists to prevent double extension
+    if doc_name.endswith('.pdf'):
+        doc_name = doc_name[:-4]
     doc_name_safe = sanitize_for_path(doc_name)
 
     # --- Attachment Handling ---
@@ -779,12 +803,10 @@ document.html
     # --- LLM API Call using Adapter ---
     adapter = get_llm_adapter(model_name=model)
     
-    # The user request for PDF generation is usually general, like "create a PDF based on the system prompt instructions".
-    # The actual content generation is driven by the system prompt which now includes attachment details and potentially MCP tool info.
-    # If user_request was also a parameter to create_pdf_document (it's not currently in the signature but could be added),
-    # it would be incorporated here. For now, the prompt is generic.
+    # Use user_request as the main context for PDF generation
+    main_request = user_request or "Please generate a PDF-ready HTML document as described in the system prompt."
     
-    user_facing_prompt = "Please generate a PDF-ready HTML document as described in the system prompt."
+    user_facing_prompt = f"**User Request:**\n{main_request}"
     if additional_context: # Append additional_context to the user-facing part of the prompt
         user_facing_prompt += f"\n\n**Additional Context to Consider:**\n{additional_context}"
     
@@ -884,8 +906,8 @@ async def edit_web_app(
     app_name: Annotated[Optional[str], Field(
         description="The name of the existing web application to edit. This app must have been previously created."
     )] = None,
-    user_edit_request: Annotated[Optional[str], Field(
-        description="A clear description of the changes the user wants to make to the web app."
+    user_request: Annotated[Optional[str], Field(
+        description="The user's exact request as they stated it, without any technical details or modifications. The powerful AI will handle all technical implementation."
     )] = None,
     model: Annotated[MODELS_LITERAL, Field(
         description="The LLM model to use for generating the diff to edit the HTML content."
@@ -902,8 +924,8 @@ async def edit_web_app(
     """
     if not app_name:
         return {"status": "error", "message": "app_name must be provided to edit an existing web app."}
-    if not user_edit_request:
-        return {"status": "error", "message": "user_edit_request must be provided to describe the changes."}
+    if not user_request:
+        return {"status": "error", "message": "user_request must be provided to describe the changes."}
 
     if not user_number or user_number == "--user_number_not_needed--":
         user_number = "+17145986105"
@@ -936,7 +958,7 @@ async def edit_web_app(
 ```
 
 User's request for changes:
-"{user_edit_request}"
+"{user_request}"
 
 Please provide the necessary changes ONLY in the \"diff-fenced\" format as per system instructions.
 """
@@ -1001,8 +1023,8 @@ async def edit_pdf_document(
     doc_name: Annotated[Optional[str], Field(
         description="The name of the existing PDF document to edit. This document must have been previously created."
     )] = None,
-    user_edit_request: Annotated[Optional[str], Field(
-        description="A clear description of the changes the user wants to make to the PDF's content."
+    user_request: Annotated[Optional[str], Field(
+        description="The user's exact request as they stated it, without any technical details or modifications. The powerful AI will handle all technical implementation."
     )] = None,
     model: Annotated[MODELS_LITERAL, Field(
         description="The LLM model to use for generating the diff to edit the PDF's HTML source."
@@ -1019,8 +1041,8 @@ async def edit_pdf_document(
     """
     if not doc_name:
         return {"status": "error", "message": "doc_name must be provided to edit an existing PDF."}
-    if not user_edit_request:
-        return {"status": "error", "message": "user_edit_request must be provided to describe the changes."}
+    if not user_request:
+        return {"status": "error", "message": "user_request must be provided to describe the changes."}
 
     if not user_number or user_number == "--user_number_not_needed--":
         user_number = "+17145986105"
@@ -1054,7 +1076,7 @@ async def edit_pdf_document(
 ```
 
 User's request for changes to the PDF content:
-"{user_edit_request}"
+"{user_request}"
 
 Please provide the necessary changes ONLY in the \"diff-fenced\" format as per system instructions.
 Ensure the edited HTML remains suitable for PDF conversion.

@@ -1,194 +1,102 @@
+
 import sys
 import os
-import math
-from typing import Annotated, Dict, Any, Union
+_mcp_package_parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if _mcp_package_parent_dir not in sys.path:
+    sys.path.append(_mcp_package_parent_dir)
 
-from pydantic import Field
 from mcp.server.fastmcp import FastMCP
+from typing import Any, Optional, List, Dict
+import inspect
 
-mcp = FastMCP("MCP Server for Standard Mathematical Operations")
+# --- User's Python code to be wrapped ---
+import os
+import json
+import requests # Ensure requests is imported for internal tool calls
 
-@mcp.tool()
-async def add(
-    user_number: Annotated[str, Field(description="User identifier, typically a phone number, passed by the MCP system.")],
-    num1: Annotated[float, Field(description="The first number for addition.")],
-    num2: Annotated[float, Field(description="The second number for addition.")]
-) -> Dict[str, Any]:
+def generated_function_name(user_id: str, num1: float, num2: float) -> dict:
     """
-    Adds two numbers (num1 + num2) and returns their sum.
-    """
-    try:
-        result = num1 + num2
-        return {"result": result}
-    except Exception as e:
-        # This is a fallback; type errors are usually caught by Pydantic.
-        return {"error": f"An unexpected error occurred during addition: {str(e)}"}
+    Performs standard mathematical operations (addition, subtraction, multiplication,
+    division, modulo, and exponentiation) on two input numbers.
 
-@mcp.tool()
-async def subtract(
-    user_number: Annotated[str, Field(description="User identifier, typically a phone number, passed by the MCP system.")],
-    a: Annotated[float, Field(description="The number to subtract from (minuend).")],
-    b: Annotated[float, Field(description="The number to subtract (subtrahend).")]
-) -> Dict[str, Any]:
-    """
-    Subtracts the second number (b) from the first number (a) and returns the difference (a - b).
-    """
-    try:
-        result = a - b
-        return {"result": result}
-    except Exception as e:
-        return {"error": f"An unexpected error occurred during subtraction: {str(e)}"}
+    Args:
+        user_id (str): The user identifier for context (not directly used in this math function).
+        num1 (float): The first number for the operations.
+        num2 (float): The second number for the operations.
 
-@mcp.tool()
-async def multiply(
-    user_number: Annotated[str, Field(description="User identifier, typically a phone number, passed by the MCP system.")],
-    num1: Annotated[float, Field(description="The first number for multiplication.")],
-    num2: Annotated[float, Field(description="The second number for multiplication.")]
-) -> Dict[str, Any]:
-    """
-    Multiplies two numbers (num1 * num2) and returns their product.
-    """
-    try:
-        result = num1 * num2
-        return {"result": result}
-    except Exception as e:
-        return {"error": f"An unexpected error occurred during multiplication: {str(e)}"}
+    Returns:
+        dict: A dictionary containing the results of each operation.
+              - 'addition' (float): The sum of num1 and num2.
+              - 'subtraction' (float): The difference of num1 and num2.
+              - 'multiplication' (float): The product of num1 and num2.
+              - 'division' (float | str): The quotient of num1 and num2. Returns a string
+                                          "Division by zero is undefined" if num2 is 0.
+              - 'modulo' (float | str): The remainder of num1 divided by num2. Returns a string
+                                        "Modulo by zero is undefined" if num2 is 0.
+              - 'exponentiation' (float): num1 raised to the power of num2.
 
-@mcp.tool()
-async def divide(
-    user_number: Annotated[str, Field(description="User identifier, typically a phone number, passed by the MCP system.")],
-    numerator: Annotated[float, Field(description="The number to be divided (numerator).")],
-    denominator: Annotated[float, Field(description="The number to divide by (denominator).")]
-) -> Dict[str, Any]:
+    Raises:
+        None: This function handles division and modulo by zero internally by returning
+              an informative string for those specific results, rather than raising an error.
     """
-    Divides the numerator by the denominator (numerator / denominator).
-    Handles division by zero by returning an error.
-    """
-    try:
-        if denominator == 0:
-            return {"error": "Division by zero is undefined. The denominator cannot be zero."}
-        result = numerator / denominator
-        return {"result": result}
-    except Exception as e:
-        return {"error": f"An unexpected error occurred during division: {str(e)}"}
+    results = {}
 
-@mcp.tool()
-async def power(
-    user_number: Annotated[str, Field(description="User identifier, typically a phone number, passed by the MCP system.")],
-    base: Annotated[float, Field(description="The base number.")],
-    exponent: Annotated[float, Field(description="The exponent.")]
-) -> Dict[str, Any]:
-    """
-    Calculates the base raised to the power of the exponent (base ^ exponent).
-    Handles mathematical domain errors (e.g., 0 to a negative power, negative base to a fractional power).
-    """
-    try:
-        result = math.pow(base, exponent)
-        return {"result": result}
-    except ValueError as ve:
-        # Handles cases like 0.0**-1.0 or (-2.0)**0.5 which are domain errors for math.pow
-        return {"error": f"Mathematical domain error: {str(ve)}"}
-    except OverflowError as oe:
-        return {"error": f"Mathematical overflow error: result is too large to represent: {str(oe)}"}
-    except Exception as e:
-        return {"error": f"An unexpected error occurred during power calculation: {str(e)}"}
+    # Addition
+    results['addition'] = num1 + num2
 
-@mcp.tool()
-async def sqrt(
-    user_number: Annotated[str, Field(description="User identifier, typically a phone number, passed by the MCP system.")],
-    number: Annotated[float, Field(description="The number to find the square root of.")]
-) -> Dict[str, Any]:
-    """
-    Calculates the square root of a number.
-    Handles negative inputs by returning an error, as real square roots are undefined for negative numbers.
-    """
-    if number < 0:
-        return {"error": "Cannot calculate the real square root of a negative number. Input must be non-negative."}
-    try:
-        result = math.sqrt(number)
-        return {"result": result}
-    except ValueError as ve: # Should be caught by number < 0, but as safeguard for other math.sqrt domain errors.
-         return {"error": f"Mathematical domain error during square root calculation: {str(ve)}"}
-    except Exception as e:
-        return {"error": f"An unexpected error occurred during square root calculation: {str(e)}"}
+    # Subtraction
+    results['subtraction'] = num1 - num2
 
-@mcp.tool()
-async def modulo(
-    user_number: Annotated[str, Field(description="User identifier, typically a phone number, passed by the MCP system.")],
-    a: Annotated[float, Field(description="The dividend (the number to be divided).")],
-    b: Annotated[float, Field(description="The divisor (the number to divide by).")],
-) -> Dict[str, Any]:
-    """
-    Calculates the modulo (remainder of a divided by b, i.e., a % b).
-    Handles modulo by zero by returning an error.
-    """
-    try:
-        if b == 0:
-            return {"error": "Modulo by zero is undefined. The divisor (b) cannot be zero."}
-        result = a % b # Python's % operator behavior
-        return {"result": result}
-    except ZeroDivisionError: # Double catch, `if b == 0` should get it.
-        return {"error": "Modulo by zero is undefined. The divisor (b) cannot be zero."}
-    except Exception as e:
-        return {"error": f"An unexpected error occurred during modulo operation: {str(e)}"}
+    # Multiplication
+    results['multiplication'] = num1 * num2
 
-@mcp.tool()
-async def sine(
-    user_number: Annotated[str, Field(description="User identifier, typically a phone number, passed by the MCP system.")],
-    angle_radians: Annotated[float, Field(description="The angle in radians for which to calculate the sine.")]
-) -> Dict[str, Any]:
-    """
-    Calculates the sine of an angle provided in radians.
-    """
-    try:
-        result = math.sin(angle_radians)
-        return {"result": result}
-    except Exception as e:
-        # math.sin typically doesn't raise errors for finite float inputs.
-        return {"error": f"An unexpected error occurred during sine calculation: {str(e)}"}
+    # Division
+    if num2 == 0:
+        results['division'] = "Division by zero is undefined"
+    else:
+        results['division'] = num1 / num2
 
-@mcp.tool()
-async def cosine(
-    user_number: Annotated[str, Field(description="User identifier, typically a phone number, passed by the MCP system.")],
-    angle_radians: Annotated[float, Field(description="The angle in radians for which to calculate the cosine.")]
-) -> Dict[str, Any]:
-    """
-    Calculates the cosine of an angle provided in radians.
-    """
-    try:
-        result = math.cos(angle_radians)
-        return {"result": result}
-    except Exception as e:
-        # math.cos typically doesn't raise errors for finite float inputs.
-        return {"error": f"An unexpected error occurred during cosine calculation: {str(e)}"}
+    # Modulo
+    if num2 == 0:
+        results['modulo'] = "Modulo by zero is undefined"
+    else:
+        results['modulo'] = num1 % num2
 
-@mcp.tool()
-async def tangent(
-    user_number: Annotated[str, Field(description="User identifier, typically a phone number, passed by the MCP system.")],
-    angle_radians: Annotated[float, Field(description="The angle in radians for which to calculate the tangent.")]
-) -> Dict[str, Any]:
-    """
-    Calculates the tangent of an angle provided in radians.
-    Handles cases where the tangent is undefined (e.g., for angles like pi/2, 3pi/2, etc.) by returning an error.
-    """
-    try:
-        # Tangent is undefined when cos(angle) is 0 (i.e., angle = pi/2 + k*pi)
-        cos_val = math.cos(angle_radians)
-        # Use a small epsilon for floating point comparison due to precision issues.
-        # math.cos(math.pi/2) is not exactly 0 but a very small number.
-        epsilon = 1e-15 
-        if abs(cos_val) < epsilon:
-            return {"error": "Tangent is undefined for this angle because cos(angle) is zero (e.g., pi/2, 3pi/2)."}
+    # Exponentiation
+    results['exponentiation'] = num1 ** num2
+
+    return results
+# --- End of User's Python code ---
+
+if 'generated_function_name' not in globals() or not callable(globals()['generated_function_name']):
+    print("CRITICAL SERVER SETUP ERROR: The provided python_code_to_wrap did not define a callable function "
+          "named 'generated_function_name'. This server will likely fail to start or operate correctly.")
+
+_target_func_to_expose = globals().get('generated_function_name')
+
+mcp = FastMCP("A server that provides standard mathematical operations.")
+
+@mcp.tool(name="standard_math_operations", description="Performs addition, subtraction, multiplication, division, modulo, and exponentiation on two numbers.")
+def standard_math_operations(user_id: str, num1: float, num2: float) -> Any:
+    '''
+    Performs addition, subtraction, multiplication, division, modulo, and exponentiation on two numbers.
+    
+    This tool wraps the dynamically provided 'generated_function_name' function.
+    Original function signature: (user_id: str, num1: float, num2: float) -> dict
+    Original function is async: False
+    '''
+    # Call the original function with the exact parameters it expects
+    _func_runtime_check = globals().get('generated_function_name')
+    if not callable(_func_runtime_check):
+        return {"error": "Wrapped function 'generated_function_name' is not callable or not found in the server environment."}
         
-        result = math.tan(angle_radians)
-        # Check for overflow if result is extremely large, though the cos_val check should largely prevent this.
-        if math.isinf(result):
-             return {"error": "Tangent calculation resulted in overflow (infinity). Angle is likely too close to where tangent is undefined."}
-        return {"result": result}
-    except OverflowError: # math.tan can raise OverflowError for extreme values.
-        return {"error": "Tangent result is too large to represent (overflow). Angle is likely too close to where tangent is undefined."}
-    except Exception as e:
-        return {"error": f"An unexpected error occurred during tangent calculation: {str(e)}"}
+    return _func_runtime_check(user_id, num1, num2)
 
 if __name__ == "__main__":
+    print(f"Attempting to start MCP Server: 'A server that provides standard mathematical operations.' with tool 'standard_math_operations' exposing 'generated_function_name'.")
+    # Final check before mcp.run()
+    _final_check_func = globals().get('generated_function_name')
+    if not callable(_final_check_func):
+        print("ERROR: Cannot start server. 'generated_function_name' is not defined or not callable.")
+        sys.exit(1)
     mcp.run()

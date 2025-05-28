@@ -259,6 +259,24 @@ async def web_search(
         search_lang: Search language (default "en").
         freshness: Filter for result freshness (optional).
         spellcheck: Enable spellcheck corrections (default 1).
+
+    Returns:
+        dict: A dictionary with the following structure:
+        {
+            "success": bool,  # True if search succeeded, False if error occurred
+            "query": str,     # The original search query
+            "web_results": [  # List of search result objects (empty if error)
+                {
+                    "title": str,       # Page title
+                    "url": str,         # Page URL
+                    "description": str, # Page description/snippet
+                    "age": str,         # How old the result is (e.g., "2 days ago")
+                    "language": str     # Language of the result
+                },
+                # ... more results
+            ],
+            "error": str      # Error message (only present if success=False)
+        }
     """
     results = await brave_search(query, count, offset, country, search_lang, freshness, spellcheck)
     return results
@@ -296,7 +314,24 @@ async def news_search(
     - spellcheck (int, optional): Whether to enable spellcheck (default: 1).
 
     Returns:
-    - dict: {"success": bool, "query": str, "news_articles": [ {"title": str, "url": str, "description": str, ...}, ... ]}
+        dict: A dictionary with the following structure:
+        {
+            "success": bool,        # True if search succeeded, False if error occurred
+            "query": str,           # The original search query
+            "news_articles": [      # List of news article objects (empty if error)
+                {
+                    "title": str,       # Article title
+                    "url": str,         # Article URL
+                    "description": str, # Article description/snippet
+                    "source": str,      # News source name
+                    "age": str,         # How old the article is (e.g., "3 hours ago")
+                    "breaking": bool,   # Whether this is breaking news
+                    "thumbnail": str    # Thumbnail image URL (optional)
+                },
+                # ... more articles
+            ],
+            "error": str            # Error message (only present if success=False)
+        }
 
     Example usage (parallel):
     >>> results = await asyncio.gather(
@@ -340,7 +375,23 @@ async def video_search(
     - spellcheck (int, optional): Whether to enable spellcheck (default: 1).
 
     Returns:
-    - dict: {"success": bool, "query": str, "videos": [ {"title": str, "url": str, ...}, ... ]}
+        dict: A dictionary with the following structure:
+        {
+            "success": bool,    # True if search succeeded, False if error occurred
+            "query": str,       # The original search query
+            "videos": [         # List of video objects (empty if error)
+                {
+                    "title": str,       # Video title
+                    "url": str,         # Video URL
+                    "duration": str,    # Video duration (e.g., "5:23")
+                    "publisher": str,   # Channel/publisher name
+                    "views": str,       # View count (e.g., "1.2M views")
+                    "thumbnail": str    # Thumbnail image URL (optional)
+                },
+                # ... more videos
+            ],
+            "error": str        # Error message (only present if success=False)
+        }
 
     Example usage (parallel):
     >>> results = await asyncio.gather(
@@ -385,8 +436,26 @@ async def search_batch_tool(
     ... )
 
     Returns:
-    - dict: {"batch_results": [result1, result2, ...]} where each result is the output of the corresponding tool call.
-    - If a tool name is unknown or arguments are invalid, the result will include an error message for that entry.
+        dict: A dictionary with the following structure:
+        {
+            "batch_results": [  # List of results from each tool call
+                {
+                    # Result from first tool call (same structure as individual tool)
+                    "success": bool,
+                    "query": str,
+                    "web_results": [...] or "news_articles": [...] or "videos": [...],
+                    "error": str  # Only if success=False
+                },
+                {
+                    # Result from second tool call
+                    # ... same structure as above
+                },
+                # ... more results corresponding to each tool call
+            ]
+        }
+        
+        Note: If a tool name is unknown or arguments are invalid, that specific result 
+        will contain {"success": false, "error": "description of the error"}.
     """
     results = []
     tasks = []
