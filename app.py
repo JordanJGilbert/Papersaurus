@@ -66,6 +66,7 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
+MCP_INTERNAL_API_KEY = os.getenv('MCP_INTERNAL_API_KEY')
 
 anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -204,6 +205,64 @@ def mcp_status():
         return jsonify(response.json())
     except requests.exceptions.RequestException as e:
         return jsonify({"error": f"Error communicating with MCP service: {str(e)}"}), 500
+
+@app.route('/internal/call_mcp_tool', methods=['POST'])
+def call_mcp_tool():
+    """Proxy internal MCP tool calls to the MCP service"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+        
+        # Validate required fields
+        if 'tool_name' not in data:
+            return jsonify({"error": "Missing 'tool_name' parameter"}), 400
+        if 'arguments' not in data:
+            return jsonify({"error": "Missing 'arguments' parameter"}), 400
+        
+        # Check if we have the internal API key
+        if not MCP_INTERNAL_API_KEY:
+            return jsonify({"error": "MCP_INTERNAL_API_KEY not configured"}), 500
+        
+        # Prepare headers for the internal call
+        headers = {
+            'Content-Type': 'application/json',
+            'X-Internal-API-Key': MCP_INTERNAL_API_KEY
+        }
+        
+        # Forward the request to the MCP service's internal endpoint
+        mcp_response = requests.post(
+            'http://localhost:5001/internal/call_mcp_tool',
+            json=data,
+            headers=headers,
+            timeout=300
+        )
+        mcp_response.raise_for_status()
+        
+        # Return the response from the MCP service
+        return jsonify(mcp_response.json())
+        
+    except requests.exceptions.HTTPError as http_err:
+        error_detail = f"HTTP error calling MCP tool: {str(http_err)}"
+        try:
+            if http_err.response is not None:
+                mcp_error_content_type = http_err.response.headers.get("Content-Type", "")
+                if "application/json" in mcp_error_content_type:
+                    mcp_error_json = http_err.response.json()
+                    if "error" in mcp_error_json:
+                        error_detail = f"MCP Tool Error: {mcp_error_json['error']}"
+                    elif "detail" in mcp_error_json:
+                        error_detail = f"MCP Tool Detail: {mcp_error_json['detail']}"
+                else:
+                    error_detail = f"HTTP error {http_err.response.status_code} from MCP service: {http_err.response.text[:500]}"
+        except ValueError:
+            if http_err.response is not None:
+                error_detail = f"HTTP error {http_err.response.status_code} from MCP service (non-JSON response): {http_err.response.text[:500]}"
+        return jsonify({"error": error_detail}), http_err.response.status_code if http_err.response is not None else 500
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"Error communicating with MCP service: {str(e)}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Unexpected error: {str(e)}"}), 500
 
 @app.route('/write', methods=['POST'])
 def write():

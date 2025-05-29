@@ -110,3 +110,4 @@ coverage/
 
 # Jupyter Notebooks
 .ipynb_checkpoints/ 
+.aider*

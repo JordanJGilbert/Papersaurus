@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { prism as prismSyntaxStyle, vscDarkPlus as vscDarkPlusSyntaxStyle } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useTheme } from 'next-themes';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronDown } from 'lucide-react';
 import ReactDiffViewer, { DiffMethod } from 'react-diff-viewer-continued';
 
 // Register languages you expect to use
@@ -204,157 +204,160 @@ const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCall }) => {
   // --- End Diff setup ---
 
   return (
-    <div className="tool-call-display my-2 p-3 border border-border bg-muted/30 rounded-lg shadow-sm text-xs">
-      <div className="font-semibold text-sm text-foreground mb-1">
-        Tool: <span className="font-mono bg-muted p-1 rounded text-primary">{toolCall.name}</span>
-      </div>
-
-      <div className="mb-2">
-        <span className="font-medium text-muted-foreground">Arguments:</span>
-        {renderContent(toolCall.arguments, 'json', true)}
-      </div>
-
-      {toolCall.status && (
-        <div className="mb-2">
-          <span className="font-medium text-muted-foreground">Status: </span>
-          <span 
-            className={`font-semibold ${
-              toolCall.status === "Error" ? "text-destructive" : 
-              toolCall.status === "Completed" ? "text-green-600 dark:text-green-500" :
-              toolCall.status === "Pending..." || toolCall.status === "Streaming..." ? "text-blue-600 dark:text-blue-500" :
-              "text-foreground"
-            }`}
-          >
-            {toolCall.status === "Pending..." || toolCall.status === "Streaming..." ? (
-              <Loader2 className="w-3 h-3 inline mr-1 animate-spin" />
-            ) : null}
-            {toolCall.status}
+    <details className="tool-call-display my-2 rounded-lg border border-border bg-muted/20 shadow-sm">
+      <summary className="cursor-pointer p-3 list-none flex items-center justify-between text-sm font-medium text-muted-foreground hover:bg-muted/40 rounded-t-lg">
+        <div className="flex items-center space-x-2">
+          <span className="font-semibold text-foreground">
+            Tool: <span className="font-mono bg-muted px-2 py-1 rounded text-primary">{toolCall.name}</span>
           </span>
-          {toolCall.is_error && <span className="text-destructive ml-1">(Error)</span>}
-          {toolCall.is_partial && toolCall.status === "Streaming..." && <span className="text-blue-500 ml-1">(Partial)</span>}
-        </div>
-      )}
-
-      {toolCall.result !== undefined && toolCall.result !== null && (
-        <div>
-          <span className="font-medium text-muted-foreground">Result:</span>
-          
-          {/* View switcher for edit_python_code */} 
-          {showAsDiffViewOptions && (
-            <div className="my-2 flex space-x-2 border-b border-border pb-2 mb-2">
-              <button 
-                onClick={() => setEditViewMode('diff')} 
-                className={`px-3 py-1 text-xs rounded-md transition-colors ${editViewMode === 'diff' ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
-              >
-                Diff
-              </button>
-              <button 
-                onClick={() => setEditViewMode('original')} 
-                className={`px-3 py-1 text-xs rounded-md transition-colors ${editViewMode === 'original' ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
-              >
-                Original
-              </button>
-              <button 
-                onClick={() => setEditViewMode('edited')} 
-                className={`px-3 py-1 text-xs rounded-md transition-colors ${editViewMode === 'edited' ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
-              >
-                Edited
-              </button>
-            </div>
-          )}
-
-          {/* Conditional rendering based on view mode for edit_python_code */} 
-          {showAsDiffViewOptions && originalCodeForDiff !== null && editedCodeForDiff !== null ? (
-            <div className="code-diff-container text-sm"> 
-              {isIdentical ? (
-                <>
-                  <p className="text-muted-foreground italic my-1 text-xs">No changes detected.</p>
-                  {/* Show edited code (which is same as original) with syntax highlighting */}
-                  {renderContent(editedCodeForDiff, 'python', false)} 
-                </>
-              ) : editViewMode === 'diff' ? (
-                <ReactDiffViewer
-                  oldValue={originalCodeForDiff}
-                  newValue={editedCodeForDiff}
-                  splitView={false} 
-                  useDarkTheme={theme === 'dark'}
-                  compareMethod={DiffMethod.LINES} 
-                  styles={diffViewerStylesToApply} 
-                  codeFoldMessageRenderer={(totalFoldedLines: number) => (
-                    <span style={{fontStyle: 'italic', color: 'grey', cursor: 'pointer'}}>
-                      {`... ${totalFoldedLines} lines folded ...`}
-                    </span>
-                  )}
-                  disableWordDiff={false} 
-                  hideLineNumbers={false} 
-                  renderContent={(source:string) => (
-                     <SyntaxHighlighter 
-                       style={syntaxTheme} 
-                       language="python" 
-                       PreTag="span" 
-                       customStyle={{ 
-                         background: 'transparent', 
-                         padding: '0',
-                         display: 'inline' 
-                       }}
-                      >
-                       {source}
-                     </SyntaxHighlighter>
-                  )}
-                />
-              ) : editViewMode === 'original' ? (
-                renderContent(originalCodeForDiff, 'python', false)
-              ) : editViewMode === 'edited' ? (
-                renderContent(editedCodeForDiff, 'python', false)
+          {toolCall.status && (
+            <span 
+              className={`font-semibold text-xs ${
+                toolCall.status === "Error" ? "text-destructive" : 
+                toolCall.status === "Completed" ? "text-green-600 dark:text-green-500" :
+                toolCall.status === "Pending..." || toolCall.status === "Streaming..." ? "text-blue-600 dark:text-blue-500" :
+                "text-foreground"
+              }`}
+            >
+              {toolCall.status === "Pending..." || toolCall.status === "Streaming..." ? (
+                <Loader2 className="w-3 h-3 inline mr-1 animate-spin" />
               ) : null}
-            </div>
-          ) : isCodeTool && resultIsJson && typeof parsedResult === 'object' ? (
-            (() => {
-              const responseKey = `${toolCall.name}_response`;
-              const actualToolResultObject = parsedResult[responseKey];
-
-              if (actualToolResultObject && typeof actualToolResultObject === 'object') {
-                return (
-                  <div className="space-y-2 mt-1">
-                    {Object.entries(actualToolResultObject).map(([key, value]) => {
-                      let lang = 'text';
-                      // Ensure value is a string for rendering. If it's an object/array, stringify.
-                      let content = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-                      
-                      if (key === 'generated_code' || key === 'edited_code') {
-                        lang = 'python';
-                      } else if (key === 'stdout' || key === 'stderr') {
-                        lang = 'bash'; 
-                      } else if (key === 'function_result' || key === 'message' || key === 'status') {
-                        lang = 'text';
-                      } else if (typeof value === 'object' || Array.isArray(value)) {
-                        // This case handles if a value itself is an object/array (e.g. complex function_result)
-                        // content is already stringified above if it wasn't a string.
-                        lang = 'json';
-                      }
-
-                      return (
-                        <div key={key} className="pl-2 border-l-2 border-muted-foreground/30">
-                          <strong className="text-muted-foreground">{key}:</strong>
-                          {content.trim() ? renderContent(content, lang) : <span className="text-muted-foreground italic ml-1">empty</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              } else {
-                // Fallback if the expected [toolName]_response structure is not found
-                return renderContent(JSON.stringify(parsedResult, null, 2), 'json');
-              }
-            })()
-          ) : resultIsJson ? (
-            renderContent(JSON.stringify(parsedResult, null, 2), 'json')
-          ) : (
-            renderContent(String(parsedResult), 'text') // Ensure it's a string for non-JSON results
+              {toolCall.status}
+              {toolCall.is_error && <span className="text-destructive ml-1">(Error)</span>}
+              {toolCall.is_partial && toolCall.status === "Streaming..." && <span className="text-blue-500 ml-1">(Partial)</span>}
+            </span>
           )}
         </div>
-      )}
-    </div>
+        <ChevronDown className="w-5 h-5 transition-transform duration-200 details-arrow" />
+      </summary>
+      
+      <div className="p-3 border-t border-border bg-background rounded-b-lg text-xs">
+        <div className="mb-2">
+          <span className="font-medium text-muted-foreground">Arguments:</span>
+          {renderContent(toolCall.arguments, 'json', true)}
+        </div>
+
+        {toolCall.result !== undefined && toolCall.result !== null && (
+          <div>
+            <span className="font-medium text-muted-foreground">Result:</span>
+            
+            {/* View switcher for edit_python_code */} 
+            {showAsDiffViewOptions && (
+              <div className="my-2 flex space-x-2 border-b border-border pb-2 mb-2">
+                <button 
+                  onClick={() => setEditViewMode('diff')} 
+                  className={`px-3 py-1 text-xs rounded-md transition-colors ${editViewMode === 'diff' ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
+                >
+                  Diff
+                </button>
+                <button 
+                  onClick={() => setEditViewMode('original')} 
+                  className={`px-3 py-1 text-xs rounded-md transition-colors ${editViewMode === 'original' ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
+                >
+                  Original
+                </button>
+                <button 
+                  onClick={() => setEditViewMode('edited')} 
+                  className={`px-3 py-1 text-xs rounded-md transition-colors ${editViewMode === 'edited' ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
+                >
+                  Edited
+                </button>
+              </div>
+            )}
+
+            {/* Conditional rendering based on view mode for edit_python_code */} 
+            {showAsDiffViewOptions && originalCodeForDiff !== null && editedCodeForDiff !== null ? (
+              <div className="code-diff-container text-sm"> 
+                {isIdentical ? (
+                  <>
+                    <p className="text-muted-foreground italic my-1 text-xs">No changes detected.</p>
+                    {/* Show edited code (which is same as original) with syntax highlighting */}
+                    {renderContent(editedCodeForDiff, 'python', false)} 
+                  </>
+                ) : editViewMode === 'diff' ? (
+                  <ReactDiffViewer
+                    oldValue={originalCodeForDiff}
+                    newValue={editedCodeForDiff}
+                    splitView={false} 
+                    useDarkTheme={theme === 'dark'}
+                    compareMethod={DiffMethod.LINES} 
+                    styles={diffViewerStylesToApply} 
+                    codeFoldMessageRenderer={(totalFoldedLines: number) => (
+                      <span style={{fontStyle: 'italic', color: 'grey', cursor: 'pointer'}}>
+                        {`... ${totalFoldedLines} lines folded ...`}
+                      </span>
+                    )}
+                    disableWordDiff={false} 
+                    hideLineNumbers={false} 
+                    renderContent={(source:string) => (
+                       <SyntaxHighlighter 
+                         style={syntaxTheme} 
+                         language="python" 
+                         PreTag="span" 
+                         customStyle={{ 
+                           background: 'transparent', 
+                           padding: '0',
+                           display: 'inline' 
+                         }}
+                        >
+                         {source}
+                       </SyntaxHighlighter>
+                    )}
+                  />
+                ) : editViewMode === 'original' ? (
+                  renderContent(originalCodeForDiff, 'python', false)
+                ) : editViewMode === 'edited' ? (
+                  renderContent(editedCodeForDiff, 'python', false)
+                ) : null}
+              </div>
+            ) : isCodeTool && resultIsJson && typeof parsedResult === 'object' ? (
+              (() => {
+                const responseKey = `${toolCall.name}_response`;
+                const actualToolResultObject = parsedResult[responseKey];
+
+                if (actualToolResultObject && typeof actualToolResultObject === 'object') {
+                  return (
+                    <div className="space-y-2 mt-1">
+                      {Object.entries(actualToolResultObject).map(([key, value]) => {
+                        let lang = 'text';
+                        // Ensure value is a string for rendering. If it's an object/array, stringify.
+                        let content = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+                        
+                        if (key === 'generated_code' || key === 'edited_code') {
+                          lang = 'python';
+                        } else if (key === 'stdout' || key === 'stderr') {
+                          lang = 'bash'; 
+                        } else if (key === 'function_result' || key === 'message' || key === 'status') {
+                          lang = 'text';
+                        } else if (typeof value === 'object' || Array.isArray(value)) {
+                          // This case handles if a value itself is an object/array (e.g. complex function_result)
+                          // content is already stringified above if it wasn't a string.
+                          lang = 'json';
+                        }
+
+                        return (
+                          <div key={key} className="pl-2 border-l-2 border-muted-foreground/30">
+                            <strong className="text-muted-foreground">{key}:</strong>
+                            {content.trim() ? renderContent(content, lang) : <span className="text-muted-foreground italic ml-1">empty</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                } else {
+                  // Fallback if the expected [toolName]_response structure is not found
+                  return renderContent(JSON.stringify(parsedResult, null, 2), 'json');
+                }
+              })()
+            ) : resultIsJson ? (
+              renderContent(JSON.stringify(parsedResult, null, 2), 'json')
+            ) : (
+              renderContent(String(parsedResult), 'text') // Ensure it's a string for non-JSON results
+            )}
+          </div>
+        )}
+      </div>
+    </details>
   );
 };
 

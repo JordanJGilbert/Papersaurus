@@ -1,3 +1,14 @@
+#!/usr/bin/env python3
+"""
+Attachment Management Server for MCP
+
+Provides comprehensive attachment handling capabilities:
+- Upload and store files with metadata
+- Retrieve attachment information and content
+- List attachments with filtering
+- Clean up temporary files
+"""
+
 import sys
 import os
 import json
@@ -11,8 +22,12 @@ from typing import Optional, Tuple
 # Ensure project root is in path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from llm_adapters import get_llm_adapter, StandardizedMessage, StandardizedLLMConfig
+import logging
+
+logging.basicConfig(stream=sys.stderr, level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Base user_data directory
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'user_data'))
@@ -479,4 +494,14 @@ async def fetch_attachments(
 
 # Add mcp.run() if it's not already there for standalone execution/testing
 if __name__ == "__main__":
-    mcp.run() 
+    # Check if we should use HTTP transport
+    transport = os.getenv("FASTMCP_TRANSPORT", "stdio")
+    
+    if transport == "streamable-http":
+        host = os.getenv("FASTMCP_HOST", "127.0.0.1")
+        port = int(os.getenv("FASTMCP_PORT", "9000"))
+        logger.info(f"Starting server with streamable-http transport on {host}:{port}")
+        mcp.run(transport="streamable-http", host=host, port=port)
+    else:
+        logger.info("Starting server with stdio transport")
+        mcp.run() 

@@ -1,1 +1,0 @@
-"use strict";exports.id=7561,exports.ids=[7561],exports.modules={84714:(s,e,n)=>{var t=n(82776);function a(s){s.register(t),s.languages.jsonp=s.languages.extend("json",{punctuation:/[{}[\]();,.]/}),s.languages.insertBefore("jsonp","punctuation",{function:/(?!\s)[_$a-zA-Z\xA0-\uFFFF](?:(?!\s)[$\w\xA0-\uFFFF])*(?=\s*\()/})}s.exports=a,a.displayName="jsonp",a.aliases=[]}};

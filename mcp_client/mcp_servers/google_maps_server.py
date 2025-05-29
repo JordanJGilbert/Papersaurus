@@ -1,3 +1,12 @@
+#!/usr/bin/env python3
+"""
+Google Maps Server for MCP
+
+Provides tools for working with Google Maps:
+- get_directions: Get directions between locations
+- search_places: Search for places using Google Places API
+"""
+
 import sys
 import os
 import requests
@@ -8,11 +17,16 @@ from urllib.parse import urlencode
 # Ensure project root is in path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from utils.constants import DOMAIN
 import hashlib
 import re
 import uuid
+import googlemaps
+import logging
+
+logging.basicConfig(stream=sys.stderr, level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 mcp = FastMCP("Google Maps Server")
 
@@ -110,4 +124,14 @@ async def get_directions(
 # --- Tool implementations will go here ---
 
 if __name__ == "__main__":
-    mcp.run() 
+    # Check if we should use HTTP transport
+    transport = os.getenv("FASTMCP_TRANSPORT", "stdio")
+    
+    if transport == "streamable-http":
+        host = os.getenv("FASTMCP_HOST", "127.0.0.1")
+        port = int(os.getenv("FASTMCP_PORT", "9000"))
+        logger.info(f"Starting server with streamable-http transport on {host}:{port}")
+        mcp.run(transport="streamable-http", host=host, port=port)
+    else:
+        logger.info("Starting server with stdio transport")
+        mcp.run() 

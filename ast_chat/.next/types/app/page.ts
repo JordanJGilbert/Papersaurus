@@ -1,4 +1,4 @@
-// File: /var/www/flask_app/nextjs-chatbot/app/page.tsx
+// File: /var/www/flask_app/ast_chat/app/page.tsx
 import * as entry from '../../../app/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

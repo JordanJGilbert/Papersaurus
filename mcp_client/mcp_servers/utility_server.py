@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 import requests
 import asyncio
 import logging
@@ -45,4 +45,14 @@ async def fetch_url_content(url: str) -> dict:
         return {"status": "error", "message": f"An unexpected error occurred: {str(e)}"}
 
 if __name__ == "__main__":
-    mcp.run() 
+    # Check if we should use HTTP transport
+    transport = os.getenv("FASTMCP_TRANSPORT", "stdio")
+    
+    if transport == "streamable-http":
+        host = os.getenv("FASTMCP_HOST", "127.0.0.1")
+        port = int(os.getenv("FASTMCP_PORT", "9000"))
+        logger.info(f"Starting server with streamable-http transport on {host}:{port}")
+        mcp.run(transport="streamable-http", host=host, port=port)
+    else:
+        logger.info("Starting server with stdio transport")
+        mcp.run() 

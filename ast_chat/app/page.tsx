@@ -97,18 +97,64 @@ export default function ChatPage() {
     { title: "What is the weather", detail: "in San Francisco?" },
   ];
 
-  const renderSanitizedMarkdown = (text: string): string => {
-    // This function assumes it's running in a browser environment
-    // due to the "use client" directive on the component and use of DOMPurify.
-    // marked.parse is configured to run synchronously.
-    const dirtyHtml = marked.parse(text, { gfm: true, breaks: true }) as string;
-    return DOMPurify.sanitize(dirtyHtml);
-  };
-
   // Helper to ensure markdown block elements are properly spaced
   const normalizeFragment = (fragment: string, _prevContent: string): string => {
     // TEMPORARILY A PASS-THROUGH
     return fragment;
+  };
+
+  // NEW: Function to convert standalone image/video URLs to HTML elements
+  const convertMediaUrls = (text: string): string => {
+    // Common image extensions
+    const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|tiff)(\?[^)\s"']*)?$/i;
+    // Common video extensions  
+    const videoExtensions = /\.(mp4|webm|ogg|mov|avi|wmv|flv|m4v)(\?[^)\s"']*)?$/i;
+    
+    // More comprehensive URL pattern that handles URLs in various contexts
+    // This pattern looks for http/https URLs that are not already in markdown image/link format
+    const urlPattern = /(?<!!\[)(?<!\]\()(?<!\[.*?\]\()https?:\/\/[^\s<>"'\]\)]+/g;
+    
+    let processedText = text.replace(urlPattern, (url) => {
+      // Remove trailing punctuation that might not be part of the URL
+      const cleanUrl = url.replace(/[.,;:!?)"']+$/, '');
+      
+      if (imageExtensions.test(cleanUrl)) {
+        return `![Image](${cleanUrl})`;
+      } else if (videoExtensions.test(cleanUrl)) {
+        return `<video controls style="max-width: 100%; height: auto; max-height: 400px; border-radius: 0.375rem; margin: 0.5em auto; display: block;">
+          <source src="${cleanUrl}" type="video/${cleanUrl.split('.').pop()?.split('?')[0] || 'mp4'}">
+          Your browser does not support the video tag.
+          <a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">View video</a>
+        </video>`;
+      }
+      
+      return url; // Return original URL if not media
+    });
+
+    // Additional aggressive pattern to catch any URLs that might be in quotes or other contexts
+    const aggressiveUrlPattern = /https?:\/\/[^\s<>"'\]\)\}]+\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|tiff)(\?[^\s<>"'\]\)\}]*)?/gi;
+    
+    processedText = processedText.replace(aggressiveUrlPattern, (url) => {
+      // Check if this URL is already converted to markdown
+      if (processedText.includes(`![Image](${url})`)) {
+        return url;
+      }
+      const cleanUrl = url.replace(/[.,;:!?)"'\}]+$/, '');
+      return `![Image](${cleanUrl})`;
+    });
+    
+    return processedText;
+  };
+
+  const renderSanitizedMarkdown = (text: string): string => {
+    // First convert standalone media URLs to proper markdown/HTML
+    const textWithMedia = convertMediaUrls(text);
+    
+    // This function assumes it's running in a browser environment
+    // due to the "use client" directive on the component and use of DOMPurify.
+    // marked.parse is configured to run synchronously.
+    const dirtyHtml = marked.parse(textWithMedia, { gfm: true, breaks: true }) as string;
+    return DOMPurify.sanitize(dirtyHtml);
   };
 
   const getCurrentLocation = (): Promise<string> => {
@@ -408,13 +454,18 @@ export default function ChatPage() {
 
                                         // --- NEW: Extract get_directions_response ---
                                         let toolResponse = null;
-                                        if (
-                                            tc.name === "get_directions" &&
-                                            parsedChunk.result &&
-                                            typeof parsedChunk.result === 'object'
-                                        ) {
-                                            const responseKey = `${tc.name}_response`;
-                                            toolResponse = parsedChunk.result[responseKey];
+                                        if (tc.name === "get_directions" && parsedChunk.result) {
+                                            // Handle both old wrapped format and new direct format
+                                            if (typeof parsedChunk.result === 'object') {
+                                                const responseKey = `${tc.name}_response`;
+                                                if (parsedChunk.result[responseKey]) {
+                                                    // Old wrapped format
+                                                    toolResponse = parsedChunk.result[responseKey];
+                                                } else {
+                                                    // New direct format from FastMCP
+                                                    toolResponse = parsedChunk.result;
+                                                }
+                                            }
                                         }
                                         // --- END NEW ---
 
@@ -652,13 +703,18 @@ export default function ChatPage() {
 
                                     // --- NEW: Extract get_directions_response ---
                                     let toolResponse = null;
-                                    if (
-                                        tc.name === "get_directions" &&
-                                        parsedChunk.result &&
-                                        typeof parsedChunk.result === 'object'
-                                    ) {
-                                        const responseKey = `${tc.name}_response`;
-                                        toolResponse = parsedChunk.result[responseKey];
+                                    if (tc.name === "get_directions" && parsedChunk.result) {
+                                        // Handle both old wrapped format and new direct format
+                                        if (typeof parsedChunk.result === 'object') {
+                                            const responseKey = `${tc.name}_response`;
+                                            if (parsedChunk.result[responseKey]) {
+                                                // Old wrapped format
+                                                toolResponse = parsedChunk.result[responseKey];
+                                            } else {
+                                                // New direct format from FastMCP
+                                                toolResponse = parsedChunk.result;
+                                            }
+                                        }
                                     }
                                     // --- END NEW ---
 
@@ -695,13 +751,18 @@ export default function ChatPage() {
 
                             // --- NEW: Attach directionsData to message for rendering ---
                             let toolResponse = null;
-                            if (
-                                parsedChunk.name === "get_directions" &&
-                                parsedChunk.result &&
-                                typeof parsedChunk.result === 'object'
-                            ) {
-                                const responseKey = `${parsedChunk.name}_response`;
-                                toolResponse = parsedChunk.result[responseKey];
+                            if (parsedChunk.name === "get_directions" && parsedChunk.result) {
+                                // Handle both old wrapped format and new direct format
+                                if (typeof parsedChunk.result === 'object') {
+                                    const responseKey = `${parsedChunk.name}_response`;
+                                    if (parsedChunk.result[responseKey]) {
+                                        // Old wrapped format
+                                        toolResponse = parsedChunk.result[responseKey];
+                                    } else {
+                                        // New direct format from FastMCP
+                                        toolResponse = parsedChunk.result;
+                                    }
+                                }
                             }
                             let finalMsgObject = { ...msg, parts: newParts, thinking: true };
                             if (
@@ -816,6 +877,10 @@ export default function ChatPage() {
       .thought-summary-details[open] > summary .details-arrow {
         transform: rotate(180deg);
       }
+      /* Add CSS for tool call details arrow rotation */
+      .tool-call-display[open] > summary .details-arrow {
+        transform: rotate(180deg);
+      }
       /* Add some basic prose styling for markdown content if not already globally available */
       .prose {
         line-height: 1.35; /* Increased for better readability */
@@ -895,10 +960,32 @@ export default function ChatPage() {
         background-color: hsl(var(--muted-foreground) / 0.1); /* Slightly more visible on dark for loading */
       }
 
+      /* Video styling to match images */
+      .prose video {
+        max-width: 100%;
+        height: auto;
+        max-height: 400px;
+        border-radius: 0.375rem;
+        margin: 0.5em auto;
+        display: block;
+        background-color: hsl(var(--muted-foreground) / 0.05);
+        border: 1px solid hsl(var(--border));
+      }
+
+      .dark .prose video {
+        background-color: hsl(var(--muted-foreground) / 0.1);
+        border: 1px solid hsl(var(--border));
+      }
+
       @media (min-width: 1024px) { /* Desktop screens */
         .prose img {
           max-width: 60%; /* Make images smaller on desktop */
           max-height: 500px; /* Allow larger images on desktop */
+        }
+        
+        .prose video {
+          max-width: 70%; /* Make videos slightly larger than images on desktop */
+          max-height: 600px; /* Allow larger videos on desktop */
         }
       }
     `;

@@ -575,13 +575,6 @@ async def function_calling_loop(
         
         args_dict = resolved_args_dict
         
-        if isinstance(args_dict, dict):
-            # Ensure 'user_number' is present, but avoid overwriting if already set by placeholder resolution
-            if "user_number" not in args_dict:
-                args_dict["user_number"] = current_user_number_str
-            # Do NOT automatically inject caller_user_id here, it is specific to execute_python_code's own needs.
-            # Other tools get user_number which they can use for their own user_id_context if they call other MCP tools internally.
-        
         print(f"DEBUG: Calling tool '{tool_name}' (ID: {tool_id}) with parameters:")
         try:
             print(json.dumps(args_dict, indent=2))
@@ -590,6 +583,17 @@ async def function_calling_loop(
         print("--- End of tool parameters ---")
 
         try:
+            # Temporarily attach the stream_handler_func to the session object's _custom_state
+            # This allows the sampling_handler (if used by this tool via ctx.sample)
+            # to potentially access it and stream sample generation back to the client.
+            # _custom_state is a dict on the Client instance.
+            handler_was_set_in_custom_state = False
+            if stream_handler_func:
+                if not hasattr(session_for_tool, '_custom_state') or not isinstance(session_for_tool._custom_state, dict):
+                    session_for_tool._custom_state = {} 
+                session_for_tool._custom_state['_main_frontend_stream_handler'] = stream_handler_func
+                handler_was_set_in_custom_state = True
+
             result_or_generator = await session_for_tool.call_tool(tool_name, arguments=args_dict)
             
             final_response_payload: Dict[str, Any]
@@ -601,7 +605,7 @@ async def function_calling_loop(
                 async for item in result_or_generator:
                     item_count += 1
                     print(f"  Stream item {item_count} for {tool_name} (ID: {tool_id}): {str(item)[:200]}...")
-                    current_payload_for_stream = ensure_serializable_tool_result(item) # Ensure it's a dict
+                    current_payload_for_stream = item
                     last_item_from_stream = current_payload_for_stream
 
                     if stream_handler_func:
@@ -611,7 +615,7 @@ async def function_calling_loop(
                                 "call_id": tool_id,
                                 "name": tool_name,
                                 "result": current_payload_for_stream,
-                                "is_error": "error" in current_payload_for_stream, # Simple check
+                                "is_error": "error" in current_payload_for_stream if isinstance(current_payload_for_stream, dict) else False,
                                 "is_partial": True
                             })
                         except Exception as e_stream_item:
@@ -623,7 +627,7 @@ async def function_calling_loop(
                     final_response_payload = {"status": "success", "message": f"Tool '{tool_name}' (ID: {tool_id}) streamed 0 items."}
             else: 
                 print(f"Tool '{tool_name}' (ID: {tool_id}) returned a single result.")
-                final_response_payload = ensure_serializable_tool_result(result_or_generator)
+                final_response_payload = result_or_generator
 
             print(f"Final response payload for {tool_name} (ID: {tool_id}) (for history): {str(final_response_payload)[:200]}...")
             return tool_id, tool_name, final_response_payload
@@ -631,6 +635,13 @@ async def function_calling_loop(
             print(f"Error executing tool {tool_name} (ID: {tool_id}): {str(e_tool_call)}")
             traceback.print_exc()
             return tool_id, tool_name, {"error": str(e_tool_call), "details": traceback.format_exc()}
+        finally:
+            # Clean up the temporarily attached handler from _custom_state
+            if handler_was_set_in_custom_state:
+                if hasattr(session_for_tool, '_custom_state') and session_for_tool._custom_state and '_main_frontend_stream_handler' in session_for_tool._custom_state:
+                    del session_for_tool._custom_state['_main_frontend_stream_handler']
+                    # If _custom_state becomes empty, optionally delete it or leave it.
+                    # For now, just remove the key.
 
     turns = 0
     max_turns = 10
@@ -761,17 +772,20 @@ async def function_calling_loop(
             
             tool_response_messages_for_history: List[StandardizedMessage] = []
             for tool_call_id, tool_name, tool_result_payload in function_call_results:
-                is_error_in_tool = isinstance(tool_result_payload, dict) and "error" in tool_result_payload
+                # Ensure the tool result is serializable before processing
+                serialized_payload = ensure_serializable_tool_result(tool_result_payload)
+                is_error_in_tool = isinstance(serialized_payload, dict) and "error" in serialized_payload
 
-                # Wrap the payload
-                wrapped_payload = {f"{tool_name}_response": tool_result_payload}
+                # For history, we still wrap the payload for compatibility
+                wrapped_payload = {f"{tool_name}_response": serialized_payload}
 
                 if stream_chunk_handler:
+                    # For streaming, send the unwrapped serialized result directly
                     final_tool_result_chunk = {
                         "type": "tool_result",
                         "call_id": tool_call_id,
                         "name": tool_name,
-                        "result": wrapped_payload, # Send wrapped payload to stream if needed
+                        "result": serialized_payload,  # Send unwrapped serialized payload to stream
                         "is_error": is_error_in_tool
                     }
                     try:

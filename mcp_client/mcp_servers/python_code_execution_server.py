@@ -1,7 +1,7 @@
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from mcp.server.fastmcp import FastMCP
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+from fastmcp import FastMCP
 import io
 import contextlib
 import re
@@ -333,7 +333,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from typing import Annotated, Optional # Add other common types like Literal, List, Dict if needed
 from pydantic import Field
 import logging
@@ -379,4 +379,14 @@ def example_tool(
 """
 
 if __name__ == "__main__":
-    mcp.run() 
+    # Check if we should use HTTP transport
+    transport = os.getenv("FASTMCP_TRANSPORT", "stdio")
+    
+    if transport == "streamable-http":
+        host = os.getenv("FASTMCP_HOST", "127.0.0.1")
+        port = int(os.getenv("FASTMCP_PORT", "9000"))
+        logger.info(f"Starting server with streamable-http transport on {host}:{port}")
+        mcp.run(transport="streamable-http", host=host, port=port)
+    else:
+        logger.info("Starting server with stdio transport")
+        mcp.run() 

@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 import uuid
 import re
 import json
@@ -331,8 +331,8 @@ async def create_web_app(
     model: Annotated[MODELS_LITERAL, Field(
         description="The LLM model to use for HTML generation."
     )] = "gemini-2.5-pro-preview-05-06",
-    mcp_tools: Annotated[Optional[List[str]], Field(
-        description="Optional list of MCP tool names the generated web application can be aware of or designed to interact with (potentially via backend calls).",
+    mcp_tool_names: Annotated[Optional[List[str]], Field(
+        description="Pass a list of relevant MCP tool names that the generated web application should use. The system will fetch their schemas.",
         default=None
     )] = None,
     additional_context: Annotated[Optional[str], Field(
@@ -349,6 +349,8 @@ async def create_web_app(
     including design, interactivity, and advanced features. The LLM should focus on conveying the user's core request,
     any relevant contextual information, and attachments. Avoid adding prescriptive instructions on *how* to build or
     style the web app, unless these are specific, explicit user requirements.
+    
+    Caller of this tool is simply routing the user's request to this MCP service. If user requests a web app just route the request to this tool.
 
     Returns:
         dict: A dictionary with the following structure:
@@ -414,100 +416,149 @@ async def create_web_app(
                 current_web_app_system_prompt += f"  Instruction: Reference or link to this file as appropriate for its type.\n"
         current_web_app_system_prompt += "\nEnsure all referenced attachments are displayed or linked correctly in the final HTML."
 
-    # Append available MCP tools information if provided
-    if mcp_tools:
-        current_web_app_system_prompt += "\n\n# Available MCP System Tools\n"
-        current_web_app_system_prompt += "The broader system has access to the following tools. You can design the web application to conceptually leverage these capabilities (e.g., by describing features that would use them, or by including UI elements that imply their use via backend calls). Do not attempt to directly call these tools from the client-side HTML/JavaScript you generate unless you are also generating the backend infrastructure for such calls.\n"
-        for tool_name in mcp_tools:
-            current_web_app_system_prompt += f"- {tool_name}\n"
+    # --- Fetch and Append available MCP tools information if mcp_tool_names are provided ---
+    if mcp_tool_names:
+        tool_schemas_context = ""
+        try:
+            # Call the MCP service to get all tool schemas for the user
+            # IMPORTANT: This assumes the MCP service is running on localhost:5001
+            # and app.py (or equivalent) exposes an endpoint that proxies to 
+            # mcp_service.py's /users/{user_id}/tools
+            # For this example, we'll assume a direct call or that the main app has an endpoint
+            # that can provide this. If calling mcp_service.py directly:
+            mcp_service_tools_url = f"http://localhost:5001/users/{user_id_safe}/tools"
+            
+            # Using requests synchronously for simplicity within this async function.
+            # Consider using an async HTTP client like aiohttp if this becomes a bottleneck.
+            response = await asyncio.to_thread(requests.get, mcp_service_tools_url, timeout=10)
+            response.raise_for_status() # Raise an exception for HTTP errors
+            all_user_tools_data = response.json() # Expects JSON like {"tools": [...], "count": ...}
+            
+            available_tools_details = all_user_tools_data.get("tools", [])
+            
+            if available_tools_details:
+                tool_schemas_context += "\n\n# Available MCP System Tools\n"
+                tool_schemas_context += "The broader system has access to the following tools. You can design the web application to conceptually leverage these capabilities (e.g., by describing features that would use them, or by including UI elements that imply their use via backend calls). Do not attempt to directly call these tools from the client-side HTML/JavaScript you generate unless you are also generating the backend infrastructure for such calls.\n"
+                
+                matched_tools_count = 0
+                for tool_detail in available_tools_details:
+                    if tool_detail.get("name") in mcp_tool_names:
+                        tool_schemas_context += f"\n## Tool: {tool_detail.get('name')}\n"
+                        tool_schemas_context += f"   Description: {tool_detail.get('description')}\n"
+                        tool_schemas_context += f"   Input Schema: {json.dumps(tool_detail.get('input_schema', {}), indent=2)}\n"
+                        # Note: Output schema is not typically provided by mcp.types.Tool directly in this manner.
+                        # The description should ideally cover expected output.
+                        matched_tools_count +=1
+                if matched_tools_count == 0:
+                    tool_schemas_context += "No specific tools from the provided list were found available for this user. General tool interaction patterns can still be used if applicable tools are known by other means.\n"
+            else:
+                tool_schemas_context += "\n\n# Available MCP System Tools\nNo tools were found available for this user via the MCP service tool listing.\n"
+        except requests.exceptions.RequestException as e:
+            tool_schemas_context += f"\n\n# Available MCP System Tools\nError fetching tool schemas: {str(e)}. Proceeding without specific tool context.\n"
+        except json.JSONDecodeError as e:
+            tool_schemas_context += f"\n\n# Available MCP System Tools\nError parsing tool schemas from MCP service: {str(e)}. Proceeding without specific tool context.\n"
+        except Exception as e: # Catch any other unexpected error during schema fetching
+            tool_schemas_context += f"\n\n# Available MCP System Tools\nAn unexpected error occurred while fetching tool schemas: {str(e)}. Proceeding without specific tool context.\n"
 
-    current_web_app_system_prompt += """
+        current_web_app_system_prompt += tool_schemas_context
+
+    current_web_app_system_prompt += '''
 
 # Calling Backend MCP Tools from JavaScript
 
-If the web application needs to trigger backend MCP tools (from the `mcp_tools` list if provided, or other known tools), you can generate JavaScript to make an HTTP POST request to the `/query` endpoint.
+If the web application needs to trigger backend MCP tools (from the tool information provided above, or other known tools), you can generate JavaScript to make an HTTP POST request to the `/internal/call_mcp_tool` endpoint on the main application server.
 
 **Request Format:**
--   **URL:** `/query` (make sure to use a relative path or one that correctly resolves to the MCP service backend)
+-   **URL:** `/internal/call_mcp_tool` (This is a relative path to an endpoint on the same server hosting the web app. The server will proxy this to the MCP service and handle authentication.)
 -   **Method:** `POST`
--   **Headers:** `{'Content-Type': 'application/json'}`
+-   **Headers:** `{'Content-Type': 'application/json'}` (Do NOT include `X-Internal-API-Key` here; the server handles it.)
 -   **Body (JSON):**
     ```json
     {
-        "query": "call_tool TOOL_NAME with arguments JSON_ARGUMENTS_STRING",
-        "sender": "USER_ID_PLACEHOLDER", // This should ideally be set by a backend proxy based on the authenticated user.
-                                       // If you cannot rely on a proxy, the frontend might need to manage a user identifier.
-        "attachments": [], // Usually empty for direct tool calls, unless the tool itself needs them.
-        "stream": false    // For simplicity, assume non-streaming calls from client-side JS.
+        "tool_name": "ACTUAL_TOOL_NAME",
+        "arguments": { "arg1": "value1", "arg2": 123 }, // The actual arguments object for the tool
+        "user_id_context": "USER_ID_PLACEHOLDER" // Optional: User identifier if needed for context.
+                                                 // This might come from a global JS variable set by the server, a cookie, or other context.
     }
     ```
-    -   Replace `TOOL_NAME` with the exact name of the MCP tool you want to call.
-    -   Replace `JSON_ARGUMENTS_STRING` with a *stringified JSON object* containing the arguments for that tool. Example: `'{\\"param1\\":\\"value1\\",\\"param2\\":123}'`. Ensure correct escaping if this string is embedded within another JSON string or JavaScript string.
+    -   Replace `ACTUAL_TOOL_NAME` with the exact name of the MCP tool you want to call.
+    -   The `arguments` field should be a direct JSON object expected by the tool.
 
 **Response Handling:**
--   The `/query` endpoint will respond with JSON:
+-   The `/internal/call_mcp_tool` endpoint will respond with the direct JSON output from the MCP tool call:
     ```json
     {
-        "result": "STRINGIFIED_JSON_OR_PLAIN_TEXT_RESULT_FROM_TOOL",
-        "error": "OPTIONAL_ERROR_MESSAGE"
+        "result": "STRINGIFIED_JSON_OR_PLAIN_TEXT_RESULT_FROM_TOOL", // This is the primary payload from the tool
+        "error": "OPTIONAL_ERROR_MESSAGE" // Check this for tool execution errors
     }
     ```
--   Your JavaScript should parse `response.result`. If `response.result` is itself a stringified JSON, parse it again to get the tool's actual output object.
--   Handle potential errors by checking `response.error`.
--   Remember these are asynchronous calls (`fetch().then(...)` or `async/await`). Update the DOM *after* receiving the response.
+-   Your JavaScript should check for `response.error`.
+-   If no error, `response.result` contains the tool's output. If this output is expected to be JSON (common for many tools), your JavaScript should parse `response.result` (e.g., `JSON.parse(response.result)`). If it's plain text, use it directly.
+-   Remember these are asynchronous calls (`fetch().then(...)` or `async/await`). Update the DOM *after* receiving and processing the response.
 
 **Example JavaScript Snippet (Conceptual):**
 ```javascript
-async function callMcpTool(toolName, argsObject) {
-    // USER_ID_PLACEHOLDER needs to be replaced with the actual user identifier.
-    // This might come from a global JS variable set by the server, a cookie, or other context.
-    const currentUserId = window.currentUser || "default_user"; // Example placeholder
-
-    const queryPayload = {
-        query: `call_tool ${toolName} with arguments ${JSON.stringify(JSON.stringify(argsObject))}`,
-        sender: currentUserId, 
-        stream: false
+async function callMcpToolViaInternalEndpoint(toolName, argsObject, userIdContext) {
+    const payload = {
+        tool_name: toolName,
+        arguments: argsObject
     };
+    if (userIdContext) {
+        payload.user_id_context = userIdContext;
+    }
+
     try {
-        const response = await fetch('/query', { // Assuming /query is on the same host
+        const response = await fetch('/internal/call_mcp_tool', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(queryPayload)
+            body: JSON.stringify(payload)
         });
+
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            // Try to get error message from response body if possible
+            let errorMsg = `HTTP error! status: ${response.status}`;
+            try {
+                const errorData = await response.json();
+                errorMsg = errorData.error || errorData.message || errorMsg;
+            } catch (e) { /* Ignore if error response is not JSON */ }
+            throw new Error(errorMsg);
         }
-        const data = await response.json();
+
+        const data = await response.json(); // This is the { result: "...", error: "..." } envelope
+
         if (data.error) {
-            console.error('Error calling tool:', data.error);
+            console.error('Error from MCP tool:', data.error);
             // Consider displaying error to user in the web app's UI
-            return null;
+            return null; 
         }
-        // Assuming data.result is a stringified JSON from the tool for many tools
+        
+        // data.result contains the actual tool output, which might be a stringified JSON
         try {
-            return JSON.parse(data.result);
+            return JSON.parse(data.result); 
         } catch (e) {
-            // If data.result is not JSON, return it as is (e.g., plain text, or already an object if tool returns differently)
+            // If data.result is not JSON, it might be plain text or already an object.
             return data.result; 
         }
+
     } catch (error) {
-        console.error('Failed to call MCP tool:', error);
+        console.error('Failed to call MCP tool via internal endpoint:', error);
         // Consider displaying error to user in the web app's UI
         return null;
     }
 }
 
 // Example Usage in your web app's JS:
-// callMcpTool('name_of_tool_from_mcp_tools_list', { arg1: 'value1', arg2: 100 })
-//   .then(result => { 
-//       if (result) { 
-//           // Process the result and update the DOM
-//           // For example: document.getElementById('someElement').textContent = result.someProperty;
+// const currentUserId = window.currentUser || "default_user_for_webapp"; // Example
+// callMcpToolViaInternalEndpoint('name_of_tool_from_mcp_tools_list', { param1: 'valueX' }, currentUserId)
+//   .then(toolResult => { 
+//       if (toolResult) { 
+//           // Process the toolResult (which is the actual output of the tool)
+//           // For example: document.getElementById('someElement').textContent = toolResult.someProperty;
 //       } 
 //   });
 ```
 Use this pattern to enable dynamic interactions with backend tools. Make sure your JavaScript handles the asynchronous nature of these calls and updates the web page appropriately.
-"""
+'''
 
     # Original prompt construction for the user message partx
     prompt_text = f"Create a web app titled '{app_name}'.\n\n**User Request:**\n{main_request}"
@@ -1197,4 +1248,14 @@ async def list_web_apps(
 # --- End of new edit tools ---
 
 if __name__ == "__main__":
-    mcp.run() 
+    # Check if we should use HTTP transport
+    transport = os.getenv("FASTMCP_TRANSPORT", "stdio")
+    
+    if transport == "streamable-http":
+        host = os.getenv("FASTMCP_HOST", "127.0.0.1")
+        port = int(os.getenv("FASTMCP_PORT", "9000"))
+        logger.info(f"Starting server with streamable-http transport on {host}:{port}")
+        mcp.run(transport="streamable-http", host=host, port=port)
+    else:
+        logger.info("Starting server with stdio transport")
+        mcp.run() 

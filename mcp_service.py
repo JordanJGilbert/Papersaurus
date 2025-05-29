@@ -16,11 +16,14 @@ from dotenv import load_dotenv
 from contextlib import asynccontextmanager, AsyncExitStack
 from collections import defaultdict
 import logging
+import subprocess
 
-# Import for MCP client sessions and server parameters
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
-from mcp import types # Corrected import for type hinting
+# Import FastMCP client classes instead of standard MCP
+from fastmcp.client import Client, PythonStdioTransport
+from mcp import types # Keep types import for compatibility
+
+# Add StreamableHttpTransport import
+from fastmcp.client import StreamableHttpTransport
 
 # Import new history function from ai_models
 from ai_models import function_calling_loop, clear_conversation_history_for_user
@@ -94,21 +97,26 @@ class MCPManager:
     def __init__(self):
         self.exit_stack: Optional[AsyncExitStack] = None
         
-        # User-scoped resources
-        self.user_sessions: Dict[str, List[ClientSession]] = defaultdict(list)
-        self.user_tool_to_session: Dict[str, Dict[str, ClientSession]] = defaultdict(dict)
+        # Add port allocation tracking
+        self.allocated_ports: Set[int] = set()
+        self.base_port = 9000  # Starting port for MCP servers
+        self.port_assignments: Dict[str, int] = {}  # config_key -> port mapping
+        
+        # User-scoped resources - now using FastMCP Client instead of ClientSession
+        self.user_sessions: Dict[str, List[Client]] = defaultdict(list)
+        self.user_tool_to_session: Dict[str, Dict[str, Client]] = defaultdict(dict)
         self.user_tools: Dict[str, List[types.Tool]] = defaultdict(list) # Store actual mcp.types.Tool objects
-        self.user_session_to_tools: Dict[str, Dict[ClientSession, List[str]]] = defaultdict(dict)
-        self.user_config_to_session: Dict[str, Dict[str, ClientSession]] = defaultdict(dict)
+        self.user_session_to_tools: Dict[str, Dict[Client, List[str]]] = defaultdict(dict)
+        self.user_config_to_session: Dict[str, Dict[str, Client]] = defaultdict(dict)
         
         # Global/Core server resources (could be managed under a special user_id like "_global")
         # For now, let's assume core servers are started and their tools are globally available
         # if a user's preferences select them. This might need refinement.
-        self.core_sessions: List[ClientSession] = []
-        self.core_tool_to_session: Dict[str, ClientSession] = {}
+        self.core_sessions: List[Client] = []
+        self.core_tool_to_session: Dict[str, Client] = {}
         self.core_tools: List[types.Tool] = [] # Store actual mcp.types.Tool objects
-        self.core_session_to_tools: Dict[ClientSession, List[str]] = {}
-        self.core_config_to_session: Dict[str, ClientSession] = {}
+        self.core_session_to_tools: Dict[Client, List[str]] = {}
+        self.core_config_to_session: Dict[str, Client] = {}
 
         self.temp_files_to_cleanup: List[str] = []
         self.user_server_preferences: Dict[str, List[str]] = {} # Key: user_id, Value: List of config_keys
@@ -118,6 +126,14 @@ class MCPManager:
         # These servers will always be active for users if running,
         # regardless of their explicit preferences.
         self.default_core_server_config_keys: Set[str] = set()
+
+    def allocate_port(self) -> int:
+        """Allocate a unique port for an MCP server."""
+        port = self.base_port
+        while port in self.allocated_ports:
+            port += 1
+        self.allocated_ports.add(port)
+        return port
 
     async def initialize_exit_stack(self):
         if not self.exit_stack:
@@ -137,10 +153,123 @@ class MCPManager:
         # print(f"MCPManager: Default core server config keys set to: {self.default_core_server_config_keys}")
         pass # No default core server keys based on a static list anymore
 
+    async def create_sampling_handler(self, client_custom_state: Dict[str, Any]): # Added parameter
+        """Create a sampling handler that has access to the client's custom_state."""
+        async def sampling_handler(messages, params, context_from_tool_call): # Renamed 'context' for clarity
+            """Handle sampling requests from tools (ctx.sample() calls)
+               'context_from_tool_call' is mcp.shared.context.RequestContext.
+               'client_custom_state' is the _custom_state of the parent Client instance.
+            """
+            print(f"[SAMPLING_HANDLER DEBUG] Entered. Actual context type from tool: {type(context_from_tool_call)}")
+            main_frontend_stream_handler = None
+            
+            if client_custom_state: # Use the passed-in custom_state
+                print(f"[SAMPLING_HANDLER DEBUG] client_custom_state received: {client_custom_state}")
+                main_frontend_stream_handler = client_custom_state.get('_main_frontend_stream_handler')
+                print(f"[SAMPLING_HANDLER DEBUG] main_frontend_stream_handler retrieved from client_custom_state: {main_frontend_stream_handler}")
+            else:
+                # This case should ideally not happen if create_sampling_handler is always called with a valid dict
+                print(f"[SAMPLING_HANDLER DEBUG] client_custom_state is None or empty at the start of sampling_handler.")
+
+            sample_llm_stream_callback = None
+            accumulated_sample_text_for_tool = "" 
+
+            if main_frontend_stream_handler:
+                async def local_sample_llm_stream_callback(chunk: Dict[str, Any]):
+                    nonlocal accumulated_sample_text_for_tool
+                    # This callback is for the LLM generating the sample.
+                    # It streams text and thoughts to the *main frontend stream*.
+                    if chunk.get("type") == "text_chunk" and "content" in chunk:
+                        await main_frontend_stream_handler({
+                            "type": "text_chunk", 
+                            "content": chunk["content"]
+                        })
+                        accumulated_sample_text_for_tool += chunk["content"]
+                    elif chunk.get("type") == "thought_summary" and "content" in chunk:
+                         await main_frontend_stream_handler({
+                            "type": "thought_summary", 
+                            "content": chunk["content"]
+                        })
+                    # Do not propagate stream_end or error from here to main_frontend_stream_handler.
+                    # The sampling_handler itself will return a final result or error to the tool.
+                sample_llm_stream_callback = local_sample_llm_stream_callback
+                print("[SAMPLING_HANDLER DEBUG] sample_llm_stream_callback has been SET.")
+            else:
+                print("[SAMPLING_HANDLER DEBUG] main_frontend_stream_handler is None, so sample_llm_stream_callback is NOT set.")
+
+            try:
+                # Import here to avoid circular imports
+                from llm_adapters import get_llm_adapter, StandardizedMessage, StandardizedLLMConfig
+                
+                standardized_messages = []
+                # Ensure 'messages' (from ctx.sample) is treated as a user prompt for the sampling LLM.
+                # ctx.sample(messages="User prompt") -> messages becomes the string "User prompt"
+                # ctx.sample(messages=[StandardizedMessage(...)]) -> messages is a list
+                if isinstance(messages, str):
+                    standardized_messages.append(StandardizedMessage(role="user", content=messages))
+                elif isinstance(messages, list): # Assuming it's List[StandardizedMessage] or similar
+                    for msg_like in messages:
+                        if hasattr(msg_like, 'role') and hasattr(msg_like, 'content'):
+                             standardized_messages.append(StandardizedMessage(role=str(msg_like.role), content=str(msg_like.content)))
+                        else: # Fallback if structure is not as expected
+                            standardized_messages.append(StandardizedMessage(role="user", content=str(msg_like)))
+                else: # Fallback for other types
+                    standardized_messages.append(StandardizedMessage(role="user", content=str(messages)))
+
+                llm_adapter = get_llm_adapter("gemini-2.5-flash-preview-05-20") # Use fast model for sampling
+                
+                system_prompt_for_sample = None
+                model_preferences_for_sample = ["gemini-2.5-flash-preview-05-20"] # Default
+
+                if isinstance(params, dict):
+                    system_prompt_for_sample = params.get('system_prompt') or params.get('systemPrompt')
+                    model_preferences_for_sample = params.get('model_preferences', model_preferences_for_sample)
+                elif hasattr(params, 'system_prompt'): # If params is an object
+                    system_prompt_for_sample = params.system_prompt
+                elif hasattr(params, 'systemPrompt'):
+                     system_prompt_for_sample = params.systemPrompt
+                
+                config_for_sample = StandardizedLLMConfig(
+                    system_prompt=system_prompt_for_sample if system_prompt_for_sample else None,
+                    include_thoughts=True if sample_llm_stream_callback else False # Enable thoughts if streaming to frontend
+                )
+                
+                # The model_name used here should ideally come from params (model_preferences)
+                # For simplicity, we'll use the first preference or default.
+                target_model_for_sample = model_preferences_for_sample[0] if model_preferences_for_sample else "gemini-2.5-flash-preview-05-20"
+
+                llm_response_obj = await llm_adapter.generate_content(
+                    model_name=target_model_for_sample,
+                    history=standardized_messages,
+                    tools=None,  # No tools for sampling requests
+                    config=config_for_sample,
+                    stream_callback=sample_llm_stream_callback
+                )
+                
+                if llm_response_obj.error:
+                    # The tool that called ctx.sample() will get this error in its response.
+                    # The frontend might have already seen an error via stream if it was critical.
+                    return f"Error generating response during sampling: {llm_response_obj.error}" 
+                
+                # If streaming was active, accumulated_sample_text_for_tool should be populated.
+                # If not, llm_response_obj.text_content will have the full text.
+                final_text_for_tool = accumulated_sample_text_for_tool if sample_llm_stream_callback and accumulated_sample_text_for_tool else llm_response_obj.text_content
+                
+                return final_text_for_tool or "No text content generated by sample."
+                
+            except Exception as e:
+                print(f"Error in sampling handler: {e}")
+                import traceback
+                traceback.print_exc()
+                # This error is returned to the tool that called ctx.sample().
+                # The frontend won't see this directly unless we explicitly stream an error here.
+                return f"Error processing sampling request: {str(e)}"
+        
+        return sampling_handler
 
     async def start_single_server(self, server_config: Dict[str, Any], user_id: Optional[str] = None) -> bool:
         """
-        Starts a single server. If user_id is provided, it's a user-specific server.
+        Starts a single server using FastMCP client. If user_id is provided, it's a user-specific server.
         If user_id is None, it's treated as a core/global server.
         """
         if self.exit_stack is None:
@@ -166,26 +295,77 @@ class MCPManager:
         if "env" in server_config and isinstance(server_config["env"], dict):
             env.update(server_config["env"])
         
-        server_params = StdioServerParameters(command=command, args=args, env=env, log_stderr=True, log_stdout=True)
+        # Allocate a port for this server
+        if config_key not in self.port_assignments:
+            port = self.allocate_port()
+            self.port_assignments[config_key] = port
+        else:
+            port = self.port_assignments[config_key]
+        
+        # Pass the port and transport type to the server via environment variables
+        env["FASTMCP_TRANSPORT"] = "streamable-http"
+        env["FASTMCP_PORT"] = str(port)
+        env["FASTMCP_HOST"] = "127.0.0.1"
         
         try:
             prefix = f"(User: {user_id})" if user_id else "(Core)"
-            print(f"MCPManager: {prefix} Attempting to start server: {server_config}")
+            print(f"MCPManager: {prefix} Attempting to start server on port {port}: {server_config}")
             
-            stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
-            stdio, write = stdio_transport
-            session = await self.exit_stack.enter_async_context(ClientSession(stdio, write))
-            await session.initialize()
+            # Start the server process in the background
+            import subprocess
+            server_process = subprocess.Popen(
+                [command] + args,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
             
-            response = await session.list_tools()
+            # Give the server time to start up
+            await asyncio.sleep(3)
+            
+            # Check if the process is still running
+            if server_process.poll() is not None:
+                stdout, stderr = server_process.communicate()
+                raise RuntimeError(f"Server process exited immediately. stdout: {stdout.decode()}, stderr: {stderr.decode()}")
+            
+            # Create FastMCP client with HTTP transport
+            http_transport = StreamableHttpTransport(f"http://127.0.0.1:{port}/mcp/v1")
+            
+            # Create a dictionary for the client's custom state.
+            # This dictionary will be shared by reference with the sampling handler.
+            custom_state_for_client = {}
+
+            # Create the sampling handler, passing the custom_state dictionary.
+            # The handler will close over this specific dictionary instance.
+            sampling_handler_func = await self.create_sampling_handler(custom_state_for_client)
+            
+            # Now, create the FastMCP client instance, passing the transport and the created sampling handler.
+            client = Client(
+                transport=http_transport,
+                sampling_handler=sampling_handler_func
+            )
+            # Assign the custom_state dictionary to the client instance so ai_models.py can access it.
+            client._custom_state = custom_state_for_client
+            
+            # Store the process reference for cleanup
+            if not hasattr(self, 'server_processes'):
+                self.server_processes: Dict[str, subprocess.Popen] = {}
+            self.server_processes[config_key] = server_process
+            
+            # Register with exit stack for proper cleanup
+            await self.exit_stack.enter_async_context(client)
+            
+            # Get available tools from the server
+            tools = await client.list_tools()
+            
             tool_names_for_this_session = []
-            for tool_obj in response.tools: # tool_obj is mcp.types.Tool
+            for tool_obj in tools: # tool_obj should be mcp.types.Tool
                 # For user-specific tools, names only need to be unique within that user's scope.
                 # For core tools, names should ideally be globally unique or carefully managed.
                 if tool_obj.name in tool_to_session_map:
                     print(f"Warning: {prefix} Tool '{tool_obj.name}' from server {server_config} conflicts with an existing tool for this scope. It will be overridden.")
                 
-                tool_to_session_map[tool_obj.name] = session
+                tool_to_session_map[tool_obj.name] = client
                 
                 # Remove any existing tool with the same name from this scope's list
                 # This is a simple override. More sophisticated merging might be needed if tools from different
@@ -197,9 +377,9 @@ class MCPManager:
                 tools_list.append(tool_obj)
                 tool_names_for_this_session.append(tool_obj.name)
             
-            sessions_dict.append(session)
-            session_to_tools_map[session] = tool_names_for_this_session
-            config_to_session_map[config_key] = session
+            sessions_dict.append(client)
+            session_to_tools_map[client] = tool_names_for_this_session
+            config_to_session_map[config_key] = client
             print(f"MCPManager: {prefix} Successfully started and registered tools for server: {server_config}")
             return True
         except Exception as e:
@@ -237,13 +417,14 @@ class MCPManager:
         total_user_tools = sum(len(tl) for tl in self.user_tools.values()) # tl is now List[types.Tool]
         print(f"MCPManager: Service initialized with {len(self.core_tools)} core tools and {total_user_tools} user-specific tools from various sessions.")
 
-    def get_tools_for_user_query(self, user_id: str) -> Tuple[List[types.Tool], Dict[str, ClientSession]]:
+    def get_tools_for_user_query(self, user_id: str) -> Tuple[List[types.Tool], Dict[str, Client]]:
         """
         Returns all available tools for the user: all core tools plus all dynamic servers started for that user.
         Preferences are no longer applied; users see all running core and their running dynamic servers.
+        Now returns FastMCP Client objects instead of ClientSession objects.
         """
         user_effective_tools_list: List[types.Tool] = []
-        user_effective_tool_to_session_map: Dict[str, ClientSession] = {}
+        user_effective_tool_to_session_map: Dict[str, Client] = {}
 
         # Active config keys: default core servers
         active_config_keys = set(self.core_config_to_session.keys())
@@ -381,6 +562,20 @@ class MCPManager:
 
     async def shutdown(self):
         print("MCPManager: Shutting down...")
+        
+        # Terminate all server processes
+        if hasattr(self, 'server_processes'):
+            for config_key, process in self.server_processes.items():
+                if process.poll() is None:  # Process is still running
+                    print(f"MCPManager: Terminating server process for {config_key}")
+                    process.terminate()
+                    try:
+                        process.wait(timeout=5)  # Wait up to 5 seconds for graceful shutdown
+                    except subprocess.TimeoutExpired:
+                        print(f"MCPManager: Force killing server process for {config_key}")
+                        process.kill()
+                        process.wait()
+        
         if self.exit_stack:
             await self.exit_stack.aclose() 
             self.exit_stack = None 
@@ -395,6 +590,121 @@ class MCPManager:
 
         self.initialized = False
         print("MCPManager: Shutdown complete.")
+
+    async def discover_and_start_new_servers(self) -> dict:
+        """
+        Scans for new .py server files and starts any that aren't already running.
+        Returns a summary of what was discovered and started.
+        """
+        if not self.initialized:
+            return {"status": "error", "message": "MCPManager not initialized"}
+        
+        servers_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_client", "mcp_servers")
+        if not os.path.exists(servers_dir):
+            return {"status": "error", "message": f"Servers directory not found: {servers_dir}"}
+        
+        try:
+            # Get currently running server config keys
+            running_config_keys = set(self.core_config_to_session.keys())
+            
+            # Scan for all .py files
+            discovered_configs = []
+            for filename in os.listdir(servers_dir):
+                if filename.endswith(".py") and filename != "__init__.py":
+                    script_path = os.path.join("mcp_client", "mcp_servers", filename)
+                    
+                    # Prepare environment variables for the server
+                    server_env = {}
+                    if INTERNAL_API_KEY:
+                        server_env["MCP_INTERNAL_API_KEY"] = INTERNAL_API_KEY
+                    
+                    config = {
+                        "command": "python",
+                        "args": [script_path],
+                        "env": server_env
+                    }
+                    
+                    config_key = _mcp_config_key(config)
+                    
+                    # Only add if not already running
+                    if config_key not in running_config_keys:
+                        discovered_configs.append(config)
+            
+            if not discovered_configs:
+                return {
+                    "status": "success", 
+                    "message": "No new servers discovered",
+                    "new_servers_count": 0,
+                    "new_servers": []
+                }
+            
+            # Start new servers
+            startup_tasks = []
+            for config in discovered_configs:
+                startup_tasks.append(self.start_single_server(config, user_id=None))
+            
+            print(f"MCPManager: Starting {len(startup_tasks)} newly discovered servers...")
+            results = await asyncio.gather(*startup_tasks, return_exceptions=False)
+            
+            successful_starts = sum(1 for r in results if r is True)
+            failed_starts = len(results) - successful_starts
+            
+            new_server_info = []
+            for i, config in enumerate(discovered_configs):
+                new_server_info.append({
+                    "script_path": config["args"][0],
+                    "started_successfully": results[i] if i < len(results) else False
+                })
+            
+            print(f"MCPManager: Dynamic discovery complete. Successfully started: {successful_starts}, Failed: {failed_starts}")
+            
+            return {
+                "status": "success",
+                "message": f"Discovered and attempted to start {len(discovered_configs)} new servers. {successful_starts} successful, {failed_starts} failed.",
+                "new_servers_count": len(discovered_configs),
+                "successful_starts": successful_starts,
+                "failed_starts": failed_starts,
+                "new_servers": new_server_info
+            }
+            
+        except Exception as e:
+            print(f"MCPManager: Error during dynamic server discovery: {str(e)}")
+            import traceback
+            print(f"MCPManager: Traceback: {traceback.format_exc()}")
+            return {"status": "error", "message": f"Error during server discovery: {str(e)}"}
+
+    async def reload_server(self, server_script_path: str) -> dict:
+        """
+        Stops and restarts a specific server by its script path.
+        Useful for when a server file has been modified.
+        """
+        if not self.initialized:
+            return {"status": "error", "message": "MCPManager not initialized"}
+        
+        # Create config for the server to find it
+        server_env = {}
+        if INTERNAL_API_KEY:
+            server_env["MCP_INTERNAL_API_KEY"] = INTERNAL_API_KEY
+        
+        config = {
+            "command": "python",
+            "args": [server_script_path],
+            "env": server_env
+        }
+        config_key = _mcp_config_key(config)
+        
+        # First, remove the existing server if it's running
+        removed = self.remove_tools_for_server_by_config(config, user_id=None)
+        
+        # Then start it again
+        started = await self.start_single_server(config, user_id=None)
+        
+        return {
+            "status": "success" if started else "error",
+            "message": f"Server {'reloaded' if removed and started else 'started' if started else 'failed to start'}: {server_script_path}",
+            "was_running": removed,
+            "started_successfully": started
+        }
 
 # --- Global State ---
 # REMOVED: CORE_SERVER_COMMANDS as servers are now discovered
@@ -612,7 +922,7 @@ async def handle_query(request: QueryRequest):
         # if 'user_number' not in arguments and user_id:
         #     arguments['user_number'] = user_id
 
-        target_session: Optional[ClientSession] = None
+        target_session: Optional[Client] = None
         # Check core tools first, then user-specific tools
         if tool_name in mcp_manager.core_tool_to_session:
             target_session = mcp_manager.core_tool_to_session[tool_name]
@@ -626,7 +936,7 @@ async def handle_query(request: QueryRequest):
         try:
             print(f"MCP_SERVICE_LOG: Executing direct tool call '{tool_name}' for user '{user_id}' with args: {arguments}")
             # mcp.types.ToolResponse is expected from call_tool
-            tool_call_response_obj: types.ToolResponse = await target_session.call_tool(tool_name, arguments=arguments)
+            tool_call_response_obj = await target_session.call_tool(tool_name, arguments=arguments)
             
             actual_tool_payload_dict: Optional[Dict[str, Any]] = None
             response_error_str: Optional[str] = None
@@ -1116,7 +1426,7 @@ async def route_internal_mcp_tool_call(
     arguments = request.arguments
     user_id_for_context = sanitize_user_id_for_key(request.user_id_context) if request.user_id_context else None
 
-    target_session: Optional[ClientSession] = None
+    target_session: Optional[Client] = None
 
     # 1. Check core tools
     if tool_name in mcp_manager.core_tool_to_session:
@@ -1258,6 +1568,45 @@ async def public_analyze_images(
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calling analyze_images: {e}")
+
+@app.post("/admin/servers/discover_new")
+async def discover_new_servers(api_key: str = Depends(verify_internal_api_key)):
+    """
+    Scans for new MCP server files and starts any that aren't already running.
+    """
+    global mcp_manager, service_globally_initialized
+    if not service_globally_initialized or not mcp_manager or not mcp_manager.initialized:
+        raise HTTPException(status_code=503, detail="MCP service not initialized")
+    
+    try:
+        result = await mcp_manager.discover_and_start_new_servers()
+        return result
+    except Exception as e:
+        print(f"Error in discover_new_servers endpoint: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.post("/admin/servers/reload")
+async def reload_server(
+    server_script_path: str = Body(..., description="Path to the server script (e.g., 'mcp_client/mcp_servers/my_server.py')"),
+    api_key: str = Depends(verify_internal_api_key)
+):
+    """
+    Reloads a specific MCP server by stopping and restarting it.
+    """
+    global mcp_manager, service_globally_initialized
+    if not service_globally_initialized or not mcp_manager or not mcp_manager.initialized:
+        raise HTTPException(status_code=503, detail="MCP service not initialized")
+    
+    try:
+        result = await mcp_manager.reload_server(server_script_path)
+        return result
+    except Exception as e:
+        print(f"Error in reload_server endpoint: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5001

@@ -1,0 +1,22 @@
+"use strict";
+/*
+ * ATTENTION: An "eval-source-map" devtool has been used.
+ * This devtool is neither made for production nor for readable output files.
+ * It uses "eval()" calls to create a separate source file with attached SourceMaps in the browser devtools.
+ * If you are trying to read the output file, select a different devtool (https://webpack.js.org/configuration/devtool/)
+ * or disable the default devtool with "devtool: false".
+ * If you are looking for production-ready output files, see mode: "production" (https://webpack.js.org/configuration/mode/).
+ */
+(self["webpackChunk_N_E"] = self["webpackChunk_N_E"] || []).push([["react-syntax-highlighter_languages_refractor_tsx"],{
+
+/***/ "(app-pages-browser)/./node_modules/refractor/lang/tsx.js":
+/*!********************************************!*\
+  !*** ./node_modules/refractor/lang/tsx.js ***!
+  \********************************************/
+/***/ (function(module, __unused_webpack_exports, __webpack_require__) {
+
+eval(__webpack_require__.ts("\nvar refractorJsx = __webpack_require__(/*! ./jsx.js */ \"(app-pages-browser)/./node_modules/refractor/lang/jsx.js\")\nvar refractorTypescript = __webpack_require__(/*! ./typescript.js */ \"(app-pages-browser)/./node_modules/refractor/lang/typescript.js\")\nmodule.exports = tsx\ntsx.displayName = 'tsx'\ntsx.aliases = []\nfunction tsx(Prism) {\n  Prism.register(refractorJsx)\n  Prism.register(refractorTypescript)\n  ;(function (Prism) {\n    var typescript = Prism.util.clone(Prism.languages.typescript)\n    Prism.languages.tsx = Prism.languages.extend('jsx', typescript) // doesn't work with TS because TS is too complex\n    delete Prism.languages.tsx['parameter']\n    delete Prism.languages.tsx['literal-property'] // This will prevent collisions between TSX tags and TS generic types.\n    // Idea by https://github.com/karlhorky\n    // Discussion: https://github.com/PrismJS/prism/issues/2594#issuecomment-710666928\n    var tag = Prism.languages.tsx.tag\n    tag.pattern = RegExp(\n      /(^|[^\\w$]|(?=<\\/))/.source + '(?:' + tag.pattern.source + ')',\n      tag.pattern.flags\n    )\n    tag.lookbehind = true\n  })(Prism)\n}\n//# sourceURL=[module]\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiKGFwcC1wYWdlcy1icm93c2VyKS8uL25vZGVfbW9kdWxlcy9yZWZyYWN0b3IvbGFuZy90c3guanMiLCJtYXBwaW5ncyI6IkFBQVk7QUFDWixtQkFBbUIsbUJBQU8sQ0FBQywwRUFBVTtBQUNyQywwQkFBMEIsbUJBQU8sQ0FBQyx3RkFBaUI7QUFDbkQ7QUFDQTtBQUNBO0FBQ0E7QUFDQTtBQUNBO0FBQ0EsR0FBRztBQUNIO0FBQ0E7QUFDQTtBQUNBO0FBQ0E7QUFDQTtBQUNBO0FBQ0E7QUFDQTtBQUNBO0FBQ0E7QUFDQTtBQUNBLEdBQUc7QUFDSCIsInNvdXJjZXMiOlsid2VicGFjazovL19OX0UvLi9ub2RlX21vZHVsZXMvcmVmcmFjdG9yL2xhbmcvdHN4LmpzPzRiMDEiXSwic291cmNlc0NvbnRlbnQiOlsiJ3VzZSBzdHJpY3QnXG52YXIgcmVmcmFjdG9ySnN4ID0gcmVxdWlyZSgnLi9qc3guanMnKVxudmFyIHJlZnJhY3RvclR5cGVzY3JpcHQgPSByZXF1aXJlKCcuL3R5cGVzY3JpcHQuanMnKVxubW9kdWxlLmV4cG9ydHMgPSB0c3hcbnRzeC5kaXNwbGF5TmFtZSA9ICd0c3gnXG50c3guYWxpYXNlcyA9IFtdXG5mdW5jdGlvbiB0c3goUHJpc20pIHtcbiAgUHJpc20ucmVnaXN0ZXIocmVmcmFjdG9ySnN4KVxuICBQcmlzbS5yZWdpc3RlcihyZWZyYWN0b3JUeXBlc2NyaXB0KVxuICA7KGZ1bmN0aW9uIChQcmlzbSkge1xuICAgIHZhciB0eXBlc2NyaXB0ID0gUHJpc20udXRpbC5jbG9uZShQcmlzbS5sYW5ndWFnZXMudHlwZXNjcmlwdClcbiAgICBQcmlzbS5sYW5ndWFnZXMudHN4ID0gUHJpc20ubGFuZ3VhZ2VzLmV4dGVuZCgnanN4JywgdHlwZXNjcmlwdCkgLy8gZG9lc24ndCB3b3JrIHdpdGggVFMgYmVjYXVzZSBUUyBpcyB0b28gY29tcGxleFxuICAgIGRlbGV0ZSBQcmlzbS5sYW5ndWFnZXMudHN4WydwYXJhbWV0ZXInXVxuICAgIGRlbGV0ZSBQcmlzbS5sYW5ndWFnZXMudHN4WydsaXRlcmFsLXByb3BlcnR5J10gLy8gVGhpcyB3aWxsIHByZXZlbnQgY29sbGlzaW9ucyBiZXR3ZWVuIFRTWCB0YWdzIGFuZCBUUyBnZW5lcmljIHR5cGVzLlxuICAgIC8vIElkZWEgYnkgaHR0cHM6Ly9naXRodWIuY29tL2thcmxob3JreVxuICAgIC8vIERpc2N1c3Npb246IGh0dHBzOi8vZ2l0aHViLmNvbS9QcmlzbUpTL3ByaXNtL2lzc3Vlcy8yNTk0I2lzc3VlY29tbWVudC03MTA2NjY5MjhcbiAgICB2YXIgdGFnID0gUHJpc20ubGFuZ3VhZ2VzLnRzeC50YWdcbiAgICB0YWcucGF0dGVybiA9IFJlZ0V4cChcbiAgICAgIC8oXnxbXlxcdyRdfCg/PTxcXC8pKS8uc291cmNlICsgJyg/OicgKyB0YWcucGF0dGVybi5zb3VyY2UgKyAnKScsXG4gICAgICB0YWcucGF0dGVybi5mbGFnc1xuICAgIClcbiAgICB0YWcubG9va2JlaGluZCA9IHRydWVcbiAgfSkoUHJpc20pXG59XG4iXSwibmFtZXMiOltdLCJzb3VyY2VSb290IjoiIn0=\n//# sourceURL=webpack-internal:///(app-pages-browser)/./node_modules/refractor/lang/tsx.js\n"));
+
+/***/ })
+
+}]);
