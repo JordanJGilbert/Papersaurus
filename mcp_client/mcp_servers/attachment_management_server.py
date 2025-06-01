@@ -24,10 +24,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 
 from fastmcp import FastMCP
 from llm_adapters import get_llm_adapter, StandardizedMessage, StandardizedLLMConfig
-import logging
-
-logging.basicConfig(stream=sys.stderr, level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Base user_data directory
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..', 'user_data'))
@@ -500,8 +496,8 @@ if __name__ == "__main__":
     if transport == "streamable-http":
         host = os.getenv("FASTMCP_HOST", "127.0.0.1")
         port = int(os.getenv("FASTMCP_PORT", "9000"))
-        logger.info(f"Starting server with streamable-http transport on {host}:{port}")
+        print(f"Starting server with streamable-http transport on {host}:{port}")
         mcp.run(transport="streamable-http", host=host, port=port)
     else:
-        logger.info("Starting server with stdio transport")
+        print("Starting server with stdio transport")
         mcp.run() 

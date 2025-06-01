@@ -387,9 +387,20 @@ async def process_message(msg):
             "sender": sender
         }
         
-        # Add attachments if any
+        # Extract URLs from attachment metadata and add to request
         if attachment_urls:
-            request_data["attachments"] = attachment_urls
+            # Extract just the URLs for the AI context
+            urls_only = [attachment["url"] for attachment in attachment_urls if "url" in attachment]
+            if urls_only:
+                request_data["attachment_urls"] = urls_only
+                
+                # Update the message text to mention the uploaded images
+                image_count = len([a for a in attachment_urls if a.get("type") == "image"])
+                if image_count > 0:
+                    if message_text.strip():
+                        request_data["query"] = f"{message_text}\n\nUser has uploaded {image_count} image{'s' if image_count != 1 else ''}: {', '.join(urls_only)}"
+                    else:
+                        request_data["query"] = f"User has uploaded {image_count} image{'s' if image_count != 1 else ''}: {', '.join(urls_only)}"
         
         # Send request to MCP service using aiohttp instead of requests
         async with aiohttp.ClientSession() as session:

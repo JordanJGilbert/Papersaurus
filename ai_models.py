@@ -428,6 +428,7 @@ async def function_calling_loop(
     conversation_history: Optional[List[StandardizedMessage]] = None,
     test_mode=False,
     attachments: Optional[List[Dict[str, Any]]] = None,
+    attachment_urls: Optional[List[str]] = None,  # NEW: Direct URLs to attachments
     stream_chunk_handler: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
     final_response_json_schema: Optional[Dict[str, Any]] = None
 ):
@@ -532,7 +533,15 @@ async def function_calling_loop(
     user_message_content = user_input
     user_attachments_for_sm: List[AttachmentPart] = []
 
-    if attachments:
+    # NEW: Handle direct attachment URLs (preferred method)
+    if attachment_urls:
+        user_message_content += "\n\nAttached files:\n"
+        for i, url in enumerate(attachment_urls, 1):
+            user_message_content += f"{i}. {url}\n"
+        user_message_content += "\nThese files are available at the URLs above. You can reference them directly."
+    
+    # LEGACY: Handle old-style attachments for backward compatibility
+    elif attachments:
         user_message_content += (
             "\n\nAttachments have been uploaded. "
             "Use the 'list_attachments' tool to retrieve attachment metadata (key, URL, mime_type, label, description) before using 'fetch_attachments'."
@@ -588,11 +597,18 @@ async def function_calling_loop(
             # to potentially access it and stream sample generation back to the client.
             # _custom_state is a dict on the Client instance.
             handler_was_set_in_custom_state = False
-            if stream_handler_func:
+            current_tool_id_was_set_in_custom_state = False # New flag
+
+            if stream_handler_func: # This is the main frontend stream_chunk_handler
                 if not hasattr(session_for_tool, '_custom_state') or not isinstance(session_for_tool._custom_state, dict):
                     session_for_tool._custom_state = {} 
+                
                 session_for_tool._custom_state['_main_frontend_stream_handler'] = stream_handler_func
                 handler_was_set_in_custom_state = True
+                
+                # Also store the current tool_call.call_id for the sampling_handler to use
+                session_for_tool._custom_state['_current_tool_call_id_for_sampling'] = tool_call.call_id # tool_call is StandardizedToolCall
+                current_tool_id_was_set_in_custom_state = True # Set new flag
 
             result_or_generator = await session_for_tool.call_tool(tool_name, arguments=args_dict)
             
@@ -640,8 +656,17 @@ async def function_calling_loop(
             if handler_was_set_in_custom_state:
                 if hasattr(session_for_tool, '_custom_state') and session_for_tool._custom_state and '_main_frontend_stream_handler' in session_for_tool._custom_state:
                     del session_for_tool._custom_state['_main_frontend_stream_handler']
-                    # If _custom_state becomes empty, optionally delete it or leave it.
-                    # For now, just remove the key.
+            
+            # Clean up the temporarily attached current tool_id from _custom_state
+            if current_tool_id_was_set_in_custom_state:
+                if hasattr(session_for_tool, '_custom_state') and session_for_tool._custom_state and '_current_tool_call_id_for_sampling' in session_for_tool._custom_state:
+                    del session_for_tool._custom_state['_current_tool_call_id_for_sampling']
+            
+            # Optional: Clean up _custom_state if it becomes empty
+            if hasattr(session_for_tool, '_custom_state') and session_for_tool._custom_state is not None and not session_for_tool._custom_state:
+                # If FastMCP provides a cleaner way to remove _custom_state or if it matters, do that.
+                # For now, leaving an empty dict is fine. Or delattr(session_for_tool, '_custom_state') if safe.
+                pass # Leaving empty dict is fine
 
     turns = 0
     max_turns = 10
@@ -776,6 +801,39 @@ async def function_calling_loop(
                 serialized_payload = ensure_serializable_tool_result(tool_result_payload)
                 is_error_in_tool = isinstance(serialized_payload, dict) and "error" in serialized_payload
 
+                # --- Signal image sending logic ---
+                if channel == "signal" and tool_name == "generate_images_with_prompts":
+                    image_urls = []
+                    if isinstance(serialized_payload, dict):
+                        if "results" in serialized_payload:
+                            for result in serialized_payload["results"]:
+                                if isinstance(result, list):
+                                    image_urls.extend(result)
+                    if image_urls:
+                        base64_attachments = []
+                        media_types = []
+                        for url in image_urls:
+                            try:
+                                import requests
+                                resp = requests.get(url, timeout=15)
+                                resp.raise_for_status()
+                                import base64
+                                base64_attachments.append(base64.b64encode(resp.content).decode("utf-8"))
+                                media_type = resp.headers.get("Content-Type", "image/png")
+                                media_types.append(media_type)
+                            except Exception as e:
+                                print(f"Failed to download or encode image {url}: {e}")
+                        if base64_attachments:
+                            await send_signal_message(
+                                recipient=user_number,
+                                message="Here are your generated images.",
+                                base64_attachments=base64_attachments,
+                                media_types=media_types
+                            )
+                    # Skip normal text message for this tool result
+                    continue
+                # --- End Signal image sending logic ---
+
                 # For history, we still wrap the payload for compatibility
                 wrapped_payload = {f"{tool_name}_response": serialized_payload}
 
@@ -831,7 +889,12 @@ async def function_calling_loop(
         elif not final_assistant_response_text and not error_message_from_loop and not intermediate_text_sent_via_signal_non_streaming:
             if not (user_input.strip().lower() == "clear" or user_input.strip().lower() == "buddy clear"):
                  await send_signal_message(user_number, message="I don't have a further response right now.")
-    elif stream_chunk_handler and not error_message_from_loop and not final_assistant_response_text and not llm_response.tool_calls:
-        print("Loop ended for streaming case with no text/tools/error, ensuring stream_end.")
+    else:
+        # Streaming mode - always send stream_end when the loop completes
+        print("Function calling loop completed. Sending stream_end.")
+        await stream_chunk_handler({"type": "stream_end"})
+        
+        if not error_message_from_loop and not final_assistant_response_text and not llm_response.tool_calls:
+            print("Loop ended for streaming case with no text/tools/error.")
 
     return final_assistant_response_text, current_standardized_history, error_message_from_loop

@@ -116,6 +116,8 @@ interface ToolCallData {
   status?: "Pending..." | "Completed" | "Error" | "Streaming...";
   is_error?: boolean;
   is_partial?: boolean;
+  sampleStreamOutput?: string;
+  sampleThoughtOutput?: string;
 }
 
 interface ToolCallDisplayProps {
@@ -267,7 +269,7 @@ const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCall }) => {
 
             {/* Conditional rendering based on view mode for edit_python_code */} 
             {showAsDiffViewOptions && originalCodeForDiff !== null && editedCodeForDiff !== null ? (
-              <div className="code-diff-container text-sm"> 
+              <div className="code-diff-container text-sm w-full max-w-full overflow-hidden"> 
                 {isIdentical ? (
                   <>
                     <p className="text-muted-foreground italic my-1 text-xs">No changes detected.</p>
@@ -275,35 +277,37 @@ const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCall }) => {
                     {renderContent(editedCodeForDiff, 'python', false)} 
                   </>
                 ) : editViewMode === 'diff' ? (
-                  <ReactDiffViewer
-                    oldValue={originalCodeForDiff}
-                    newValue={editedCodeForDiff}
-                    splitView={false} 
-                    useDarkTheme={theme === 'dark'}
-                    compareMethod={DiffMethod.LINES} 
-                    styles={diffViewerStylesToApply} 
-                    codeFoldMessageRenderer={(totalFoldedLines: number) => (
-                      <span style={{fontStyle: 'italic', color: 'grey', cursor: 'pointer'}}>
-                        {`... ${totalFoldedLines} lines folded ...`}
-                      </span>
-                    )}
-                    disableWordDiff={false} 
-                    hideLineNumbers={false} 
-                    renderContent={(source:string) => (
-                       <SyntaxHighlighter 
-                         style={syntaxTheme} 
-                         language="python" 
-                         PreTag="span" 
-                         customStyle={{ 
-                           background: 'transparent', 
-                           padding: '0',
-                           display: 'inline' 
-                         }}
-                        >
-                         {source}
-                       </SyntaxHighlighter>
-                    )}
-                  />
+                  <div className="w-full max-w-full overflow-x-auto">
+                    <ReactDiffViewer
+                      oldValue={originalCodeForDiff}
+                      newValue={editedCodeForDiff}
+                      splitView={false} 
+                      useDarkTheme={theme === 'dark'}
+                      compareMethod={DiffMethod.LINES} 
+                      styles={diffViewerStylesToApply} 
+                      codeFoldMessageRenderer={(totalFoldedLines: number) => (
+                        <span style={{fontStyle: 'italic', color: 'grey', cursor: 'pointer'}}>
+                          {`... ${totalFoldedLines} lines folded ...`}
+                        </span>
+                      )}
+                      disableWordDiff={false} 
+                      hideLineNumbers={false} 
+                      renderContent={(source:string) => (
+                         <SyntaxHighlighter 
+                           style={syntaxTheme} 
+                           language="python" 
+                           PreTag="span" 
+                           customStyle={{ 
+                             background: 'transparent', 
+                             padding: '0',
+                             display: 'inline' 
+                           }}
+                          >
+                           {source}
+                         </SyntaxHighlighter>
+                      )}
+                    />
+                  </div>
                 ) : editViewMode === 'original' ? (
                   renderContent(originalCodeForDiff, 'python', false)
                 ) : editViewMode === 'edited' ? (
@@ -355,6 +359,37 @@ const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCall }) => {
               renderContent(String(parsedResult), 'text') // Ensure it's a string for non-JSON results
             )}
           </div>
+        )}
+
+        {/* Render Sample Thought Output */}
+        {toolCall.sampleThoughtOutput && (
+          <div className="mt-3 pt-3 border-t border-dashed border-border/50">
+            <span className="font-medium text-blue-500 dark:text-blue-400 text-xs">
+              ↳ LLM Sampling Thoughts:
+            </span>
+            <pre className="mt-1 p-2 border rounded-md border-blue-500/30 bg-blue-500/5 whitespace-pre-wrap text-xs font-mono w-full max-w-full overflow-x-auto min-w-0" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+              {toolCall.sampleThoughtOutput}
+            </pre>
+          </div>
+        )}
+
+        {/* Render Sample Stream Output */}
+        {toolCall.sampleStreamOutput && (
+          <div className="mt-3 pt-3 border-t border-dashed border-border/50">
+            <span className="font-medium text-green-600 dark:text-green-400 text-xs">
+              ↳ LLM Sampling Output:
+            </span>
+            <pre className="mt-1 p-2 border rounded-md border-green-500/30 bg-green-500/5 whitespace-pre-wrap text-xs font-mono w-full max-w-full overflow-x-auto min-w-0" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+              {toolCall.sampleStreamOutput}
+            </pre>
+          </div>
+        )}
+        
+        {(toolCall.status === "Pending..." && !toolCall.result && !toolCall.sampleStreamOutput && !toolCall.sampleThoughtOutput) && (
+           <div className="flex items-center text-xs text-muted-foreground pt-2">
+             <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+             Awaiting first tool output...
+           </div>
         )}
       </div>
     </details>

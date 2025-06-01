@@ -23,6 +23,17 @@ from weasyprint import HTML  # Add this import at the top of the file
 import pygments
 from pygments.lexers import PythonLexer
 from pygments.formatters import HtmlFormatter
+# Image processing imports for HEIC support
+from PIL import Image
+try:
+    import pillow_heif
+    # Enable HEIF support in Pillow
+    pillow_heif.register_heif_opener()
+    HEIC_SUPPORT_AVAILABLE = True
+    print("HEIC support enabled via pillow-heif")
+except ImportError as e:
+    HEIC_SUPPORT_AVAILABLE = False
+    print(f"HEIC support not available: {e}. HEIC files will be handled as regular files.")
 # Load environment variables
 load_dotenv()
 
@@ -194,6 +205,133 @@ def mcp_query():
         # Fallback for non-streaming case if MCP service sends bad JSON
         return jsonify({"error": f"Invalid JSON response from MCP service (non-streaming): {str(e)}"}), 500
 
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    """Handle file uploads and return URLs"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({"error": "No file provided"}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"error": "No file selected"}), 400
+        
+        # Generate a unique key for the file
+        timestamp = time.time()
+        file_key = f"upload-{hashlib.md5(f'{file.filename}-{timestamp}'.encode()).hexdigest()}"
+        
+        # Read file content
+        file_content = file.read()
+        
+        # Determine MIME type
+        mime_type = file.content_type
+        filename = file.filename
+        
+        # Check if this is a HEIC file and convert to JPEG if needed
+        is_heic = False
+        force_server_conversion = request.form.get('convert_heic') == 'true'
+        
+        if (filename.lower().endswith(('.heic', '.heif')) or 
+            mime_type in ['image/heic', 'image/heif'] or 
+            force_server_conversion):
+            
+            if not HEIC_SUPPORT_AVAILABLE:
+                if force_server_conversion:
+                    print(f"Frontend requested server-side HEIC conversion for {filename}, but HEIC support not available. Uploading as-is.")
+                else:
+                    print(f"HEIC file detected ({filename}) but HEIC support not available. Uploading as-is.")
+                # Continue with original file without conversion
+            else:
+                try:
+                    if force_server_conversion:
+                        print(f"Frontend requested server-side HEIC conversion for: {filename}")
+                    else:
+                        print(f"Detected HEIC file: {filename}, converting to JPEG...")
+                    
+                    # Open HEIC image with Pillow
+                    img = Image.open(BytesIO(file_content))
+                    
+                    # Convert to RGB if necessary (HEIC might be in other color modes)
+                    if img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    
+                    # Save as JPEG to BytesIO
+                    jpeg_buffer = BytesIO()
+                    img.save(jpeg_buffer, format='JPEG', quality=85, optimize=True)
+                    jpeg_buffer.seek(0)
+                    
+                    # Update file content and metadata
+                    file_content = jpeg_buffer.getvalue()
+                    mime_type = 'image/jpeg'
+                    
+                    # Update filename extension
+                    base_name = os.path.splitext(filename)[0]
+                    filename = f"{base_name}.jpg"
+                    
+                    is_heic = True
+                    print(f"Successfully converted HEIC to JPEG: {filename}")
+                    
+                except Exception as conv_error:
+                    print(f"Error converting HEIC file {filename}: {str(conv_error)}")
+                    # Fall back to original file if conversion fails
+                    pass
+        
+        # If mime_type is still not determined, try to guess from filename
+        if not mime_type:
+            import mimetypes
+            mime_type, _ = mimetypes.guess_type(filename)
+            if not mime_type:
+                mime_type = 'application/octet-stream'
+        
+        # Encode as base64
+        file_base64 = base64.b64encode(file_content).decode('utf-8')
+        
+        # Create data URI format for storage
+        data_uri = f"data:{mime_type};base64,{file_base64}"
+        
+        # Store the file data
+        file_data = {
+            'key': file_key,
+            'value': data_uri,
+            'filename': filename,
+            'original_filename': file.filename,  # Keep track of original name
+            'mime_type': mime_type,
+            'size': len(file_content),
+            'converted_from_heic': is_heic,  # Flag to indicate conversion
+            'write_timestamp': timestamp,
+            'read_timestamp': None,
+            'read_count': 0
+        }
+        
+        # Save the file data
+        file_path = get_file_path(file_key)
+        with open(file_path, 'w') as f:
+            json.dump(file_data, f)
+        
+        # Generate URL for accessing the file
+        if mime_type.startswith('image/') or mime_type.startswith('video/'):
+            file_url = f"{DOMAIN_FROM_ENV}/serve_image?key={file_key}"
+        else:
+            file_url = f"{DOMAIN_FROM_ENV}/serve?key={file_key}"
+        
+        response_data = {
+            "url": file_url,
+            "key": file_key,
+            "filename": filename,
+            "mime_type": mime_type,
+            "size": len(file_content)
+        }
+        
+        # Add conversion info if applicable
+        if is_heic:
+            response_data["converted_from_heic"] = True
+            response_data["original_filename"] = file.filename
+        
+        return jsonify(response_data), 200
+        
+    except Exception as e:
+        print(f"Error uploading file: {str(e)}")
+        return jsonify({"error": f"Upload failed: {str(e)}"}), 500
 
 @app.route('/mcp/status', methods=['GET'])
 def mcp_status():
@@ -2926,126 +3064,259 @@ def view_code(filename):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/analyze_image_gemini', methods=['POST'])
-def analyze_image_gemini():
-    if not LLM_ADAPTERS_AVAILABLE:
-        return jsonify({
-            "status": "error",
-            "code": "SERVICE_UNAVAILABLE",
-            "message": "The llm_adapters module is not available. This feature is disabled."
-        }), 503
-
-    try:
-        data = request.get_json()
-        image_base64 = data.get('image_base64')
-        image_url = data.get('image_url')
-        mime_type = data.get('mime_type')
-        prompt = data.get('prompt')
-        model_name = data.get('model_name', "gemini-2.5-flash-preview-05-20")
-
-        if not prompt or not mime_type:
-            return jsonify({
-                "status": "error",
-                "code": "MISSING_PARAMETERS",
-                "message": "Missing required parameters: prompt and mime_type are always required."
-            }), 400
-
-        image_bytes = None
-
-        if image_base64:
-            try:
-                image_bytes = base64.b64decode(image_base64)
-            except base64.binascii.Error as e:
-                return jsonify({
-                    "status": "error",
-                    "code": "INVALID_BASE64",
-                    "message": f"Invalid base64 string for image: {str(e)}"
-                }), 400
-        elif image_url:
-            try:
-                response = requests.get(image_url, timeout=10)
-                response.raise_for_status()
-                image_bytes = response.content
-            except requests.exceptions.RequestException as e:
-                return jsonify({
-                    "status": "error",
-                    "code": "IMAGE_URL_FETCH_FAILED",
-                    "message": f"Failed to fetch image from URL '{image_url}': {str(e)}"
-                }), 400
-        else:
-            return jsonify({
-                "status": "error",
-                "code": "MISSING_IMAGE_SOURCE",
-                "message": "Missing image source: Please provide either image_base64 or image_url."
-            }), 400
-
-        if not image_bytes:
-            return jsonify({
-                "status": "error",
-                "code": "IMAGE_PROCESSING_FAILED",
-                "message": "Failed to load image data from the provided source."
-            }), 500
-
-        image_attachment = AttachmentPart(mime_type=mime_type, data=image_bytes)
-        
-        user_message = StandardizedMessage(
-            role="user",
-            content=prompt,
-            attachments=[image_attachment]
-        )
-        
-        history = [user_message]
-        llm_config = StandardizedLLMConfig()
-
-        adapter = get_llm_adapter(model_name)
-        if adapter is None:
-            return jsonify({
-                "status": "error",
-                "code": "ADAPTER_ERROR",
-                "message": f"Could not get LLM adapter for model: {model_name}. Ensure model is supported and API keys are set."
-            }), 500
-
-        # Call the async method from sync context
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            response_model = loop.run_until_complete(adapter.generate_content(
-                model_name=model_name,
-                history=history,
-                config=llm_config
-            ))
-        finally:
-            loop.close()
-
-        return jsonify(response_model.model_dump()), 200
-
-    except ConnectionRefusedError as e:
-        return jsonify({
-            "status": "error",
-            "code": "CONNECTION_ERROR",
-            "message": "LLM service connection refused. Is the service running and accessible?",
-            "details": str(e)
-        }), 503
-    except Exception as e:
-        import traceback
-        print(f"Error in /analyze_image_gemini: {traceback.format_exc()}")
-        return jsonify({
-            "status": "error",
-            "code": "INTERNAL_ERROR",
-            "message": "Internal server error during image analysis.",
-            "details": str(e)
-        }), 500
 @app.route('/analyze_images', methods=['POST'])
 def proxy_analyze_images():
     """
-    Proxy for the MCP service's /analyze_images endpoint.
-    Accepts POST requests and forwards them to the MCP service.
+    Analyze images using Gemini AI model.
+    Accepts a list of image URLs and returns detailed analysis for each.
+    
+    Expected JSON payload:
+    {
+        "urls": ["url1", "url2", ...],
+        "analysis_prompt": "Describe this image in detail."  // optional, defaults to "Describe this image in detail."
+    }
+    
+    Returns:
+    {
+        "status": "success" | "error",
+        "results": [
+            {
+                "status": "success" | "error",
+                "analysis": "Detailed analysis text from Gemini",
+                "url": "Original image URL that was analyzed",
+                "message": "Error message if analysis failed"
+            }
+        ]
+    }
     """
     try:
-        # Forward the request JSON to the MCP service
-        mcp_url = 'http://localhost:5001/analyze_images'
-        response = requests.post(mcp_url, json=request.get_json(), timeout=300)
-        response.raise_for_status()
-        return jsonify(response.json()), response.status_code
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                "status": "error",
+                "message": "No JSON data provided"
+            }), 400
+            
+        urls = data.get('urls')
+        analysis_prompt = data.get('analysis_prompt', "Describe this image in detail.")
+        
+        if not urls:
+            return jsonify({
+                "status": "error", 
+                "message": "Missing 'urls' parameter"
+            }), 400
+            
+        if not isinstance(urls, list):
+            return jsonify({
+                "status": "error",
+                "message": "'urls' must be a list"
+            }), 400
+            
+        # Prepare the request for the MCP service
+        mcp_request_data = {
+            "tool_name": "analyze_images",
+            "arguments": {
+                "urls": urls,
+                "analysis_prompt": analysis_prompt
+            }
+        }
+        
+        # Check if we have the internal API key
+        if not MCP_INTERNAL_API_KEY:
+            return jsonify({
+                "status": "error",
+                "message": "MCP_INTERNAL_API_KEY not configured"
+            }), 500
+        
+        # Prepare headers for the internal call
+        headers = {
+            'Content-Type': 'application/json',
+            'X-Internal-API-Key': MCP_INTERNAL_API_KEY
+        }
+        
+        # Forward the request to the MCP service's internal endpoint
+        mcp_response = requests.post(
+            'http://localhost:5001/internal/call_mcp_tool',
+            json=mcp_request_data,
+            headers=headers,
+            timeout=300
+        )
+        mcp_response.raise_for_status()
+        
+        # Parse the MCP response and unwrap the result
+        mcp_json = mcp_response.json()
+        
+        # Extract the result field from the MCP response
+        if 'result' in mcp_json:
+            result_data = mcp_json['result']
+            
+            # If result is a JSON string, parse it
+            if isinstance(result_data, str):
+                try:
+                    parsed_result = json.loads(result_data)
+                    return jsonify(parsed_result)
+                except json.JSONDecodeError:
+                    # If it's not valid JSON, return it as is
+                    return jsonify({"status": "error", "message": "Invalid JSON in MCP result", "raw_result": result_data}), 500
+            else:
+                # If result is already parsed, return it directly
+                return jsonify(result_data)
+        else:
+            # If no result field, return the entire response
+            return jsonify(mcp_json)
+        
+    except requests.exceptions.HTTPError as http_err:
+        error_detail = f"HTTP error calling MCP image analysis: {str(http_err)}"
+        try:
+            if http_err.response is not None:
+                mcp_error_content_type = http_err.response.headers.get("Content-Type", "")
+                if "application/json" in mcp_error_content_type:
+                    mcp_error_json = http_err.response.json()
+                    if "error" in mcp_error_json:
+                        error_detail = f"MCP Image Analysis Error: {mcp_error_json['error']}"
+                    elif "detail" in mcp_error_json:
+                        error_detail = f"MCP Image Analysis Detail: {mcp_error_json['detail']}"
+                else:
+                    error_detail = f"HTTP error {http_err.response.status_code} from MCP service: {http_err.response.text[:500]}"
+        except ValueError:
+            if http_err.response is not None:
+                error_detail = f"HTTP error {http_err.response.status_code} from MCP service (non-JSON response): {http_err.response.text[:500]}"
+        return jsonify({"status": "error", "message": error_detail}), http_err.response.status_code if http_err.response is not None else 500
     except requests.exceptions.RequestException as e:
-        return jsonify({"error": f"Error communicating with MCP service: {str(e)}"}), 502
+        return jsonify({
+            "status": "error", 
+            "message": f"Error communicating with MCP service: {str(e)}"
+        }), 500
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Unexpected error: {str(e)}"
+        }), 500
+
+@app.route('/generate_images', methods=['POST'])
+def generate_images():
+    """
+    Generate images using Google's Imagen 4.0 model.
+    Accepts a list of prompts and returns a list of image URLs.
+    
+    Expected JSON payload:
+    {
+        "prompts": ["prompt1", "prompt2", ...],
+        "user_number": "+17145986105"  // optional, defaults to "+17145986105"
+    }
+    
+    Returns:
+    {
+        "status": "success" | "partial_error" | "error",
+        "message": "Human-readable status message",
+        "results": [
+            ["url1", "url2", ...],  // URLs for successful generations
+            {"error": "error message"}  // Error objects for failed generations
+        ]
+    }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                "status": "error",
+                "message": "No JSON data provided"
+            }), 400
+            
+        prompts = data.get('prompts')
+        user_number = data.get('user_number', 'default')
+        
+        if not prompts:
+            return jsonify({
+                "status": "error", 
+                "message": "Missing 'prompts' parameter"
+            }), 400
+            
+        if not isinstance(prompts, list):
+            return jsonify({
+                "status": "error",
+                "message": "'prompts' must be a list"
+            }), 400
+            
+        # Prepare the request for the MCP service
+        mcp_request_data = {
+            "tool_name": "generate_images_with_prompts",
+            "arguments": {
+                "user_number": user_number,
+                "prompts": prompts
+            }
+        }
+        
+        # Check if we have the internal API key
+        if not MCP_INTERNAL_API_KEY:
+            return jsonify({
+                "status": "error",
+                "message": "MCP_INTERNAL_API_KEY not configured"
+            }), 500
+        
+        # Prepare headers for the internal call
+        headers = {
+            'Content-Type': 'application/json',
+            'X-Internal-API-Key': MCP_INTERNAL_API_KEY
+        }
+        
+        # Forward the request to the MCP service's internal endpoint
+        mcp_response = requests.post(
+            'http://localhost:5001/internal/call_mcp_tool',
+            json=mcp_request_data,
+            headers=headers,
+            timeout=300
+        )
+        mcp_response.raise_for_status()
+        
+        # Parse the MCP response and unwrap the result
+        mcp_json = mcp_response.json()
+        
+        # Extract the result field from the MCP response
+        if 'result' in mcp_json:
+            result_data = mcp_json['result']
+            
+            # If result is a JSON string, parse it
+            if isinstance(result_data, str):
+                try:
+                    parsed_result = json.loads(result_data)
+                    return jsonify(parsed_result)
+                except json.JSONDecodeError:
+                    # If it's not valid JSON, return it as is
+                    return jsonify({"status": "error", "message": "Invalid JSON in MCP result", "raw_result": result_data}), 500
+            else:
+                # If result is already parsed, return it directly
+                return jsonify(result_data)
+        else:
+            # If no result field, return the entire response
+            return jsonify(mcp_json)
+        
+    except requests.exceptions.HTTPError as http_err:
+        error_detail = f"HTTP error calling MCP image generation: {str(http_err)}"
+        try:
+            if http_err.response is not None:
+                mcp_error_content_type = http_err.response.headers.get("Content-Type", "")
+                if "application/json" in mcp_error_content_type:
+                    mcp_error_json = http_err.response.json()
+                    if "error" in mcp_error_json:
+                        error_detail = f"MCP Image Generation Error: {mcp_error_json['error']}"
+                    elif "detail" in mcp_error_json:
+                        error_detail = f"MCP Image Generation Detail: {mcp_error_json['detail']}"
+                else:
+                    error_detail = f"HTTP error {http_err.response.status_code} from MCP service: {http_err.response.text[:500]}"
+        except ValueError:
+            if http_err.response is not None:
+                error_detail = f"HTTP error {http_err.response.status_code} from MCP service (non-JSON response): {http_err.response.text[:500]}"
+        return jsonify({"status": "error", "message": error_detail}), http_err.response.status_code if http_err.response is not None else 500
+    except requests.exceptions.RequestException as e:
+        return jsonify({
+            "status": "error", 
+            "message": f"Error communicating with MCP service: {str(e)}"
+        }), 500
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Unexpected error: {str(e)}"
+        }), 500

@@ -9,31 +9,21 @@ import { ChevronDown, Menu, Lock, Paperclip, ArrowUp, MapPin, Loader2 } from "lu
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { v4 as uuidv4 } from 'uuid';
-import ToolCallDisplay from "@/components/tool-call-display";
+import ToolCallDisplay from "@/components/ToolCallDisplay";
+import URLPreview from "@/components/URLPreview";
 import MapDisplay, { defaultTheme, nightTheme } from "@/components/MapDisplay";
 import DirectionsSteps from "@/components/DirectionsSteps";
+import ImageDisplay from "@/components/ImageDisplay";
 import { useTheme } from "next-themes";
+import { useContentPreviews } from "@/hooks/useContentPreviews";
+import ContentPreview from "@/components/ContentPreview";
+import { extractPreviewFromToolCall, shouldExtractPreview } from "@/utils/previewExtractors";
 
 // Ensure marked runs synchronously for this page too, if not already global
 marked.setOptions({ async: false });
 
 // Configuration for the backend API endpoint
 const BACKEND_API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:5001'; // Default to localhost:5001
-
-// --- ADD a Default Map ID ---
-// This Map ID is necessary for Advanced Markers to function.
-// Replace with any valid Map ID from your Google Cloud Project.
-// const GOOGLE_MAPS_DEFAULT_MAP_ID = "f07c6e7b6a1c874e8f0d8306"; // Using your previous dark Map ID as an example
-
-// NEW: Define Map IDs for light and dark themes
-// TODO: Replace these placeholder IDs with your actual Map IDs from Google Cloud Console
-/* // REMOVING THIS BLOCK
-const GOOGLE_MAPS_THEME_IDS = {
-  light: process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_LIGHT_ID || "YOUR_LIGHT_MODE_MAP_ID_HERE", // Replace with your light theme Map ID
-  dark: process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_DARK_ID || "YOUR_DARK_MODE_MAP_ID_HERE",   // Replace with your dark theme Map ID (e.g., f07c6e7b6a1c874e8f0d8306)
-};
-*/
-// ---
 
 interface ToolCallData {
   call_id: string;
@@ -43,6 +33,7 @@ interface ToolCallData {
   status?: "Pending..." | "Completed" | "Error" | "Streaming...";
   is_error?: boolean;
   is_partial?: boolean;
+  sampleCallPairs?: Array<{ id: string; thoughts?: string; output?: string; }>;
 }
 
 // NEW: Define a type for individual parts of a message
@@ -60,6 +51,10 @@ interface Message {
   is_error_message?: boolean; // To flag bot messages that are errors
   showMapToggleForThisMessage?: boolean; // <-- New flag
   directionsData?: any;
+  showWebAppForThisMessage?: boolean; // <-- New flag for web apps
+  webAppUrl?: string; // <-- Store web app URL
+  showImagesForThisMessage?: boolean; // <-- New flag for generated images
+  generatedImageUrls?: string[]; // <-- Store generated image URLs
 }
 
 export default function ChatPage() {
@@ -67,6 +62,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]); // <-- New state for selected files
   const fileInputRef = useRef<HTMLInputElement>(null); // <-- Ref for file input
+  const [fileProcessingStatus, setFileProcessingStatus] = useState<string | null>(null); // <-- Status for file processing
   const [showInitialView, setShowInitialView] = useState(true);
   const scrollAreaRef = useRef<HTMLDivElement>(null); // Ref for the ScrollArea's viewport element
   const [status, setStatus] = useState('Ready');
@@ -81,6 +77,14 @@ export default function ChatPage() {
 
   const { theme: appTheme } = useTheme(); // Get current application theme
 
+  // NEW: Add content previews hook
+  const { 
+    upsertPreview, 
+    updatePreview, 
+    getPreviewsForMessage, 
+    removePreview 
+  } = useContentPreviews();
+
   // Define available models as an array of objects for the dropdown
   const modelOptions = [
     { value: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash" },
@@ -89,6 +93,124 @@ export default function ChatPage() {
     // { value: "gpt-4.1-2025-04-14", label: "GPT-4.1" }, 
   ];
   const [selectedModel, setSelectedModel] = useState(modelOptions[1].value); // Default to the second model (Pro)
+
+  // NEW: Helper function to process tool calls for preview extraction
+  const processToolCallForPreview = (toolCall: ToolCallData, messageId: string) => {
+    if (shouldExtractPreview(toolCall)) {
+      const extractedPreview = extractPreviewFromToolCall(toolCall);
+      if (extractedPreview && extractedPreview.shouldShow) {
+        console.log(`[PAGE.TSX] Extracted preview for tool ${toolCall.name}:`, extractedPreview);
+        upsertPreview(
+          extractedPreview.id,
+          extractedPreview.type,
+          extractedPreview.data,
+          messageId,
+          {
+            name: toolCall.name,
+            call_id: toolCall.call_id,
+            status: toolCall.status,
+          }
+        );
+      }
+    }
+  };
+
+  // Function to detect and convert HEIC files to JPEG
+  const convertHeicToJpeg = async (file: File): Promise<File> => {
+    const isHeic = file.name.toLowerCase().endsWith('.heic') || 
+                   file.name.toLowerCase().endsWith('.heif') || 
+                   file.type === 'image/heic' || 
+                   file.type === 'image/heif';
+
+    if (!isHeic) {
+      return file; // Return original file if not HEIC
+    }
+
+    try {
+      console.log(`🔄 Converting HEIC file "${file.name}" to JPEG...`);
+      
+      // Dynamic import to avoid SSR issues
+      const { default: heic2any } = await import('heic2any');
+      
+      // Try heic2any conversion
+      const convertedBlob = await heic2any({
+        blob: file,
+        toType: 'image/jpeg',
+        quality: 0.85,
+      }) as Blob;
+      
+      // Create new filename with .jpg extension
+      const originalName = file.name.replace(/\.(heic|heif)$/i, '');
+      const newFileName = `${originalName}.jpg`;
+
+      // Create new File object with converted blob
+      const convertedFile = new File([convertedBlob], newFileName, {
+        type: 'image/jpeg',
+        lastModified: file.lastModified,
+      });
+
+      console.log(`✅ Successfully converted "${file.name}" to "${newFileName}" (${Math.round(convertedFile.size / 1024)}KB)`);
+      return convertedFile;
+      
+    } catch (error) {
+      console.warn(`⚠️ Frontend HEIC conversion failed for "${file.name}":`, error);
+      
+      // Try Canvas API fallback
+      try {
+        console.log(`🔄 Attempting Canvas API fallback for "${file.name}"...`);
+        
+        const imageBitmap = await createImageBitmap(file);
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        if (!ctx) {
+          throw new Error('Could not get canvas context');
+        }
+        
+        canvas.width = imageBitmap.width;
+        canvas.height = imageBitmap.height;
+        ctx.drawImage(imageBitmap, 0, 0);
+        
+        const canvasBlob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob((blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error('Canvas toBlob failed'));
+            }
+          }, 'image/jpeg', 0.85);
+        });
+        
+        const originalName = file.name.replace(/\.(heic|heif)$/i, '');
+        const newFileName = `${originalName}.jpg`;
+        
+        const convertedFile = new File([canvasBlob], newFileName, {
+          type: 'image/jpeg',
+          lastModified: file.lastModified,
+        });
+        
+        console.log(`✅ Canvas API fallback succeeded for "${file.name}" → "${newFileName}"`);
+        return convertedFile;
+        
+      } catch (canvasError) {
+        console.warn(`⚠️ Canvas API fallback also failed for "${file.name}":`, canvasError);
+        
+        // Final fallback: Upload HEIC file and let backend handle conversion
+        console.log(`🔄 Will upload "${file.name}" for server-side conversion...`);
+        
+        // Mark this file for server-side conversion by adding a special property
+        const fileWithConversionFlag = new File([file], file.name, {
+          type: file.type || 'image/heic',
+          lastModified: file.lastModified,
+        });
+        
+        // Add a custom property to indicate this needs server-side conversion
+        (fileWithConversionFlag as any).needsServerConversion = true;
+        
+        return fileWithConversionFlag;
+      }
+    }
+  };
 
   const examplePrompts = [
     { title: "What are the advantages", detail: "of using Next.js?" },
@@ -132,7 +254,7 @@ export default function ChatPage() {
     });
 
     // Additional aggressive pattern to catch any URLs that might be in quotes or other contexts
-    const aggressiveUrlPattern = /https?:\/\/[^\s<>"'\]\)\}]+\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|tiff)(\?[^\s<>"'\]\)\}]*)?/gi;
+    const aggressiveUrlPattern = /https?:\/\/[^\s<>"'\]\)\}]+\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|tiff|mp4|webm|ogg|mov|avi|wmv|flv|m4v)(\?[^\s<>"'\]\)\}]*)?/gi;
     
     processedText = processedText.replace(aggressiveUrlPattern, (url) => {
       // Check if this URL is already converted to markdown
@@ -155,6 +277,59 @@ export default function ChatPage() {
     // marked.parse is configured to run synchronously.
     const dirtyHtml = marked.parse(textWithMedia, { gfm: true, breaks: true }) as string;
     return DOMPurify.sanitize(dirtyHtml);
+  };
+
+  // NEW: Function to parse text and extract URLs for special rendering
+  interface TextPart {
+    type: 'text' | 'url';
+    content: string;
+  }
+
+  const parseTextWithURLs = (text: string): TextPart[] => {
+    const urlRegex = /https?:\/\/[^\s<>"'\]\)\}]+/g;
+    const parts: TextPart[] = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = urlRegex.exec(text)) !== null) {
+      // Add text before the URL
+      if (match.index > lastIndex) {
+        const beforeText = text.substring(lastIndex, match.index);
+        if (beforeText.trim()) {
+          parts.push({ type: 'text', content: beforeText });
+        }
+      }
+
+      // Add the URL (clean up trailing punctuation)
+      const url = match[0].replace(/[.,;:!?)"'\}]+$/, '');
+      
+      // Skip if it's already an image/video (handled by markdown)
+      const isMedia = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|tiff|mp4|webm|ogg|mov|avi|wmv|flv|m4v)(\?[^)\s"']*)?$/i.test(url);
+      
+      if (!isMedia) {
+        parts.push({ type: 'url', content: url });
+      } else {
+        // Keep as text for markdown processing
+        parts.push({ type: 'text', content: match[0] });
+      }
+
+      lastIndex = urlRegex.lastIndex;
+    }
+
+    // Add remaining text
+    if (lastIndex < text.length) {
+      const remainingText = text.substring(lastIndex);
+      if (remainingText.trim()) {
+        parts.push({ type: 'text', content: remainingText });
+      }
+    }
+
+    // If no URLs found, return the whole text as one part
+    if (parts.length === 0) {
+      parts.push({ type: 'text', content: text });
+    }
+
+    return parts;
   };
 
   const getCurrentLocation = (): Promise<string> => {
@@ -201,9 +376,52 @@ export default function ChatPage() {
     });
   };
   
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
-      setSelectedFiles(prevFiles => [...prevFiles, ...Array.from(event.target.files || [])]);
+      const files = Array.from(event.target.files);
+      
+      // Check if any files are HEIC
+      const heicFiles = files.filter(file => 
+        file.name.toLowerCase().endsWith('.heic') || 
+        file.name.toLowerCase().endsWith('.heif') || 
+        file.type === 'image/heic' || 
+        file.type === 'image/heif'
+      );
+      
+      if (heicFiles.length > 0) {
+        setFileProcessingStatus(`Converting ${heicFiles.length} HEIC file${heicFiles.length > 1 ? 's' : ''} to JPEG...`);
+      }
+      
+      try {
+        // Convert any HEIC files to JPEG
+        const convertedFiles = await Promise.all(
+          files.map(file => convertHeicToJpeg(file))
+        );
+        
+        // Check if any files need server-side conversion
+        const serverConversionFiles = convertedFiles.filter(file => (file as any).needsServerConversion);
+        
+        if (serverConversionFiles.length > 0) {
+          setFileProcessingStatus(`📤 Sending ${serverConversionFiles.length} HEIC file${serverConversionFiles.length > 1 ? 's' : ''} for server-side conversion...`);
+        } else {
+          setFileProcessingStatus(null); // Clear status when done
+        }
+        
+        setSelectedFiles(prevFiles => [...prevFiles, ...convertedFiles]);
+      } catch (error) {
+        console.error('Error processing selected files:', error);
+        
+        // Show user-friendly error message
+        if (error instanceof Error && error.message.includes('Unable to convert HEIC')) {
+          setFileProcessingStatus(`❌ HEIC conversion failed. Please try a different image format.`);
+          setTimeout(() => setFileProcessingStatus(null), 5000);
+        } else {
+          // Fall back to adding original files if conversion fails
+          setSelectedFiles(prevFiles => [...prevFiles, ...files]);
+          setFileProcessingStatus(null); // Clear status on error
+        }
+      }
+      
       event.target.value = ''; // Reset file input to allow selecting the same file again
     }
   };
@@ -224,6 +442,46 @@ export default function ChatPage() {
     });
   };
 
+  // NEW: Upload files immediately and get URLs
+  const uploadFiles = async (files: File[]): Promise<string[]> => {
+    const uploadPromises = files.map(async (file) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      // Check if this file needs server-side HEIC conversion
+      const needsServerConversion = (file as any).needsServerConversion;
+      if (needsServerConversion) {
+        formData.append('convert_heic', 'true');
+        console.log(`📤 Uploading "${file.name}" for server-side HEIC conversion...`);
+      }
+      
+      try {
+        const response = await fetch(`${BACKEND_API_BASE_URL}/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Upload failed: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        // Log server-side HEIC conversion if it occurred
+        if (result.converted_from_heic) {
+          console.log(`✅ Server converted HEIC file "${result.original_filename}" to JPEG: "${result.filename}"`);
+        }
+        
+        return result.url; // Backend should return { url: "..." }
+      } catch (error) {
+        console.error(`Failed to upload ${file.name}:`, error);
+        throw error;
+      }
+    });
+    
+    return Promise.all(uploadPromises);
+  };
+
   const handleSend = async (e?: FormEvent<HTMLFormElement> | React.MouseEvent<HTMLButtonElement>) => {
     if (e && typeof (e as FormEvent<HTMLFormElement>).preventDefault === 'function') {
       (e as FormEvent<HTMLFormElement>).preventDefault();
@@ -231,6 +489,33 @@ export default function ChatPage() {
     
     let currentMessageText = userInput.trim(); // Use a mutable variable for message text
     if (!currentMessageText && selectedFiles.length === 0) return; // Return if no text and no files
+
+    // --- NEW: Upload files immediately and get URLs ---
+    let attachmentUrls: string[] = [];
+    if (selectedFiles.length > 0) {
+      try {
+        setStatus('Uploading files...');
+        attachmentUrls = await uploadFiles(selectedFiles);
+        console.log('Files uploaded successfully:', attachmentUrls);
+      } catch (error) {
+        console.error('File upload failed:', error);
+        setStatus('Ready');
+        // Show error to user
+        const errorMessageId = uuidv4();
+        setMessages(prev => [
+          ...prev,
+          {
+            id: errorMessageId,
+            sender: 'bot',
+            parts: [{type: "text", id: uuidv4(), content: `<strong style="color: red;">Upload Error:</strong> Failed to upload files. Please try again.`}],
+            timestamp: Date.now(),
+            thinking: false,
+            is_error_message: true
+          }
+        ]);
+        return;
+      }
+    }
 
     // --- Location Appending Logic ---
     let resolvedOriginForQuery: string | undefined = undefined;
@@ -278,19 +563,20 @@ export default function ChatPage() {
     }
     // --- End Location Appending Logic ---
 
+    // --- NEW: Include attachment URLs directly in the message ---
+    if (attachmentUrls.length > 0) {
+      const attachmentList = attachmentUrls.map((url, index) => {
+        const fileName = selectedFiles[index]?.name || `Attachment ${index + 1}`;
+        return `- ${fileName}: ${url}`;
+      }).join('\n');
+      
+      currentMessageText += `\n\nAttached files:\n${attachmentList}`;
+    }
+
     const userMessageId = uuidv4();
     const userMessageParts: MessagePart[] = [];
     if (currentMessageText) { // Use potentially modified message text
       userMessageParts.push({ type: "text", id: uuidv4(), content: currentMessageText });
-    }
-
-    if (selectedFiles.length > 0) {
-      const attachmentText = selectedFiles.map(f => f.name).join(', ');
-      userMessageParts.push({
-        type: "text",
-        id: uuidv4(),
-        content: `(Attached: ${attachmentText})`
-      });
     }
 
     const userMessage: Message = {
@@ -316,35 +602,19 @@ export default function ChatPage() {
     ]);
 
     try {
-      const attachmentsForPayload: { filename: string, mimeType: string, data: string }[] = [];
-      if (selectedFiles.length > 0) {
-        for (const file of selectedFiles) {
-          try {
-            const base64Data = await fileToBase64(file);
-            attachmentsForPayload.push({
-              filename: file.name,
-              mimeType: file.type || 'application/octet-stream', // provide a default mime type
-              data: base64Data,
-            });
-          } catch (fileError) {
-            console.error("Error converting file to base64:", file.name, fileError);
-            // Optionally, notify the user about the failed file conversion for this specific file
-            // For now, we'll just log it and skip this file.
-          }
-        }
-      }
-
+      // --- NEW: Simplified payload with URLs instead of base64 ---
       const payload = {
         sender: apiSender,
-        query: currentMessageText, // Use the (potentially augmented) messageText
+        query: currentMessageText, // This now includes attachment URLs
         timestamp: Date.now(),
         stream: true,
         model: selectedModel,
-        attachments: attachmentsForPayload.length > 0 ? attachmentsForPayload : undefined,
+        attachment_urls: attachmentUrls.length > 0 ? attachmentUrls : undefined, // NEW: Direct URL array
       };
 
-      // Clear selected files now that they're in the payload
+      // Clear selected files now that they're uploaded and in the message
       setSelectedFiles([]);
+      setStatus('Processing...');
 
       const response = await fetch(`${BACKEND_API_BASE_URL}/query`, {
         method: 'POST',
@@ -373,17 +643,13 @@ export default function ChatPage() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
-            // Process any remaining data in the buffer when the stream is done
             if (buffer.trim() !== '') {
                 try {
                     const parsedChunk = JSON.parse(buffer);
                     console.log('[PAGE.TSX] Final Buffer Chunk:', JSON.stringify(parsedChunk));
-                    // Process the final chunk (similar to processing below)
-                    // This logic might need to be DRYed up or refactored based on how you handle various chunk types
                     if (parsedChunk.type === 'text_chunk' && parsedChunk.content) {
                         setMessages(prev => prev.map(msg => {
                             if (msg.id === botMessageId) {
-                                console.log(`[PAGE.TSX] Updating message ${msg.id} with text_chunk. Current parts:`, JSON.parse(JSON.stringify(msg.parts))); // DEEP COPY LOGGING
                                 let currentContent = parsedChunk.content;
                                 let newParts = [...msg.parts];
                                 const lastPart = newParts.length > 0 ? newParts[newParts.length - 1] : null;
@@ -399,6 +665,23 @@ export default function ChatPage() {
                             }
                             return msg;
                         }));
+                    } else if (parsedChunk.type === 'thought_summary' && parsedChunk.content) {
+                        setMessages(prev => prev.map(msg => {
+                            if (msg.id === botMessageId) {
+                                const newParts = msg.parts.map(part => {
+                                    if (part.type === "thought_summary") {
+                                        const contentFromChunk = normalizeFragment(
+                                            parsedChunk.content,
+                                            part.content
+                                        );
+                                        return { ...part, content: part.content + contentFromChunk };
+                                    }
+                                    return part;
+                                });
+                                return { ...msg, parts: newParts, thinking: true };
+                            }
+                            return msg;
+                        }));
                     } else if (parsedChunk.type === 'tool_call_pending' && parsedChunk.name && parsedChunk.arguments) {
                         const call_id_from_chunk = parsedChunk.call_id || `tool-${uuidv4()}`;
                         setMessages(prev => prev.map(msg => {
@@ -406,12 +689,10 @@ export default function ChatPage() {
                                 const existingToolCallPart = msg.parts.find(part =>
                                     part.type === "tool_call" && part.toolCall.call_id === call_id_from_chunk
                                 );
-
                                 if (existingToolCallPart) {
-                                    console.log(`[PAGE.TSX] (final buffer) Tool call with ID ${call_id_from_chunk} already exists in pending state. Ignoring duplicate pending message.`);
+                                    console.log(`[PAGE.TSX] (final buffer) Tool call with ID ${call_id_from_chunk} already exists. Ignoring duplicate pending.`);
                                     return msg; 
                                 }
-
                                 const newToolCallData: ToolCallData = {
                                     call_id: call_id_from_chunk,
                                     name: parsedChunk.name,
@@ -429,21 +710,18 @@ export default function ChatPage() {
                     } else if (parsedChunk.type === 'tool_result' && parsedChunk.call_id && typeof parsedChunk.result !== 'undefined') {
                          setMessages(prev => prev.map(msg => {
                             if (msg.id === botMessageId) {
-                                console.log('[PAGE.TSX] Received tool_result chunk:', JSON.parse(JSON.stringify(parsedChunk))); // DEEP COPY LOGGING
                                 if (parsedChunk.name === "get_directions") {
-                                    console.log("[PAGE.TSX] RAW get_directions tool_result CHUNK:", JSON.stringify(parsedChunk));
+                                    console.log("[PAGE.TSX] (Final Buffer) RAW get_directions tool_result CHUNK:", JSON.stringify(parsedChunk));
                                 }
                                 let matchedToolCallInParts = false;
                                 const newParts = msg.parts.map(part => {
                                     if (part.type === "tool_call" && part.toolCall.call_id === parsedChunk.call_id) {
                                         matchedToolCallInParts = true;
                                         const tc = part.toolCall;
-
                                         let finalResult = typeof parsedChunk.result === 'string' ? parsedChunk.result : JSON.stringify(parsedChunk.result);
                                         const isPartial = typeof parsedChunk.is_partial === 'boolean' ? parsedChunk.is_partial : false;
                                         const isError = typeof parsedChunk.is_error === 'boolean' ? parsedChunk.is_error : false;
                                         const newStatus: ToolCallData['status'] = isPartial ? "Streaming..." : (isError ? "Error" : "Completed");
-                                        
                                         const updatedToolCall: ToolCallData = {
                                             ...tc,
                                             result: isPartial && tc.result && tc.status === "Streaming..." ? tc.result + '\n---\n' + finalResult : finalResult,
@@ -451,8 +729,6 @@ export default function ChatPage() {
                                             is_error: isError,
                                             is_partial: isPartial,
                                         };
-
-                                        // --- NEW: Extract get_directions_response ---
                                         let toolResponse = null;
                                         if (tc.name === "get_directions" && parsedChunk.result) {
                                             // Handle both old wrapped format and new direct format
@@ -461,59 +737,72 @@ export default function ChatPage() {
                                                 if (parsedChunk.result[responseKey]) {
                                                     // Old wrapped format
                                                     toolResponse = parsedChunk.result[responseKey];
+                                                    console.log("[PAGE.TSX] (Stream Loop) Using wrapped format for directions, toolResponse:", JSON.stringify(toolResponse).substring(0, 200) + "...");
                                                 } else {
                                                     // New direct format from FastMCP
                                                     toolResponse = parsedChunk.result;
+                                                    console.log("[PAGE.TSX] (Stream Loop) Using direct format for directions, toolResponse:", JSON.stringify(toolResponse).substring(0, 200) + "...");
                                                 }
                                             }
                                         }
-                                        // --- END NEW ---
-
-                                        // If this is the final result for get_directions, set map data
-                                        if (
-                                            tc.name === "get_directions" &&
-                                            toolResponse &&
-                                            toolResponse.status === "success" &&
-                                            toolResponse.data &&
-                                            !isError &&
-                                            !isPartial
-                                        ) {
-                                            console.log(
-                                                "[PAGE.TSX] Setting directionsData (final buffer) with:",
-                                                JSON.stringify(toolResponse.data).substring(0, 200) + "..."
-                                            );
+                                        if (tc.name === "get_directions" && toolResponse && toolResponse.status === "success" && toolResponse.data && !isError && !isPartial) {
+                                            console.log("[PAGE.TSX] (Final Buffer) Setting directionsData with:", JSON.stringify(toolResponse.data).substring(0, 200) + "...");
                                             setDirectionsData(toolResponse.data);
                                             setMapDisplayKey(prevKey => prevKey + 1);
-                                            setIsMapSectionVisible(true); // MODIFIED: Show map section automatically
-                                            // Flag will be added to finalMsgObject before returning
-                                        } else if (
-                                            tc.name === "get_directions" &&
-                                            !toolResponse
-                                        ) {
-                                            console.error(
-                                                "[PAGE.TSX] ERROR (final buffer): get_directions_response missing in parsedChunk.result!"
-                                            );
+                                            setIsMapSectionVisible(true);
+                                        } else if (tc.name === "get_directions" && !toolResponse) {
+                                            console.error("[PAGE.TSX] (Final Buffer) ERROR: get_directions_response missing!");
                                         }
-
+                                        // NEW: Process tool call for preview extraction
+                                        processToolCallForPreview(updatedToolCall, msg.id);
+                                        // NEW: Web app detection logic
+                                        if ((tc.name === "create_web_app" || tc.name === "edit_web_app") && !isError && !isPartial && tc.result) {
+                                            try {
+                                                const resultData = typeof tc.result === 'string' ? JSON.parse(tc.result) : tc.result;
+                                                if (resultData.status === "success" && resultData.url) {
+                                                    console.log("[PAGE.TSX] (Final Buffer) Setting webAppUrl with:", resultData.url);
+                                                    // This will be set on the message object below
+                                                }
+                                            } catch (e) {
+                                                console.warn("[PAGE.TSX] (Final Buffer) Failed to parse web app result:", e);
+                                            }
+                                        }
+                                        // NEW: Image generation detection logic
+                                        if (tc.name === "generate_images_with_prompts" && !isError && !isPartial && tc.result) {
+                                            try {
+                                                const resultData = typeof tc.result === 'string' ? JSON.parse(tc.result) : tc.result;
+                                                if (resultData.status === "success" && resultData.results) {
+                                                    // Extract all image URLs from the results array
+                                                    const imageUrls: string[] = [];
+                                                    resultData.results.forEach((resultArray: any) => {
+                                                        if (Array.isArray(resultArray)) {
+                                                            imageUrls.push(...resultArray);
+                                                        }
+                                                    });
+                                                    if (imageUrls.length > 0) {
+                                                        console.log("[PAGE.TSX] (Stream Loop) Setting generatedImageUrls with:", imageUrls.length, "images");
+                                                        // This will be set on the message object below
+                                                    }
+                                                }
+                                            } catch (e) {
+                                                console.warn("[PAGE.TSX] (Stream Loop) Failed to parse image generation result:", e);
+                                            }
+                                        }
                                         return { ...part, toolCall: updatedToolCall };
                                     }
                                     return part;
                                 });
-                                if (!matchedToolCallInParts) {
-                                    console.warn(
-                                        `[PAGE.TSX] (final buffer) Tool call with id ${parsedChunk.call_id} not found in message ${msg.id} parts`
-                                    );
-                                }
-                                
-                                // --- NEW: Attach directionsData to message for rendering ---
+                                if (!matchedToolCallInParts) { console.warn(`[PAGE.TSX] (Final Buffer) Tool call id ${parsedChunk.call_id} not found in ${msg.id}`); }
                                 let toolResponse = null;
-                                if (
-                                    parsedChunk.name === "get_directions" &&
-                                    parsedChunk.result &&
-                                    typeof parsedChunk.result === 'object'
-                                ) {
-                                    const responseKey = `${parsedChunk.name}_response`;
-                                    toolResponse = parsedChunk.result[responseKey];
+                                if (parsedChunk.name === "get_directions" && parsedChunk.result) {
+                                    if (typeof parsedChunk.result === 'object') {
+                                        const responseKey = `${parsedChunk.name}_response`;
+                                        if (parsedChunk.result[responseKey]) {
+                                            toolResponse = parsedChunk.result[responseKey];
+                                        } else {
+                                            toolResponse = parsedChunk.result;
+                                        }
+                                    }
                                 }
                                 let finalMsgObject = { ...msg, parts: newParts, thinking: true };
                                 if (
@@ -526,13 +815,121 @@ export default function ChatPage() {
                                 ) {
                                     finalMsgObject.showMapToggleForThisMessage = true;
                                     finalMsgObject.directionsData = toolResponse.data;
+                                    console.log("[PAGE.TSX] (Final Buffer) Setting message directions data:", JSON.stringify(toolResponse.data).substring(0, 200) + "...");
                                 }
-                                // --- END NEW ---
+                                // NEW: Web app message object updates
+                                if ((parsedChunk.name === "create_web_app" || parsedChunk.name === "edit_web_app") && !(typeof parsedChunk.is_partial === 'boolean' && parsedChunk.is_partial) && !(typeof parsedChunk.is_error === 'boolean' && parsedChunk.is_error) && parsedChunk.result) {
+                                    try {
+                                        const resultData = typeof parsedChunk.result === 'string' ? JSON.parse(parsedChunk.result) : parsedChunk.result;
+                                        if (resultData.status === "success" && resultData.url) {
+                                            finalMsgObject.showWebAppForThisMessage = true;
+                                            finalMsgObject.webAppUrl = resultData.url;
+                                        }
+                                    } catch (e) {
+                                        console.warn("[PAGE.TSX] (Final Buffer) Failed to parse web app result for message:", e);
+                                    }
+                                }
+                                // NEW: Image generation message object updates
+                                if (parsedChunk.name === "generate_images_with_prompts" && !(typeof parsedChunk.is_partial === 'boolean' && parsedChunk.is_partial) && !(typeof parsedChunk.is_error === 'boolean' && parsedChunk.is_error) && parsedChunk.result) {
+                                    try {
+                                        const resultData = typeof parsedChunk.result === 'string' ? JSON.parse(parsedChunk.result) : parsedChunk.result;
+                                        if (resultData.status === "success" && resultData.results) {
+                                            // Extract all image URLs from the results array
+                                            const imageUrls: string[] = [];
+                                            resultData.results.forEach((resultArray: any) => {
+                                                if (Array.isArray(resultArray)) {
+                                                    imageUrls.push(...resultArray);
+                                                }
+                                            });
+                                            if (imageUrls.length > 0) {
+                                                finalMsgObject.showImagesForThisMessage = true;
+                                                finalMsgObject.generatedImageUrls = imageUrls;
+                                                console.log("[PAGE.TSX] (Final Buffer) Setting generatedImageUrls with:", imageUrls.length, "images");
+                                            }
+                                        }
+                                    } catch (e) {
+                                        console.warn("[PAGE.TSX] (Final Buffer) Failed to parse image generation result for message:", e);
+                                    }
+                                }
                                 return finalMsgObject;
                             }
                             return msg;
                         }));
-                    } else if (parsedChunk.type === 'stream_end') {
+                    } 
+                    // ---- START: New chunk types for final buffer processing ----
+                    else if (parsedChunk.type === 'tool_sample_text_chunk' && parsedChunk.parent_tool_call_id && typeof parsedChunk.content === 'string') {
+                        setMessages(prev => prev.map(msg => {
+                            if (msg.id === botMessageId) {
+                                const newParts = msg.parts.map(part => {
+                                    if (part.type === "tool_call" && part.toolCall.call_id === parsedChunk.parent_tool_call_id) {
+                                        const tc = part.toolCall;
+                                        const currentPairs = tc.sampleCallPairs || [];
+                                        let newPairs;
+                                        
+                                        if (currentPairs.length > 0) {
+                                            const lastPair = currentPairs[currentPairs.length - 1];
+                                            // Create new pair object with updated output
+                                            const updatedLastPair = {
+                                                ...lastPair,
+                                                output: (lastPair.output || "") + parsedChunk.content
+                                            };
+                                            // Create new array with updated last pair
+                                            newPairs = [...currentPairs.slice(0, -1), updatedLastPair];
+                                        } else {
+                                            // Create new pair
+                                            newPairs = [{ id: uuidv4(), output: parsedChunk.content }];
+                                        }
+                                        
+                                        console.log(`[PAGE.TSX] (Final Buffer) Updated sampleCallPairs (output) for ${parsedChunk.parent_tool_call_id}:`, JSON.parse(JSON.stringify(newPairs)));
+                                        return { ...part, toolCall: { ...tc, sampleCallPairs: newPairs } };
+                                    }
+                                    return part;
+                                });
+                                return { ...msg, parts: newParts, thinking: true }; 
+                            }
+                            return msg;
+                        }));
+                    } else if (parsedChunk.type === 'tool_sample_thought_chunk' && parsedChunk.parent_tool_call_id && typeof parsedChunk.content === 'string') {
+                        setMessages(prev => prev.map(msg => {
+                            if (msg.id === botMessageId) {
+                                const newParts = msg.parts.map(part => {
+                                    if (part.type === "tool_call" && part.toolCall.call_id === parsedChunk.parent_tool_call_id) {
+                                        const tc = part.toolCall;
+                                        const currentPairs = tc.sampleCallPairs || [];
+                                        let newPairs;
+
+                                        // If lastPair exists and is still 'open' (no output yet), append thoughts.
+                                        // Otherwise, this is a new sampling call's thoughts, so create a new pair.
+                                        if (currentPairs.length > 0) {
+                                            const lastPair = currentPairs[currentPairs.length - 1];
+                                            if (typeof lastPair.output === 'undefined') {
+                                                // Update existing pair with thoughts
+                                                const updatedLastPair = {
+                                                    ...lastPair,
+                                                    thoughts: (lastPair.thoughts || "") + parsedChunk.content
+                                                };
+                                                newPairs = [...currentPairs.slice(0, -1), updatedLastPair];
+                                            } else {
+                                                // Create new pair for new sampling call
+                                                newPairs = [...currentPairs, { id: uuidv4(), thoughts: parsedChunk.content }];
+                                            }
+                                        } else {
+                                            // Create first pair
+                                            newPairs = [{ id: uuidv4(), thoughts: parsedChunk.content }];
+                                        }
+                                        
+                                        console.log(`[PAGE.TSX] (Final Buffer) Updated sampleCallPairs (thoughts) for ${parsedChunk.parent_tool_call_id}:`, JSON.parse(JSON.stringify(newPairs)));
+                                        return { ...part, toolCall: { ...tc, sampleCallPairs: newPairs } };
+                                    }
+                                    return part;
+                                });
+                                return { ...msg, parts: newParts, thinking: true };
+                            }
+                            return msg;
+                        }));
+                    }
+                    // ---- END: New chunk types for final buffer processing ----
+                    else if (parsedChunk.type === 'stream_end') {
                         setMessages(prev => prev.map(msg => msg.id === botMessageId ? {...msg, thinking: false } : msg));
                         setStatus('Ready');
                     } else if (parsedChunk.type === 'error' && parsedChunk.content) {
@@ -560,16 +957,14 @@ export default function ChatPage() {
                 }
             }
             console.log('[PAGE.TSX] HTTP Response Stream Reader finished.');
-            // Ensure thinking is false if not already set by a 'stream_end' chunk from the stream itself
             setMessages(prev => prev.map(msg => msg.id === botMessageId && msg.thinking ? {...msg, thinking: false } : msg));
-            if (status !== 'Ready') setStatus('Ready'); // Ensure status is reset
+            if (status !== 'Ready') setStatus('Ready');
             break;
         }
 
         buffer += decoder.decode(value, { stream: true });
         let newlineIndex;
 
-        // Process all complete JSON lines in the buffer
         while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
             const line = buffer.substring(0, newlineIndex);
             buffer = buffer.substring(newlineIndex + 1);
@@ -577,70 +972,70 @@ export default function ChatPage() {
             if (line.trim() === '') continue;
             try {
                 const parsedChunk = JSON.parse(line);
-                console.log('[PAGE.TSX] Streamed Chunk:', JSON.stringify(parsedChunk));
+                // console.log('[PAGE.TSX] Streamed Chunk:', JSON.stringify(parsedChunk)); // General log exists
             
                 if (parsedChunk.type === 'text_chunk' && parsedChunk.content) {
-                  setMessages(prev => prev.map(msg => {
-                    if (msg.id === botMessageId) {
-                        console.log(`[PAGE.TSX] Updating message ${msg.id} with text_chunk (stream loop). Current parts:`, JSON.parse(JSON.stringify(msg.parts))); // DEEP COPY LOGGING
-                        
-                        const newParts = [...msg.parts]; // Shallow copy of parts array
-                        const lastPartIndex = newParts.length > 0 ? newParts.length - 1 : -1;
-                        const lastPart = lastPartIndex !== -1 ? newParts[lastPartIndex] : null;
-                        
-                        // Normalize the incoming chunk's content.
-                        // The second argument to normalizeFragment was lastPart.content or "" in the original logic.
-                        const contentFromChunk = normalizeFragment(
-                            parsedChunk.content, 
-                            lastPart && lastPart.type === "text" ? lastPart.content : ""
-                        );
+                    setMessages(prev => prev.map(msg => {
+                        if (msg.id === botMessageId) {
+                            console.log(`[PAGE.TSX] Updating message ${msg.id} with text_chunk (stream loop). Current parts:`, JSON.parse(JSON.stringify(msg.parts))); // DEEP COPY LOGGING
+                            
+                            const newParts = [...msg.parts]; // Shallow copy of parts array
+                            const lastPartIndex = newParts.length > 0 ? newParts.length - 1 : -1;
+                            const lastPart = lastPartIndex !== -1 ? newParts[lastPartIndex] : null;
+                            
+                            // Normalize the incoming chunk's content.
+                            // The second argument to normalizeFragment was lastPart.content or "" in the original logic.
+                            const contentFromChunk = normalizeFragment(
+                                parsedChunk.content, 
+                                lastPart && lastPart.type === "text" ? lastPart.content : ""
+                            );
 
-                        if (lastPart && lastPart.type === "text") {
-                            // Update the last part immutably by creating a new object
-                            newParts[lastPartIndex] = {
-                                ...(lastPart as { type: "text"; id: string; content: string }), // Ensure correct type for spread
-                                content: lastPart.content + contentFromChunk 
-                            };
-                        } else {
-                            // Add a new text part if no previous text part or parts array is empty
-                            newParts.push({ 
-                                type: "text", 
-                                id: uuidv4(), 
-                                content: contentFromChunk 
-                            });
+                            if (lastPart && lastPart.type === "text") {
+                                // Update the last part immutably by creating a new object
+                                newParts[lastPartIndex] = {
+                                    ...(lastPart as { type: "text"; id: string; content: string }), // Ensure correct type for spread
+                                    content: lastPart.content + contentFromChunk 
+                                };
+                            } else {
+                                // Add a new text part if no previous text part or parts array is empty
+                                newParts.push({ 
+                                    type: "text", 
+                                    id: uuidv4(), 
+                                    content: contentFromChunk 
+                                });
+                            }
+                            return { ...msg, parts: newParts, thinking: true };
                         }
-                        return { ...msg, parts: newParts, thinking: true };
-                    }
-                    return msg;
-                  }));
+                        return msg;
+                    }));
                 } else if (parsedChunk.type === 'thought_summary' && parsedChunk.content) {
-                  setMessages(prev => prev.map(msg => {
-                    if (msg.id === botMessageId) {
-                      console.log(`[PAGE.TSX] Updating message ${msg.id} with thought_summary. Current parts:`, JSON.parse(JSON.stringify(msg.parts)));
-                      const newParts = [...msg.parts];
-                      const lastPartIndex = newParts.length > 0 ? newParts.length - 1 : -1;
-                      const lastPart = lastPartIndex !== -1 ? newParts[lastPartIndex] : null;
-                      const contentFromChunk = normalizeFragment(
-                        parsedChunk.content,
-                        lastPart && lastPart.type === "thought_summary" ? lastPart.content : ""
-                      );
+                    setMessages(prev => prev.map(msg => {
+                        if (msg.id === botMessageId) {
+                            console.log(`[PAGE.TSX] Updating message ${msg.id} with thought_summary. Current parts:`, JSON.parse(JSON.stringify(msg.parts)));
+                            const newParts = [...msg.parts];
+                            const lastPartIndex = newParts.length > 0 ? newParts.length - 1 : -1;
+                            const lastPart = lastPartIndex !== -1 ? newParts[lastPartIndex] : null;
+                            const contentFromChunk = normalizeFragment(
+                                parsedChunk.content,
+                                lastPart && lastPart.type === "thought_summary" ? lastPart.content : ""
+                            );
 
-                      if (lastPart && lastPart.type === "thought_summary") {
-                        newParts[lastPartIndex] = {
-                          ...(lastPart as { type: "thought_summary"; id: string; content: string }),
-                          content: lastPart.content + contentFromChunk
-                        };
-                      } else {
-                        newParts.push({
-                          type: "thought_summary",
-                          id: uuidv4(),
-                          content: contentFromChunk
-                        });
-                      }
-                      return { ...msg, parts: newParts, thinking: true };
-                    }
-                    return msg;
-                  }));
+                            if (lastPart && lastPart.type === "thought_summary") {
+                                newParts[lastPartIndex] = {
+                                    ...(lastPart as { type: "thought_summary"; id: string; content: string }),
+                                    content: lastPart.content + contentFromChunk
+                                };
+                            } else {
+                                newParts.push({
+                                    type: "thought_summary",
+                                    id: uuidv4(),
+                                    content: contentFromChunk
+                                });
+                            }
+                            return { ...msg, parts: newParts, thinking: true };
+                        }
+                        return msg;
+                    }));
                 } else if (parsedChunk.type === 'tool_call_pending' && parsedChunk.name && parsedChunk.arguments) {
                     const call_id_from_chunk = parsedChunk.call_id || `tool-${uuidv4()}`;
                     setMessages(prev => prev.map(msg => {
@@ -710,9 +1105,11 @@ export default function ChatPage() {
                                             if (parsedChunk.result[responseKey]) {
                                                 // Old wrapped format
                                                 toolResponse = parsedChunk.result[responseKey];
+                                                console.log("[PAGE.TSX] (Stream Loop) Using wrapped format for directions, toolResponse:", JSON.stringify(toolResponse).substring(0, 200) + "...");
                                             } else {
                                                 // New direct format from FastMCP
                                                 toolResponse = parsedChunk.result;
+                                                console.log("[PAGE.TSX] (Stream Loop) Using direct format for directions, toolResponse:", JSON.stringify(toolResponse).substring(0, 200) + "...");
                                             }
                                         }
                                     }
@@ -727,6 +1124,7 @@ export default function ChatPage() {
                                         !isError &&
                                         !isPartial
                                     ) {
+                                        console.log("[PAGE.TSX] (Stream Loop) Setting directionsData with:", JSON.stringify(toolResponse.data).substring(0, 200) + "...");
                                         setDirectionsData(toolResponse.data);
                                         setMapDisplayKey(prevKey => prevKey + 1);
                                         setIsMapSectionVisible(true); // MODIFIED: Show map section automatically
@@ -738,6 +1136,44 @@ export default function ChatPage() {
                                             "[PAGE.TSX] ERROR (stream loop): get_directions_response missing in parsedChunk.result!"
                                         );
                                     }
+
+                                    // NEW: Web app detection logic
+                                    if ((tc.name === "create_web_app" || tc.name === "edit_web_app") && !isError && !isPartial && tc.result) {
+                                        try {
+                                            const resultData = typeof tc.result === 'string' ? JSON.parse(tc.result) : tc.result;
+                                            if (resultData.status === "success" && resultData.url) {
+                                                console.log("[PAGE.TSX] (Final Buffer) Setting webAppUrl with:", resultData.url);
+                                                // This will be set on the message object below
+                                            }
+                                        } catch (e) {
+                                            console.warn("[PAGE.TSX] (Final Buffer) Failed to parse web app result:", e);
+                                        }
+                                    }
+
+                                    // NEW: Image generation detection logic
+                                    if (tc.name === "generate_images_with_prompts" && !isError && !isPartial && tc.result) {
+                                        try {
+                                            const resultData = typeof tc.result === 'string' ? JSON.parse(tc.result) : tc.result;
+                                            if (resultData.status === "success" && resultData.results) {
+                                                // Extract all image URLs from the results array
+                                                const imageUrls: string[] = [];
+                                                resultData.results.forEach((resultArray: any) => {
+                                                    if (Array.isArray(resultArray)) {
+                                                        imageUrls.push(...resultArray);
+                                                    }
+                                                });
+                                                if (imageUrls.length > 0) {
+                                                    console.log("[PAGE.TSX] (Stream Loop) Setting generatedImageUrls with:", imageUrls.length, "images");
+                                                    // This will be set on the message object below
+                                                }
+                                            }
+                                        } catch (e) {
+                                            console.warn("[PAGE.TSX] (Stream Loop) Failed to parse image generation result:", e);
+                                        }
+                                    }
+
+                                    // NEW: Process tool call for preview extraction (streaming loop)
+                                    processToolCallForPreview(updatedToolCall, msg.id);
 
                                     return { ...part, toolCall: updatedToolCall };
                                 }
@@ -752,18 +1188,20 @@ export default function ChatPage() {
                             // --- NEW: Attach directionsData to message for rendering ---
                             let toolResponse = null;
                             if (parsedChunk.name === "get_directions" && parsedChunk.result) {
-                                // Handle both old wrapped format and new direct format
-                                if (typeof parsedChunk.result === 'object') {
-                                    const responseKey = `${parsedChunk.name}_response`;
-                                    if (parsedChunk.result[responseKey]) {
-                                        // Old wrapped format
-                                        toolResponse = parsedChunk.result[responseKey];
-                                    } else {
-                                        // New direct format from FastMCP
-                                        toolResponse = parsedChunk.result;
-                                    }
-                                }
-                            }
+                              // Handle both old wrapped format and new direct format
+                              if (typeof parsedChunk.result === 'object') {
+                                  const responseKey = `${parsedChunk.name}_response`;
+                                  if (parsedChunk.result[responseKey]) {
+                                      // Old wrapped format
+                                      toolResponse = parsedChunk.result[responseKey];
+                                      console.log("[PAGE.TSX] (Stream Loop Message) Using wrapped format for directions, toolResponse:", JSON.stringify(toolResponse).substring(0, 200) + "...");
+                                  } else {
+                                      // New direct format from FastMCP
+                                      toolResponse = parsedChunk.result;
+                                      console.log("[PAGE.TSX] (Stream Loop Message) Using direct format for directions, toolResponse:", JSON.stringify(toolResponse).substring(0, 200) + "...");
+                                  }
+                              }
+                          }
                             let finalMsgObject = { ...msg, parts: newParts, thinking: true };
                             if (
                                 parsedChunk.name === "get_directions" &&
@@ -775,8 +1213,42 @@ export default function ChatPage() {
                             ) {
                                 finalMsgObject.showMapToggleForThisMessage = true;
                                 finalMsgObject.directionsData = toolResponse.data;
+                                console.log("[PAGE.TSX] (Stream Loop Message) Setting message directions data:", JSON.stringify(toolResponse.data).substring(0, 200) + "...");
                             }
-                            // --- END NEW ---
+                            // NEW: Web app message object updates for streaming loop
+                            if ((parsedChunk.name === "create_web_app" || parsedChunk.name === "edit_web_app") && !(typeof parsedChunk.is_partial === 'boolean' && parsedChunk.is_partial) && !(typeof parsedChunk.is_error === 'boolean' && parsedChunk.is_error) && parsedChunk.result) {
+                                try {
+                                    const resultData = typeof parsedChunk.result === 'string' ? JSON.parse(parsedChunk.result) : parsedChunk.result;
+                                    if (resultData.status === "success" && resultData.url) {
+                                        finalMsgObject.showWebAppForThisMessage = true;
+                                        finalMsgObject.webAppUrl = resultData.url;
+                                    }
+                                } catch (e) {
+                                    console.warn("[PAGE.TSX] (Stream Loop) Failed to parse web app result for message:", e);
+                                }
+                            }
+                            // NEW: Image generation message object updates
+                            if (parsedChunk.name === "generate_images_with_prompts" && !(typeof parsedChunk.is_partial === 'boolean' && parsedChunk.is_partial) && !(typeof parsedChunk.is_error === 'boolean' && parsedChunk.is_error) && parsedChunk.result) {
+                                try {
+                                    const resultData = typeof parsedChunk.result === 'string' ? JSON.parse(parsedChunk.result) : parsedChunk.result;
+                                    if (resultData.status === "success" && resultData.results) {
+                                        // Extract all image URLs from the results array
+                                        const imageUrls: string[] = [];
+                                        resultData.results.forEach((resultArray: any) => {
+                                            if (Array.isArray(resultArray)) {
+                                                imageUrls.push(...resultArray);
+                                            }
+                                        });
+                                        if (imageUrls.length > 0) {
+                                            finalMsgObject.showImagesForThisMessage = true;
+                                            finalMsgObject.generatedImageUrls = imageUrls;
+                                            console.log("[PAGE.TSX] (Final Buffer) Setting generatedImageUrls with:", imageUrls.length, "images");
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.warn("[PAGE.TSX] (Final Buffer) Failed to parse image generation result for message:", e);
+                                }
+                            }
                             return finalMsgObject;
                         }
                         return msg;
@@ -806,6 +1278,79 @@ export default function ChatPage() {
                     }));
                     setStatus('Ready'); // Reset status after error
                 }
+                // ---- START: New chunk types for per-line stream processing ----
+                else if (parsedChunk.type === 'tool_sample_text_chunk' && parsedChunk.parent_tool_call_id && typeof parsedChunk.content === 'string') {
+                    setMessages(prev => prev.map(msg => {
+                        if (msg.id === botMessageId) {
+                            const newParts = msg.parts.map(part => {
+                                if (part.type === "tool_call" && part.toolCall.call_id === parsedChunk.parent_tool_call_id) {
+                                     const tc = part.toolCall;
+                                    const currentPairs = tc.sampleCallPairs || [];
+                                    let newPairs;
+                                    
+                                    if (currentPairs.length > 0) {
+                                        const lastPair = currentPairs[currentPairs.length - 1];
+                                        // Create new pair object with updated output
+                                        const updatedLastPair = {
+                                            ...lastPair,
+                                            output: (lastPair.output || "") + parsedChunk.content
+                                        };
+                                        // Create new array with updated last pair
+                                        newPairs = [...currentPairs.slice(0, -1), updatedLastPair];
+                                    } else {
+                                        // Create new pair
+                                        newPairs = [{ id: uuidv4(), output: parsedChunk.content }];
+                                    }
+                                    
+                                    console.log(`[PAGE.TSX] (Stream Line) Updated sampleCallPairs (output) for ${parsedChunk.parent_tool_call_id}:`, JSON.parse(JSON.stringify(newPairs)));
+                                    return { ...part, toolCall: { ...tc, sampleCallPairs: newPairs } };
+                                }
+                                return part;
+                            });
+                            return { ...msg, parts: newParts, thinking: true }; 
+                        }
+                        return msg;
+                    }));
+                } else if (parsedChunk.type === 'tool_sample_thought_chunk' && parsedChunk.parent_tool_call_id && typeof parsedChunk.content === 'string') {
+                    setMessages(prev => prev.map(msg => {
+                        if (msg.id === botMessageId) {
+                            const newParts = msg.parts.map(part => {
+                                if (part.type === "tool_call" && part.toolCall.call_id === parsedChunk.parent_tool_call_id) {
+                                    const tc = part.toolCall;
+                                    const currentPairs = tc.sampleCallPairs || [];
+                                    let newPairs;
+
+                                    // If lastPair exists and is still 'open' (no output yet), append thoughts.
+                                    // Otherwise, this is a new sampling call's thoughts, so create a new pair.
+                                    if (currentPairs.length > 0) {
+                                        const lastPair = currentPairs[currentPairs.length - 1];
+                                        if (typeof lastPair.output === 'undefined') {
+                                            // Update existing pair with thoughts
+                                            const updatedLastPair = {
+                                                ...lastPair,
+                                                thoughts: (lastPair.thoughts || "") + parsedChunk.content
+                                            };
+                                            newPairs = [...currentPairs.slice(0, -1), updatedLastPair];
+                                        } else {
+                                            // Create new pair for new sampling call
+                                            newPairs = [...currentPairs, { id: uuidv4(), thoughts: parsedChunk.content }];
+                                        }
+                                    } else {
+                                        // Create first pair
+                                        newPairs = [{ id: uuidv4(), thoughts: parsedChunk.content }];
+                                    }
+                                    
+                                    console.log(`[PAGE.TSX] (Stream Line) Updated sampleCallPairs (thoughts) for ${parsedChunk.parent_tool_call_id}:`, JSON.parse(JSON.stringify(newPairs)));
+                                    return { ...part, toolCall: { ...tc, sampleCallPairs: newPairs } };
+                                }
+                                return part;
+                            });
+                            return { ...msg, parts: newParts, thinking: true };
+                        }
+                        return msg;
+                    }));
+                }
+                // ---- END: New chunk types for per-line stream processing ----
             } catch (err) {
                 console.error('Error parsing stream chunk JSON:', err, 'Raw line:', line);
             }
@@ -881,13 +1426,60 @@ export default function ChatPage() {
       .tool-call-display[open] > summary .details-arrow {
         transform: rotate(180deg);
       }
+      /* Ensure tool call displays don't cause horizontal overflow */
+      .tool-call-display {
+        max-width: 100%;
+        overflow-wrap: break-word;
+        word-break: break-all;
+      }
+      .tool-call-display pre {
+        max-width: 100%;
+        overflow-x: auto;
+        word-break: break-all;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .tool-call-display .tool-call-content {
+        max-width: 100%;
+        overflow-wrap: break-word;
+      }
       /* Add some basic prose styling for markdown content if not already globally available */
       .prose {
         line-height: 1.35; /* Increased for better readability */
         font-size: 0.94rem;
+        word-wrap: break-word; /* Force word wrapping */
+        overflow-wrap: break-word; /* Modern equivalent */
+        word-break: break-word; /* Break long words */
       }
       .prose p { 
         margin-bottom: 0.5em; /* Reduced for tighter spacing */
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+      }
+      /* Specific URL and link handling to prevent overflow */
+      .prose a {
+        word-break: break-all; /* Break URLs aggressively */
+        overflow-wrap: break-word;
+        hyphens: auto;
+      }
+      /* Line clamp utilities for text truncation */
+      .line-clamp-1 {
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 1;
+      }
+      .line-clamp-2 {
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+      }
+      .line-clamp-3 {
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
       }
       .prose ul {
         list-style-type: disc;
@@ -1051,7 +1643,7 @@ export default function ChatPage() {
             <p className="text-md sm:text-lg text-muted-foreground mb-6 sm:mb-10 transition-colors duration-300">
               How can I help you today?
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 max-w-2xl lg:max-w-3xl xl:max-w-6xl mx-auto w-full">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto w-full">
               {examplePrompts.map((prompt, index) => (
                 <Button
                   key={index}
@@ -1070,8 +1662,8 @@ export default function ChatPage() {
             </div>
           </div>
         ) : (
-          <ScrollArea className="w-full max-w-3xl lg:max-w-4xl xl:max-w-6xl mx-auto flex-grow" ref={scrollAreaRef}>
-            <div id="chatLog" className="space-y-3 sm:space-y-4 flex flex-col pb-[calc(68px+env(safe-area-inset-bottom))]">
+          <ScrollArea className="w-full mx-auto flex-grow" ref={scrollAreaRef}>
+            <div id="chatLog" className="space-y-3 sm:space-y-4 flex flex-col pb-[calc(68px+env(safe-area-inset-bottom))] max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto px-2 sm:px-4">
               {messages.map((msg) => {
                 // Define base and conditional classes for the message bubble
                 let bubbleClasses = "flex flex-col break-words"; // Common base for all
@@ -1107,19 +1699,37 @@ export default function ChatPage() {
                     {partsToRender.map((part) => (
                       <React.Fragment key={part.id}>
                         {part.type === "text" && part.content && (
-                           <div 
-                                key={`${part.id}-${part.content.length}`}
-                                className="message-content prose dark:prose-invert max-w-none text-part-fade-in" 
-                                dangerouslySetInnerHTML={{ __html: renderSanitizedMarkdown(part.content) }} />
+                          <div className="w-full max-w-full min-w-0">
+                            {parseTextWithURLs(part.content).map((textPart, index) => (
+                              <React.Fragment key={`${part.id}-${index}`}>
+                                {textPart.type === 'text' ? (
+                                  <div 
+                                    key={`${part.id}-text-${index}`}
+                                    className="message-content prose dark:prose-invert w-full max-w-full min-w-0 text-part-fade-in" 
+                                    style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                                    dangerouslySetInnerHTML={{ __html: renderSanitizedMarkdown(textPart.content) }} 
+                                  />
+                                ) : (
+                                  <URLPreview 
+                                    key={`${part.id}-url-${index}`}
+                                    url={textPart.content} 
+                                    className="my-2 w-full max-w-full"
+                                  />
+                                )}
+                              </React.Fragment>
+                            ))}
+                          </div>
                         )}
                         {part.type === "tool_call" && (
-                          <ToolCallDisplay toolCall={part.toolCall} />
+                          <>
+                            <ToolCallDisplay toolCall={part.toolCall} renderSanitizedMarkdown={renderSanitizedMarkdown} />
+                          </>
                         )}
                         {part.type === "thought_summary" && (
                           <details
                             key={`${part.id}-thought-details`}
                             className="thought-summary-details my-2 rounded-lg border border-border bg-muted/20 shadow-sm"
-                            open={msg.thinking || !!part.content}
+                            open={false}
                           >
                             <summary className="thought-summary-summary cursor-pointer p-3 list-none flex items-center justify-between text-sm font-medium text-muted-foreground hover:bg-muted/40 rounded-t-lg">
                               {msg.thinking ? (
@@ -1133,18 +1743,47 @@ export default function ChatPage() {
                               <ChevronDown className="w-5 h-5 transition-transform duration-200 details-arrow" />
                             </summary>
                             {part.content && (
-                              <div
-                                key={`${part.id}-thought-content`}
-                                className="message-content prose-sm italic text-muted-foreground dark:prose-invert max-w-none p-3 border-t border-border bg-background rounded-b-lg text-part-fade-in"
-                                dangerouslySetInnerHTML={{ __html: renderSanitizedMarkdown(part.content) }}
-                              />
+                              <div className="w-full max-w-full min-w-0 p-3 border-t border-border bg-background rounded-b-lg">
+                                {parseTextWithURLs(part.content).map((textPart, index) => (
+                                  <React.Fragment key={`${part.id}-thought-${index}`}>
+                                    {textPart.type === 'text' ? (
+                                      <div
+                                        key={`${part.id}-thought-text-${index}`}
+                                        className="message-content prose-sm italic text-muted-foreground dark:prose-invert w-full max-w-full min-w-0 text-part-fade-in"
+                                        style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                                        dangerouslySetInnerHTML={{ __html: renderSanitizedMarkdown(textPart.content) }}
+                                      />
+                                    ) : (
+                                      <URLPreview 
+                                        key={`${part.id}-thought-url-${index}`}
+                                        url={textPart.content} 
+                                        className="my-2 w-full max-w-full"
+                                      />
+                                    )}
+                                  </React.Fragment>
+                                ))}
+                              </div>
                             )}
                           </details>
                         )}
                       </React.Fragment>
                     ))}
+                    
+                    {/* NEW: Render persistent content previews */}
+                    {getPreviewsForMessage(msg.id).map((preview) => (
+                      <ContentPreview
+                        key={preview.id}
+                        id={preview.id}
+                        type={preview.type}
+                        data={preview.data}
+                        toolCall={preview.toolCall}
+                        onUpdate={updatePreview}
+                      />
+                    ))}
+                    
                     {msg.directionsData && (
                       <>
+                        {console.log("[PAGE.TSX] Rendering MapDisplay for message", msg.id, msg.directionsData)}
                         <div className="border rounded-lg shadow-md bg-muted/40 p-0 overflow-hidden mt-2">
                           <MapDisplay
                             key={mapDisplayKey}
@@ -1165,6 +1804,16 @@ export default function ChatPage() {
                         )}
                       </>
                     )}
+                    {msg.showImagesForThisMessage && msg.generatedImageUrls && (
+                      <div className="mt-4 border rounded-lg shadow-md bg-muted/40 overflow-hidden">
+                        <div className="flex items-center justify-between p-3 bg-background border-b border-border">
+                          <h4 className="text-sm font-semibold text-foreground">Generated Images</h4>
+                        </div>
+                        <div className="bg-background">
+                          <ImageDisplay imageUrls={msg.generatedImageUrls} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -1174,7 +1823,7 @@ export default function ChatPage() {
       </main>
 
       <footer className="flex-none px-2 pb-[env(safe-area-inset-bottom)] pt-2 sm:px-4 sm:pb-[env(safe-area-inset-bottom)] sm:pt-3 bg-muted/40 border-t border-border transition-colors duration-300">
-        <form onSubmit={handleSend} className="max-w-3xl lg:max-w-4xl xl:max-w-6xl mx-auto">
+        <form onSubmit={handleSend} className="max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto">
           <div className="flex items-center bg-background border border-input rounded-xl shadow-sm p-2 transition-colors duration-300 focus-within:ring-2 focus-within:ring-ring">
             <Button 
               type="button" 
@@ -1193,7 +1842,7 @@ export default function ChatPage() {
               ref={fileInputRef} 
               onChange={handleFileSelect} 
               style={{ display: 'none' }} 
-              accept="image/*,application/pdf,.txt,.md,.py,.js,.html,.css,.json,.csv,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+              accept="image/*,.heic,.heif,application/pdf,.txt,.md,.py,.js,.html,.css,.json,.csv,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
             />
             <Button 
               type="button" 
@@ -1221,7 +1870,7 @@ export default function ChatPage() {
         </form>
         {/* Display selected files (optional UX) */}
         {selectedFiles.length > 0 && (
-          <div className="max-w-3xl lg:max-w-4xl xl:max-w-6xl mx-auto mt-2 text-xs text-muted-foreground">
+          <div className="max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto mt-2 text-xs text-muted-foreground">
             <p className="font-medium mb-1">Selected files:</p>
             <ul className="list-disc list-inside pl-1 space-y-0.5">
               {selectedFiles.map(file => (
@@ -1233,6 +1882,15 @@ export default function ChatPage() {
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+        {/* Display file processing status */}
+        {fileProcessingStatus && (
+          <div className="max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto mt-2 text-xs text-blue-600 dark:text-blue-400">
+            <div className="flex items-center">
+              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              {fileProcessingStatus}
+            </div>
           </div>
         )}
          <p className="text-xs text-muted-foreground/80 text-center mt-2 pb-1">Status: {status}</p>

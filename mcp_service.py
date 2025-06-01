@@ -17,6 +17,8 @@ from contextlib import asynccontextmanager, AsyncExitStack
 from collections import defaultdict
 import logging
 import subprocess
+import traceback
+import uuid
 
 # Import FastMCP client classes instead of standard MCP
 from fastmcp.client import Client, PythonStdioTransport
@@ -160,83 +162,230 @@ class MCPManager:
                'context_from_tool_call' is mcp.shared.context.RequestContext.
                'client_custom_state' is the _custom_state of the parent Client instance.
             """
+            # Create a unique sample ID for tracking this specific ctx.sample call
+            sample_id = str(uuid.uuid4())[:8]
+            
+            logging.info(f"[SAMPLING-{sample_id}] ===== CTX.SAMPLE CALL STARTED =====")
+            logging.debug(f"[SAMPLING-{sample_id}] Message type: {type(messages)}")
+            logging.debug(f"[SAMPLING-{sample_id}] Params type: {type(params)}")
+            
+            # Log message content preview (truncated for safety)
+            if isinstance(messages, str):
+                msg_preview = messages[:200] + "..." if len(messages) > 200 else messages
+                logging.debug(f"[SAMPLING-{sample_id}] Message content preview: {msg_preview}")
+            elif isinstance(messages, list):
+                logging.debug(f"[SAMPLING-{sample_id}] Message list length: {len(messages)}")
+            
             print(f"[SAMPLING_HANDLER DEBUG] Entered. Actual context type from tool: {type(context_from_tool_call)}")
+            print(f"[SAMPLING_HANDLER DEBUG] messages type: {type(messages)}, messages: {messages}")
+            print(f"[SAMPLING_HANDLER DEBUG] params type: {type(params)}, params: {params}")
+            
             main_frontend_stream_handler = None
+            parent_tool_call_id_for_sample_stream = None # New variable
             
             if client_custom_state: # Use the passed-in custom_state
                 print(f"[SAMPLING_HANDLER DEBUG] client_custom_state received: {client_custom_state}")
                 main_frontend_stream_handler = client_custom_state.get('_main_frontend_stream_handler')
-                print(f"[SAMPLING_HANDLER DEBUG] main_frontend_stream_handler retrieved from client_custom_state: {main_frontend_stream_handler}")
+                parent_tool_call_id_for_sample_stream = client_custom_state.get('_current_tool_call_id_for_sampling') # Retrieve the parent tool_call_id
+                print(f"[SAMPLING_HANDLER DEBUG] main_frontend_stream_handler retrieved: {main_frontend_stream_handler}")
+                print(f"[SAMPLING_HANDLER DEBUG] parent_tool_call_id_for_sample_stream retrieved: {parent_tool_call_id_for_sample_stream}")
+                
+                logging.debug(f"[SAMPLING-{sample_id}] Frontend stream handler available: {main_frontend_stream_handler is not None}")
+                logging.debug(f"[SAMPLING-{sample_id}] Parent tool call ID: {parent_tool_call_id_for_sample_stream}")
             else:
                 # This case should ideally not happen if create_sampling_handler is always called with a valid dict
                 print(f"[SAMPLING_HANDLER DEBUG] client_custom_state is None or empty at the start of sampling_handler.")
+                logging.warning(f"[SAMPLING-{sample_id}] No client custom state available")
 
             sample_llm_stream_callback = None
             accumulated_sample_text_for_tool = "" 
 
-            if main_frontend_stream_handler:
+            if main_frontend_stream_handler and parent_tool_call_id_for_sample_stream: # Check for both now
                 async def local_sample_llm_stream_callback(chunk: Dict[str, Any]):
                     nonlocal accumulated_sample_text_for_tool
                     # This callback is for the LLM generating the sample.
-                    # It streams text and thoughts to the *main frontend stream*.
+                    # It streams text and thoughts to the *main frontend stream*,
+                    # now with parent_tool_call_id for frontend nesting.
                     if chunk.get("type") == "text_chunk" and "content" in chunk:
                         await main_frontend_stream_handler({
-                            "type": "text_chunk", 
+                            "type": "tool_sample_text_chunk", # New chunk type
+                            "parent_tool_call_id": parent_tool_call_id_for_sample_stream,
                             "content": chunk["content"]
                         })
                         accumulated_sample_text_for_tool += chunk["content"]
                     elif chunk.get("type") == "thought_summary" and "content" in chunk:
                          await main_frontend_stream_handler({
-                            "type": "thought_summary", 
+                            "type": "tool_sample_thought_chunk", # New chunk type for thoughts
+                            "parent_tool_call_id": parent_tool_call_id_for_sample_stream,
                             "content": chunk["content"]
                         })
                     # Do not propagate stream_end or error from here to main_frontend_stream_handler.
                     # The sampling_handler itself will return a final result or error to the tool.
                 sample_llm_stream_callback = local_sample_llm_stream_callback
-                print("[SAMPLING_HANDLER DEBUG] sample_llm_stream_callback has been SET.")
+                print("[SAMPLING_HANDLER DEBUG] sample_llm_stream_callback has been SET (for tool-nested streaming).")
+                logging.debug(f"[SAMPLING-{sample_id}] Streaming callback configured for frontend")
             else:
-                print("[SAMPLING_HANDLER DEBUG] main_frontend_stream_handler is None, so sample_llm_stream_callback is NOT set.")
+                print("[SAMPLING_HANDLER DEBUG] main_frontend_stream_handler OR parent_tool_call_id_for_sample_stream is None, so tool-nested sample_llm_stream_callback is NOT set.")
+                logging.debug(f"[SAMPLING-{sample_id}] No streaming callback (non-streaming mode)")
 
             try:
+                logging.debug(f"[SAMPLING-{sample_id}] Starting message processing...")
+                
                 # Import here to avoid circular imports
-                from llm_adapters import get_llm_adapter, StandardizedMessage, StandardizedLLMConfig
+                from llm_adapters import get_llm_adapter, StandardizedMessage, StandardizedLLMConfig, AttachmentPart
                 
                 standardized_messages = []
-                # Ensure 'messages' (from ctx.sample) is treated as a user prompt for the sampling LLM.
-                # ctx.sample(messages="User prompt") -> messages becomes the string "User prompt"
-                # ctx.sample(messages=[StandardizedMessage(...)]) -> messages is a list
+                attachment_urls_from_messages = []
+                
+                # Process messages and extract smuggled attachments
                 if isinstance(messages, str):
                     standardized_messages.append(StandardizedMessage(role="user", content=messages))
-                elif isinstance(messages, list): # Assuming it's List[StandardizedMessage] or similar
-                    for msg_like in messages:
-                        if hasattr(msg_like, 'role') and hasattr(msg_like, 'content'):
-                             standardized_messages.append(StandardizedMessage(role=str(msg_like.role), content=str(msg_like.content)))
-                        else: # Fallback if structure is not as expected
-                            standardized_messages.append(StandardizedMessage(role="user", content=str(msg_like)))
-                else: # Fallback for other types
+                elif isinstance(messages, list):
+                    for msg_item in messages:
+                        if isinstance(msg_item, dict) and "_attachments" in msg_item:
+                            # Extract smuggled attachment URLs
+                            attachment_urls_from_messages.extend(msg_item["_attachments"])
+                        elif isinstance(msg_item, str):
+                            standardized_messages.append(StandardizedMessage(role="user", content=msg_item))
+                        elif hasattr(msg_item, 'role') and hasattr(msg_item, 'content'):
+                            standardized_messages.append(StandardizedMessage(role=str(msg_item.role), content=str(msg_item.content)))
+                        else:
+                            standardized_messages.append(StandardizedMessage(role="user", content=str(msg_item)))
+                else:
                     standardized_messages.append(StandardizedMessage(role="user", content=str(messages)))
 
+                logging.debug(f"[SAMPLING-{sample_id}] Processed {len(standardized_messages)} messages")
+                logging.debug(f"[SAMPLING-{sample_id}] Found {len(attachment_urls_from_messages)} attachment URLs from messages")
+
+                # Process attachments from both sources (params and messages)
+                attachment_parts = []
+                all_attachment_urls = attachment_urls_from_messages[:]  # Start with URLs from messages
+                
+                # Also check params for backward compatibility
+                if isinstance(params, dict):
+                    params_attachments = params.get('attachments', [])
+                    if params_attachments and isinstance(params_attachments, list):
+                        all_attachment_urls.extend(params_attachments)
+                
+                # Download and process all attachment URLs
+                if all_attachment_urls:
+                    logging.debug(f"[SAMPLING-{sample_id}] Processing {len(all_attachment_urls)} attachments...")
+                    import requests
+                    import filetype
+                    for attachment_url in all_attachment_urls:
+                        if isinstance(attachment_url, str) and attachment_url.startswith(('http://', 'https://')):
+                            try:
+                                resp = requests.get(attachment_url, timeout=10)
+                                resp.raise_for_status()
+                                data_bytes = resp.content
+                                mime_type = resp.headers.get('Content-Type', '')
+                                
+                                # Guess mime_type if it's generic or missing
+                                if not mime_type or mime_type == 'application/octet-stream':
+                                    kind = filetype.guess(data_bytes)
+                                    if kind: 
+                                        mime_type = kind.mime
+                                    else: 
+                                        mime_type = 'application/octet-stream'
+                                
+                                # Only include image attachments for now
+                                if mime_type.startswith('image/'):
+                                    attachment_parts.append(AttachmentPart(
+                                        mime_type=mime_type, 
+                                        data=data_bytes, 
+                                        name=attachment_url
+                                    ))
+                                    logging.debug(f"[SAMPLING-{sample_id}] Added image attachment: {mime_type}")
+                            except Exception as e:
+                                logging.warning(f"[SAMPLING-{sample_id}] Could not download attachment {attachment_url}: {e}")
+                                print(f"Warning: Could not download attachment {attachment_url} for sampling: {e}")
+
+                # Add attachments to the user message if any were processed
+                if attachment_parts and standardized_messages:
+                    standardized_messages[0].attachments = attachment_parts
+                    logging.debug(f"[SAMPLING-{sample_id}] Added {len(attachment_parts)} attachments to first message")
+
+                logging.debug(f"[SAMPLING-{sample_id}] Initializing LLM adapter...")
                 llm_adapter = get_llm_adapter("gemini-2.5-flash-preview-05-20") # Use fast model for sampling
                 
                 system_prompt_for_sample = None
                 model_preferences_for_sample = ["gemini-2.5-flash-preview-05-20"] # Default
+                json_schema_for_sample = None
 
+                logging.debug(f"[SAMPLING-{sample_id}] Processing parameters for model selection...")
+
+                # Handle both dict params (legacy) and CreateMessageRequestParams object (FastMCP)
                 if isinstance(params, dict):
+                    # Legacy dict handling
                     system_prompt_for_sample = params.get('system_prompt') or params.get('systemPrompt')
-                    model_preferences_for_sample = params.get('model_preferences', model_preferences_for_sample)
-                elif hasattr(params, 'system_prompt'): # If params is an object
-                    system_prompt_for_sample = params.system_prompt
-                elif hasattr(params, 'systemPrompt'):
-                     system_prompt_for_sample = params.systemPrompt
+                    model_preferences_raw = params.get('model_preferences', model_preferences_for_sample)
+                    
+                    logging.debug(f"[SAMPLING-{sample_id}] Dict params - System prompt length: {len(system_prompt_for_sample) if system_prompt_for_sample else 0}")
+                    logging.debug(f"[SAMPLING-{sample_id}] Dict params - Model preferences: {model_preferences_raw}")
+                    
+                    # Check if model_preferences contains smuggled json_schema as second element
+                    if isinstance(model_preferences_raw, (list, tuple)) and len(model_preferences_raw) == 2:
+                        # First element should be actual model preferences, second should be json_schema (as JSON string)
+                        if isinstance(model_preferences_raw[1], str):
+                            try:
+                                # Try to parse the second element as JSON schema
+                                json_schema_for_sample = json.loads(model_preferences_raw[1])
+                                model_preferences_for_sample = model_preferences_raw[0] if isinstance(model_preferences_raw[0], list) else [model_preferences_raw[0]]
+                                logging.info(f"[SAMPLING-{sample_id}] Extracted JSON schema from model preferences")
+                                print(f"[SAMPLING_HANDLER DEBUG] Extracted and parsed json_schema from model_preferences (dict): {json_schema_for_sample}")
+                            except json.JSONDecodeError:
+                                # If parsing fails, treat as regular model preferences
+                                model_preferences_for_sample = model_preferences_raw
+                                logging.warning(f"[SAMPLING-{sample_id}] Failed to parse JSON schema from model preferences")
+                                print(f"[SAMPLING_HANDLER DEBUG] Failed to parse second element as JSON, treating as regular model preferences")
+                        else:
+                            model_preferences_for_sample = model_preferences_raw
+                    else:
+                        model_preferences_for_sample = model_preferences_raw
+                else:
+                    # FastMCP CreateMessageRequestParams object handling
+                    if hasattr(params, 'systemPrompt') and params.systemPrompt:
+                        system_prompt_for_sample = params.systemPrompt
+                    elif hasattr(params, 'system_prompt'): # Alternative attribute name
+                        system_prompt_for_sample = params.system_prompt
+                    
+                    logging.debug(f"[SAMPLING-{sample_id}] FastMCP params - System prompt length: {len(system_prompt_for_sample) if system_prompt_for_sample else 0}")
+                    
+                    if hasattr(params, 'modelPreferences') and params.modelPreferences and hasattr(params.modelPreferences, 'hints'):
+                        hints = params.modelPreferences.hints
+                        if hints and len(hints) >= 1:
+                            # First hint should be the model name
+                            model_preferences_for_sample = [hints[0].name]
+                            
+                            logging.debug(f"[SAMPLING-{sample_id}] FastMCP params - Model preferences: {model_preferences_for_sample}")
+                            
+                            # Check if there's a second hint containing the JSON schema
+                            if len(hints) >= 2:
+                                second_hint_name = hints[1].name
+                                try:
+                                    # Try to parse the second hint as JSON schema
+                                    json_schema_for_sample = json.loads(second_hint_name)
+                                    logging.info(f"[SAMPLING-{sample_id}] Extracted JSON schema from FastMCP hints")
+                                    print(f"[SAMPLING_HANDLER DEBUG] Extracted and parsed json_schema from modelPreferences.hints: {json_schema_for_sample}")
+                                except json.JSONDecodeError:
+                                    # If parsing fails, treat as regular model preference
+                                    model_preferences_for_sample.append(second_hint_name)
+                                    logging.warning(f"[SAMPLING-{sample_id}] Failed to parse JSON schema from FastMCP hints")
+                                    print(f"[SAMPLING_HANDLER DEBUG] Failed to parse second hint as JSON, treating as regular model preference")
                 
                 config_for_sample = StandardizedLLMConfig(
                     system_prompt=system_prompt_for_sample if system_prompt_for_sample else None,
-                    include_thoughts=True if sample_llm_stream_callback else False # Enable thoughts if streaming to frontend
+                    include_thoughts=True if sample_llm_stream_callback else False, # Enable thoughts if streaming to frontend
+                    json_schema=json_schema_for_sample  # Add json_schema support
                 )
                 
                 # The model_name used here should ideally come from params (model_preferences)
                 # For simplicity, we'll use the first preference or default.
                 target_model_for_sample = model_preferences_for_sample[0] if model_preferences_for_sample else "gemini-2.5-flash-preview-05-20"
+                
+                logging.info(f"[SAMPLING-{sample_id}] Calling LLM adapter with model: {target_model_for_sample}")
+                logging.debug(f"[SAMPLING-{sample_id}] JSON schema provided: {json_schema_for_sample is not None}")
+                logging.debug(f"[SAMPLING-{sample_id}] Streaming enabled: {sample_llm_stream_callback is not None}")
 
                 llm_response_obj = await llm_adapter.generate_content(
                     model_name=target_model_for_sample,
@@ -246,26 +395,50 @@ class MCPManager:
                     stream_callback=sample_llm_stream_callback
                 )
                 
+                logging.debug(f"[SAMPLING-{sample_id}] LLM call completed")
+                
                 if llm_response_obj.error:
                     # The tool that called ctx.sample() will get this error in its response.
                     # The frontend might have already seen an error via stream if it was critical.
+                    logging.error(f"[SAMPLING-{sample_id}] LLM returned error: {llm_response_obj.error}")
                     return f"Error generating response during sampling: {llm_response_obj.error}" 
                 
                 # If streaming was active, accumulated_sample_text_for_tool should be populated.
                 # If not, llm_response_obj.text_content will have the full text.
                 final_text_for_tool = accumulated_sample_text_for_tool if sample_llm_stream_callback and accumulated_sample_text_for_tool else llm_response_obj.text_content
                 
+                result_length = len(final_text_for_tool) if final_text_for_tool else 0
+                logging.info(f"[SAMPLING-{sample_id}] Sample completed successfully. Result length: {result_length} characters")
+                logging.debug(f"[SAMPLING-{sample_id}] ===== CTX.SAMPLE CALL FINISHED =====")
+                
                 return final_text_for_tool or "No text content generated by sample."
                 
             except Exception as e:
+                logging.error(f"[SAMPLING-{sample_id}] Exception in sampling handler: {e}")
+                logging.error(f"[SAMPLING-{sample_id}] Exception traceback:", exc_info=True)
                 print(f"Error in sampling handler: {e}")
-                import traceback
                 traceback.print_exc()
                 # This error is returned to the tool that called ctx.sample().
                 # The frontend won't see this directly unless we explicitly stream an error here.
                 return f"Error processing sampling request: {str(e)}"
         
         return sampling_handler
+
+    async def _log_subprocess_output(self, stream, prefix: str, log_level: int):
+        """Continuously read from subprocess stream and log to main service logger."""
+        try:
+            while True:
+                line = await stream.readline()
+                if not line:
+                    break
+                
+                decoded_line = line.decode().rstrip()
+                if decoded_line:  # Only log non-empty lines
+                    # Log to the main service logger
+                    logging.log(log_level, f"{prefix} {decoded_line}")
+                    
+        except Exception as e:
+            logging.error(f"Error reading subprocess output for {prefix}: {e}")
 
     async def start_single_server(self, server_config: Dict[str, Any], user_id: Optional[str] = None) -> bool:
         """
@@ -311,21 +484,37 @@ class MCPManager:
             prefix = f"(User: {user_id})" if user_id else "(Core)"
             print(f"MCPManager: {prefix} Attempting to start server on port {port}: {server_config}")
             
-            # Start the server process in the background
-            import subprocess
-            server_process = subprocess.Popen(
-                [command] + args,
+            # Start the server process with captured output using asyncio
+            server_process = await asyncio.create_subprocess_exec(
+                command, *args,
                 env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
+            
+            # Store the process reference for cleanup
+            if not hasattr(self, 'server_processes'):
+                self.server_processes: Dict[str, asyncio.subprocess.Process] = {}
+            self.server_processes[config_key] = server_process
+            
+            # Start background tasks to capture and log output
+            asyncio.create_task(self._log_subprocess_output(
+                server_process.stdout, 
+                f"[{config_key}]", 
+                logging.INFO
+            ))
+            asyncio.create_task(self._log_subprocess_output(
+                server_process.stderr, 
+                f"[{config_key}]", 
+                logging.WARNING
+            ))
             
             # Give the server time to start up
             await asyncio.sleep(3)
             
             # Check if the process is still running
-            if server_process.poll() is not None:
-                stdout, stderr = server_process.communicate()
+            if server_process.returncode is not None:
+                stdout, stderr = await server_process.communicate()
                 raise RuntimeError(f"Server process exited immediately. stdout: {stdout.decode()}, stderr: {stderr.decode()}")
             
             # Create FastMCP client with HTTP transport
@@ -346,11 +535,6 @@ class MCPManager:
             )
             # Assign the custom_state dictionary to the client instance so ai_models.py can access it.
             client._custom_state = custom_state_for_client
-            
-            # Store the process reference for cleanup
-            if not hasattr(self, 'server_processes'):
-                self.server_processes: Dict[str, subprocess.Popen] = {}
-            self.server_processes[config_key] = server_process
             
             # Register with exit stack for proper cleanup
             await self.exit_stack.enter_async_context(client)
@@ -384,7 +568,6 @@ class MCPManager:
             return True
         except Exception as e:
             print(f"MCPManager: {prefix} Error starting or registering server {server_config}: {str(e)}")
-            import traceback
             print(f"MCPManager: {prefix} Traceback: {traceback.format_exc()}")
             return False
 
@@ -566,15 +749,15 @@ class MCPManager:
         # Terminate all server processes
         if hasattr(self, 'server_processes'):
             for config_key, process in self.server_processes.items():
-                if process.poll() is None:  # Process is still running
+                if process.returncode is None:  # Process is still running
                     print(f"MCPManager: Terminating server process for {config_key}")
                     process.terminate()
                     try:
-                        process.wait(timeout=5)  # Wait up to 5 seconds for graceful shutdown
-                    except subprocess.TimeoutExpired:
+                        await asyncio.wait_for(process.wait(), timeout=5.0)  # Wait up to 5 seconds for graceful shutdown
+                    except asyncio.TimeoutError:
                         print(f"MCPManager: Force killing server process for {config_key}")
                         process.kill()
-                        process.wait()
+                        await process.wait()
         
         if self.exit_stack:
             await self.exit_stack.aclose() 
@@ -669,7 +852,7 @@ class MCPManager:
             
         except Exception as e:
             print(f"MCPManager: Error during dynamic server discovery: {str(e)}")
-            import traceback
+            
             print(f"MCPManager: Traceback: {traceback.format_exc()}")
             return {"status": "error", "message": f"Error during server discovery: {str(e)}"}
 
@@ -677,6 +860,7 @@ class MCPManager:
         """
         Stops and restarts a specific server by its script path.
         Useful for when a server file has been modified.
+        Uses free port strategy to avoid conflicts.
         """
         if not self.initialized:
             return {"status": "error", "message": "MCPManager not initialized"}
@@ -693,18 +877,97 @@ class MCPManager:
         }
         config_key = _mcp_config_key(config)
         
-        # First, remove the existing server if it's running
+        # Optional: Validate Python syntax before restarting
+        try:
+            full_server_path = os.path.join("/var/www/flask_app", server_script_path)
+            if os.path.exists(full_server_path):
+                with open(full_server_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                compile(content, full_server_path, 'exec')
+                print(f"MCPManager: Syntax validation passed for {server_script_path}")
+            else:
+                return {"status": "error", "message": f"Server file not found: {full_server_path}"}
+        except SyntaxError as se:
+            return {"status": "error", "message": f"Syntax error in {server_script_path}: {str(se)}"}
+        except Exception as e:
+            print(f"MCPManager: Warning - Could not validate syntax for {server_script_path}: {str(e)}")
+        
+        # Step 1: Remove the existing server's tools from registry
         removed = self.remove_tools_for_server_by_config(config, user_id=None)
         
-        # Then start it again
+        # Step 2: Kill the old process if it exists
+        old_process_killed = False
+        if hasattr(self, 'server_processes') and config_key in self.server_processes:
+            process = self.server_processes[config_key]
+            if process.returncode is None:  # Process is still running
+                print(f"MCPManager: Killing old server process for {config_key}")
+                process.terminate()
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=5.0)  # Increased timeout to 5 seconds
+                    old_process_killed = True
+                except asyncio.TimeoutError:
+                    print(f"MCPManager: Force killing server process for {config_key}")
+                    process.kill()
+                    await process.wait()
+                    old_process_killed = True
+            # Remove from process tracking
+            del self.server_processes[config_key]
+        
+        # Step 3: Release the old port assignment to allow fresh port allocation
+        old_port = None
+        if config_key in self.port_assignments:
+            old_port = self.port_assignments[config_key]
+            # Remove port from allocated set so it can be reused
+            self.allocated_ports.discard(old_port)
+            # Remove the port assignment so start_single_server allocates a new one
+            del self.port_assignments[config_key]
+            print(f"MCPManager: Released port {old_port} for server {config_key}")
+        
+        # Step 4: Wait longer for the port to be fully released by the OS
+        print(f"MCPManager: Waiting 3 seconds for port cleanup and system stabilization...")
+        await asyncio.sleep(3)  # Increased from 1 to 3 seconds
+        
+        # Step 5: Start the server again (will get a fresh port)
+        print(f"MCPManager: Starting new instance of {server_script_path}")
         started = await self.start_single_server(config, user_id=None)
         
-        return {
-            "status": "success" if started else "error",
-            "message": f"Server {'reloaded' if removed and started else 'started' if started else 'failed to start'}: {server_script_path}",
+        # Step 6: Get the new port for reporting
+        new_port = self.port_assignments.get(config_key, "unknown")
+        
+        # Step 7: Verify the new server is actually working by checking tools
+        tools_registered = 0
+        if started and config_key in self.core_config_to_session:
+            session = self.core_config_to_session[config_key]
+            tools_registered = len(self.core_session_to_tools.get(session, []))
+        
+        status_msg = []
+        if removed:
+            status_msg.append("de-registered old tools")
+        if old_process_killed:
+            status_msg.append(f"killed old process (port {old_port})")
+        if started:
+            status_msg.append(f"started on new port {new_port}")
+            if tools_registered > 0:
+                status_msg.append(f"registered {tools_registered} tools")
+        
+        overall_status = "success" if started and tools_registered > 0 else "error"
+        
+        result = {
+            "status": overall_status,
+            "message": f"Server {server_script_path}: {', '.join(status_msg) if status_msg else 'failed to start'}",
             "was_running": removed,
-            "started_successfully": started
+            "started_successfully": started,
+            "tools_registered": tools_registered,
+            "old_port": old_port,
+            "new_port": new_port if started else None
         }
+        
+        if not started:
+            result["message"] += ". Check server logs for startup errors."
+        elif tools_registered == 0:
+            result["message"] += ". Server started but no tools were registered - check for tool definition errors."
+        
+        return result
 
 # --- Global State ---
 # REMOVED: CORE_SERVER_COMMANDS as servers are now discovered
@@ -718,6 +981,17 @@ class MCPManager:
 mcp_manager: Optional[MCPManager] = None
 service_globally_initialized = False
 
+# Set up logger for mcp_service
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Create console handler if not already present
+if not logger.handlers:
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
 
 # --- FastAPI Lifespan ---
 @asynccontextmanager
@@ -756,7 +1030,7 @@ async def lifespan(app: FastAPI):
         service_globally_initialized = mcp_manager.initialized 
     except Exception as e:
         print(f"FastAPI Lifespan: Error during MCP service startup: {str(e)}")
-        import traceback
+        
         print(f"FastAPI Lifespan: Traceback: {traceback.format_exc()}")
         service_globally_initialized = False 
     
@@ -792,6 +1066,7 @@ class QueryRequest(BaseModel):
     direct_tool_call: Optional[DirectToolCallPayload] = None
     sender: Optional[str] = None # Will be treated as user_id
     attachments: Optional[List[Dict[str, Any]]] = None
+    attachment_urls: Optional[List[str]] = None  # NEW: Direct URLs to attachments
     model: Optional[str] = "gemini-2.5-flash-preview-05-20" # Default model
     stream: Optional[bool] = False
     final_response_json_schema: Optional[Dict[str, Any]] = Field(default=None, description="An optional JSON schema that the final response from the LLM should adhere to (for natural language queries).")
@@ -831,6 +1106,7 @@ class ToolResponse(BaseModel):
     name: str
     description: str
     input_schema: Dict[str, Any]
+    output_schema: Optional[Dict[str, Any]] = None
 
 class ToolsListResponse(BaseModel): # For a specific user
     tools: List[ToolResponse]
@@ -883,14 +1159,78 @@ async def get_tools_for_user(user_id_path: str):
     effective_tools, _ = mcp_manager.get_tools_for_user_query(user_id)
     tools_list_response = []
     for tool_obj in effective_tools: 
+        # Extract output_schema from annotations if available
+        output_schema = None
+        if hasattr(tool_obj, 'annotations') and tool_obj.annotations:
+            if hasattr(tool_obj.annotations, 'outputSchema'):
+                output_schema = tool_obj.annotations.outputSchema
+        
         tools_list_response.append(
             ToolResponse(
                 name=tool_obj.name,
                 description=tool_obj.description,
-                input_schema=tool_obj.inputSchema 
+                input_schema=tool_obj.inputSchema,
+                output_schema=output_schema
             )
         )
     return ToolsListResponse(tools=tools_list_response, count=len(tools_list_response))
+
+
+@app.get("/tools/all", response_model=ToolsListResponse)
+async def get_all_tools_with_schemas():
+    """
+    Returns all available tools from all servers with their complete schemas.
+    This endpoint provides a comprehensive view of all tools including:
+    - name: Tool name
+    - description: Tool description  
+    - input_schema: JSON schema for tool parameters
+    - output_schema: JSON schema for tool output (if defined in annotations)
+    """
+    global mcp_manager, service_globally_initialized
+    if not service_globally_initialized or not mcp_manager or not mcp_manager.initialized:
+        raise HTTPException(status_code=503, detail="MCP service not initialized")
+    
+    all_tools_response = []
+    
+    # Get all core tools
+    for tool_obj in mcp_manager.core_tools:
+        # Extract output_schema from annotations if available
+        output_schema = None
+        if hasattr(tool_obj, 'annotations') and tool_obj.annotations:
+            if hasattr(tool_obj.annotations, 'outputSchema'):
+                output_schema = tool_obj.annotations.outputSchema
+        
+        all_tools_response.append(
+            ToolResponse(
+                name=tool_obj.name,
+                description=tool_obj.description,
+                input_schema=tool_obj.inputSchema,
+                output_schema=output_schema
+            )
+        )
+    
+    # Get all user-specific tools from all users
+    for user_id, user_tools in mcp_manager.user_tools.items():
+        for tool_obj in user_tools:
+            # Extract output_schema from annotations if available
+            output_schema = None
+            if hasattr(tool_obj, 'annotations') and tool_obj.annotations:
+                if hasattr(tool_obj.annotations, 'outputSchema'):
+                    output_schema = tool_obj.annotations.outputSchema
+            
+            # Add user context to tool name to avoid conflicts
+            tool_name = f"{tool_obj.name} (user: {user_id})" if user_id != "default" else tool_obj.name
+            
+            all_tools_response.append(
+                ToolResponse(
+                    name=tool_name,
+                    description=tool_obj.description,
+                    input_schema=tool_obj.inputSchema,
+                    output_schema=output_schema
+                )
+            )
+    
+    return ToolsListResponse(tools=all_tools_response, count=len(all_tools_response))
 
 
 @app.post("/query", response_model=QueryResponse) # response_model might need adjustment for streaming if not using QueryResponse for stream end
@@ -985,7 +1325,7 @@ async def handle_query(request: QueryRequest):
             return QueryResponse(result=response_result_str, error=response_error_str)
 
         except Exception as e:
-            import traceback
+            
             error_full_traceback = traceback.format_exc()
             print(f"MCP_SERVICE_LOG: Error during direct tool call '{tool_name}' for user '{user_id}': {str(e)}\n{error_full_traceback}")
             return QueryResponse(result="", error=f"Error executing tool '{tool_name}': {str(e)}")
@@ -1019,6 +1359,7 @@ async def handle_query(request: QueryRequest):
                             mcp_tool_to_session_map=user_specific_mcp_tool_to_session_map,
                             user_number=user_id,
                             attachments=request.attachments,
+                            attachment_urls=request.attachment_urls,  # NEW: Pass attachment URLs
                             stream_chunk_handler=stream_chunk_handler_for_service,
                             final_response_json_schema=final_response_schema # Pass the schema
                         )
@@ -1057,6 +1398,7 @@ async def handle_query(request: QueryRequest):
                     mcp_tool_to_session_map=user_specific_mcp_tool_to_session_map,
                     user_number=user_id, 
                     attachments=request.attachments,
+                    attachment_urls=request.attachment_urls,  # NEW: Pass attachment URLs
                     stream_chunk_handler=None, # Explicitly None for non-streaming
                     final_response_json_schema=final_response_schema # Pass the schema
                 )
@@ -1094,7 +1436,7 @@ async def handle_query(request: QueryRequest):
                 return QueryResponse(result=result, error=error)
             except Exception as e:
                 print(f"Error processing non-streaming query for {user_id}: {str(e)}")
-                import traceback
+                
                 print(f"Traceback: {traceback.format_exc()}")
                 return QueryResponse(result="", error=f"Error processing query: {str(e)}")
     else:
@@ -1155,7 +1497,7 @@ async def add_user_server(request: AddServerRequest):
             return {"status": "success", "message": f"Server {request.command} {request.args} added and started for user {user_id}. It will restart with the main service if its .py file exists."}
     except Exception as e:
         print(f"Error in add_user_server endpoint: {str(e)}")
-        import traceback; print(f"Traceback: {traceback.format_exc()}")
+        print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.get("/admin/servers/list_all_known", response_model=AvailableServersResponse) # New endpoint for global list
@@ -1263,7 +1605,7 @@ async def remove_server_for_user_or_core(request: RemoveServerRequest):
         raise
     except Exception as e:
         print(f"Error in remove_server_for_user_or_core endpoint: {str(e)}")
-        import traceback; print(f"Traceback: {traceback.format_exc()}")
+        print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
@@ -1472,7 +1814,6 @@ async def route_internal_mcp_tool_call(
 
             except Exception as e_stream_test:
                 print(f"MCP_SERVICE_LOG: EXCEPTION during test_streaming_tool iteration: {type(e_stream_test).__name__} - {e_stream_test}")
-                import traceback
                 print(f"MCP_SERVICE_LOG: Traceback for test_streaming_tool exception:\n{traceback.format_exc()}")
                 return QueryResponse(result="", error=f"Exception during streaming test: {e_stream_test}")
 
@@ -1497,26 +1838,58 @@ async def route_internal_mcp_tool_call(
         response_error_str: Optional[str] = None
         actual_tool_payload_dict: Optional[Dict[str, Any]] = None
 
-        if hasattr(result_from_tool_call, 'content') and \
-           isinstance(result_from_tool_call.content, list) and \
-           len(result_from_tool_call.content) > 0 and \
-           hasattr(result_from_tool_call.content[0], 'text') and \
-           isinstance(result_from_tool_call.content[0].text, str):
-            try:
-                actual_tool_payload_dict = json.loads(result_from_tool_call.content[0].text)
-                print(f"Internal Call: Extracted payload from TextContent for tool '{tool_name}'.")
-            except json.JSONDecodeError as je:
-                response_result_str = result_from_tool_call.content[0].text
-                print(f"Internal Call: Tool '{tool_name}' content text was not JSON: '{response_result_str[:200]}...'. Error: {je}")
-            except Exception as e:
-                response_error_str = f"Error processing TextContent from tool '{tool_name}': {str(e)}"
-                print(f"Internal Call: {response_error_str}")
+        # Try to extract content from various possible response formats
+        if hasattr(result_from_tool_call, 'content') and isinstance(result_from_tool_call.content, list):
+            # Handle ToolResponse with content list
+            for content_item in result_from_tool_call.content:
+                if hasattr(content_item, 'text') and isinstance(content_item.text, str):
+                    try:
+                        actual_tool_payload_dict = json.loads(content_item.text)
+                        print(f"Internal Call: Extracted payload from TextContent for tool '{tool_name}'.")
+                        break
+                    except json.JSONDecodeError as je:
+                        response_result_str = content_item.text
+                        print(f"Internal Call: Tool '{tool_name}' content text was not JSON: '{response_result_str[:200]}...'. Error: {je}")
+                        break
+                    except Exception as e:
+                        response_error_str = f"Error processing TextContent from tool '{tool_name}': {str(e)}"
+                        print(f"Internal Call: {response_error_str}")
+                        break
+        elif isinstance(result_from_tool_call, list):
+            # Handle direct list response (FastMCP returns content list directly)
+            for content_item in result_from_tool_call:
+                if hasattr(content_item, 'text') and isinstance(content_item.text, str):
+                    try:
+                        actual_tool_payload_dict = json.loads(content_item.text)
+                        print(f"Internal Call: Extracted payload from direct content list for tool '{tool_name}'.")
+                        break
+                    except json.JSONDecodeError as je:
+                        response_result_str = content_item.text
+                        print(f"Internal Call: Tool '{tool_name}' direct content text was not JSON: '{response_result_str[:200]}...'. Error: {je}")
+                        break
+                    except Exception as e:
+                        response_error_str = f"Error processing direct content item from tool '{tool_name}': {str(e)}"
+                        print(f"Internal Call: {response_error_str}")
+                        break
         elif isinstance(result_from_tool_call, dict): 
+            # Handle direct dictionary response
             actual_tool_payload_dict = result_from_tool_call
             print(f"Internal Call: Tool '{tool_name}' directly returned a dictionary.")
+        elif hasattr(result_from_tool_call, 'text'):
+            # Handle direct TextContent object
+            try:
+                actual_tool_payload_dict = json.loads(result_from_tool_call.text)
+                print(f"Internal Call: Extracted payload from direct TextContent for tool '{tool_name}'.")
+            except json.JSONDecodeError as je:
+                response_result_str = result_from_tool_call.text
+                print(f"Internal Call: Tool '{tool_name}' direct text was not JSON: '{response_result_str[:200]}...'. Error: {je}")
+            except Exception as e:
+                response_error_str = f"Error processing direct TextContent from tool '{tool_name}': {str(e)}"
+                print(f"Internal Call: {response_error_str}")
         else: 
+            # Fallback: convert to string but log the type for debugging
             response_result_str = str(result_from_tool_call)
-            print(f"Internal Call: Tool '{tool_name}' result was not a dict or recognized TextContent structure: '{response_result_str[:200]}...'")
+            print(f"Internal Call: Tool '{tool_name}' returned unexpected type {type(result_from_tool_call)}: '{response_result_str[:200]}...'")
 
         if actual_tool_payload_dict is not None:
             if "error" in actual_tool_payload_dict: 
@@ -1537,37 +1910,9 @@ async def route_internal_mcp_tool_call(
     except Exception as e:
         error_msg = f"Error executing tool '{tool_name}' internally: {str(e)}"
         print(f"Internal Call: {error_msg}")
-        import traceback
         print(f"Internal Call Traceback: {traceback.format_exc()}")
         return QueryResponse(result="", error=error_msg)
 
-@app.post("/analyze_images")
-async def public_analyze_images(
-    urls: list = Body(...),
-    analysis_prompt: str = Body("Describe this image in detail."),
-    sender: str = Body("public_user")
-):
-    global mcp_manager, service_globally_initialized
-    if not service_globally_initialized or not mcp_manager or not mcp_manager.initialized:
-        raise HTTPException(status_code=503, detail="MCP service not initialized")
-
-    user_id = sanitize_user_id_for_key(sender)
-    tools, tool_to_session = mcp_manager.get_tools_for_user_query(user_id)
-    tool_names = [t.name for t in tools]
-    if "analyze_images" not in tool_names:
-        raise HTTPException(status_code=404, detail="analyze_images tool not available")
-
-    session = tool_to_session["analyze_images"]
-    arguments = {"urls": urls, "analysis_prompt": analysis_prompt}
-    try:
-        result = await session.call_tool("analyze_images", arguments=arguments)
-        # Try to extract JSON result
-        if hasattr(result, 'content') and isinstance(result.content, list) and hasattr(result.content[0], 'text'):
-            import json
-            return json.loads(result.content[0].text)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error calling analyze_images: {e}")
 
 @app.post("/admin/servers/discover_new")
 async def discover_new_servers(api_key: str = Depends(verify_internal_api_key)):
@@ -1583,7 +1928,6 @@ async def discover_new_servers(api_key: str = Depends(verify_internal_api_key)):
         return result
     except Exception as e:
         print(f"Error in discover_new_servers endpoint: {str(e)}")
-        import traceback
         print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
@@ -1604,7 +1948,6 @@ async def reload_server(
         return result
     except Exception as e:
         print(f"Error in reload_server endpoint: {str(e)}")
-        import traceback
         print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 

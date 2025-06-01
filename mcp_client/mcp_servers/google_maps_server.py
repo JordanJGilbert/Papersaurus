@@ -23,10 +23,6 @@ import hashlib
 import re
 import uuid
 import googlemaps
-import logging
-
-logging.basicConfig(stream=sys.stderr, level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 mcp = FastMCP("Google Maps Server")
 
@@ -130,8 +126,8 @@ if __name__ == "__main__":
     if transport == "streamable-http":
         host = os.getenv("FASTMCP_HOST", "127.0.0.1")
         port = int(os.getenv("FASTMCP_PORT", "9000"))
-        logger.info(f"Starting server with streamable-http transport on {host}:{port}")
+        print(f"Starting server with streamable-http transport on {host}:{port}")
         mcp.run(transport="streamable-http", host=host, port=port)
     else:
-        logger.info("Starting server with stdio transport")
+        print("Starting server with stdio transport")
         mcp.run() 

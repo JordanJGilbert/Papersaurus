@@ -29,6 +29,7 @@ google-auth-httplib2
 
 # --- Image and File Processing ---
 Pillow
+pillow-heif
 weasyprint
 pdfkit
 python-docx
