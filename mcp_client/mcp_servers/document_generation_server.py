@@ -1252,7 +1252,9 @@ async def create_web_app(
     return {
         "status": "success",
         "message": f"Web app '{app_name}' created successfully. Access it at {serve_url}",
-        "url": serve_url
+        "url": serve_url,
+        "html_content": html_content,
+        "app_name": app_name
     }
 
 @mcp.tool()

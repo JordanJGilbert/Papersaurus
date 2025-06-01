@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ExternalLink, Code2, Eye, FileText, Download, Copy, Check } from 'lucide-react';
-import MonacoDiffViewer from './MonacoDiffViewer';
+import InlineDiffViewer from './InlineDiffViewer';
 import { useTheme } from "next-themes";
 
 interface WebAppData {
@@ -108,11 +108,12 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
     }
   };
 
-  // Fetch HTML when switching to code tab for web apps
+  // Fetch HTML when switching to code tab for web apps (only if not already provided)
   useEffect(() => {
-    if (type === 'web_app' && activeTab === 'code' && !htmlContent && !loadingHtml) {
+    if (type === 'web_app' && activeTab === 'code' && !loadingHtml) {
       const webAppData = data as WebAppData;
-      if (webAppData.url) {
+      // Only fetch if HTML content is not already provided and we haven't fetched it yet
+      if (!webAppData.htmlContent && !htmlContent && webAppData.url) {
         fetchHtmlContent(webAppData.url);
       }
     }
@@ -166,7 +167,13 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
   );
 
   const renderWebAppCodeView = () => {
-    if (loadingHtml) {
+    const webAppData = data as WebAppData;
+    
+    // Use HTML content from data if available, otherwise fetch from URL
+    const content = webAppData.htmlContent || htmlContent || '// No HTML content available';
+    const isLoading = !webAppData.htmlContent && loadingHtml;
+    
+    if (isLoading) {
       return (
         <div className="bg-background p-8 text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
@@ -174,8 +181,6 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
         </div>
       );
     }
-
-    const content = htmlContent || '// No HTML content available';
     
     return (
       <div className="bg-background">
@@ -183,7 +188,7 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
           <div className="flex items-center gap-2">
             <Code2 className="w-4 h-4" />
             <span className="text-sm font-medium">
-              {(data as WebAppData).appName || 'Web App'}.html
+              {webAppData.appName || 'Web App'}.html
             </span>
           </div>
           <button
@@ -214,12 +219,11 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
     }
 
     return (
-      <MonacoDiffViewer
+      <InlineDiffViewer
         original={codeData.original}
         modified={codeData.modified}
         language={codeData.language || 'text'}
         filename={codeData.filename || 'file'}
-        height="500px"
         className="w-full"
       />
     );

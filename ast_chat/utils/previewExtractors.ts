@@ -71,6 +71,7 @@ export const extractWebAppPreview = (toolCall: ToolCallData): ExtractedPreview |
           status: result.status,
           message: result.message,
           backup_created: result.backup_created,
+          htmlContent: result.html_content,
         },
         shouldShow: true,
       };
