@@ -1,4 +1,4 @@
 {
-  "/card-studio/page": "app/card-studio/page.js",
-  "/page": "app/page.js"
+  "/page": "app/page.js",
+  "/card-studio/page": "app/card-studio/page.js"
 }

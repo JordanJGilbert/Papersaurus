@@ -23,9 +23,9 @@ const BACKEND_API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://
 interface GeneratedCard {
   id: string;
   prompt: string;
-  frontCover: string;
-  leftPage: string;
-  rightPage: string;
+  frontCoverImageUrl: string;
+  interiorLeftImageUrl: string;
+  interiorRightImageUrl: string;
   createdAt: Date;
 }
 
@@ -251,11 +251,13 @@ export default function CardStudioPage() {
       If the current draft is empty and the instruction is to write one, create a new message from scratch based on the Card Context and latest instruction.
 
       Guidelines for your response:
-      - Output *only* the revised card message text. No conversational chit-chat, apologies, or explanations.
+      - Output *only* the revised card message as PLAIN TEXT. Absolutely NO MARKDOWN formatting (no asterisks for bold, no underscores for italics, etc.).
+      - If the "To" field (recipient) is provided (e.g., "${toField || 'Sarah'}"), try to naturally incorporate their name into the greeting or body of the message (e.g., "Dear ${toField || 'Sarah'},", "Thinking of you, ${toField || 'Sarah'}!").
+      - If the "From" field (sender) is provided (e.g., "${fromField || 'Alex'}"), try to naturally incorporate their name into the closing or body of the message (e.g., "Warmly, ${fromField || 'Alex'}", "From all of us, ${fromField || 'Alex'}").
       - Ensure the message is heartfelt, personal, and concise.
       - Maintain a tone appropriate for the card type and the user's theme.
       - If the user asks for a completely new idea, provide one based on the overall theme and their instruction.
-      - Make sure the message is formatted as plain text, ready to be placed on a card. No markdown.
+      - The message should be ready to be placed directly onto a greeting card.
     `;
 
     // Prepare conversation history for context
@@ -301,7 +303,6 @@ export default function CardStudioPage() {
 
     let rightPageMessageContent = finalCardMessage;
     
-    // If no message provided, generate one automatically using AI
     if (!rightPageMessageContent.trim()) {
       console.log("🤖 No message provided - generating one automatically...");
       
@@ -314,14 +315,17 @@ ${toField ? `To: ${toField}` : ""}
 ${fromField ? `From: ${fromField}` : ""}
 
 Your task is to write a warm, sincere message that would be perfect for the inside of this greeting card. The message should:
-- Be heartfelt and personal, as if written by someone who cares
-- Match the tone and occasion of the card type
-- Be inspired by the overall theme provided
-- Be concise but meaningful (2-4 sentences ideal)
-- Feel authentic and genuine, not generic
-- Be appropriate for handwritten style presentation
+- Be heartfelt and personal, as if written by someone who cares.
+- If the "To" field (recipient, e.g., "${toField || 'Sarah'}") is provided, naturally incorporate their name into the greeting or body of the message (e.g., "Dear ${toField || 'Sarah'},", "Wishing you all the best, ${toField || 'Sarah'}.").
+- If the "From" field (sender, e.g., "${fromField || 'Alex'}") is provided, naturally incorporate their name into the closing or body of the message (e.g., "Warmly, ${fromField || 'Alex'}", "From your friend, ${fromField || 'Alex'}.").
+- Match the tone and occasion of the card type.
+- Be inspired by the overall theme provided.
+- Be concise but meaningful (2-4 sentences ideal).
+- Feel authentic and genuine, not generic.
+- Be appropriate for handwritten style presentation.
 
-Return ONLY the message text - no quotes, no explanations, just the message that should appear on the card.`;
+Return ONLY the message text as PLAIN TEXT. Absolutely NO MARKDOWN formatting (no asterisks for bold, no underscores for italics, etc.). Do not include quotes around the message unless the quotes are part of the message itself.
+`;
 
         const generatedMessage = await chatWithAI(messageGenerationPrompt, {
           model: "gemini-2.5-flash-preview-05-20"
@@ -329,17 +333,16 @@ Return ONLY the message text - no quotes, no explanations, just the message that
 
         if (generatedMessage && generatedMessage.trim()) {
           rightPageMessageContent = generatedMessage.trim();
-          setFinalCardMessage(rightPageMessageContent); // Update the UI to show the generated message
+          setFinalCardMessage(rightPageMessageContent); 
           toast.success("✨ Generated a personalized message for your card!");
           console.log("✅ Auto-generated message:", rightPageMessageContent);
         } else {
-          // Fallback to using the prompt if AI generation fails
-      rightPageMessageContent = prompt;
+          rightPageMessageContent = prompt;
           console.log("⚠️ AI message generation failed, using prompt as fallback");
         }
       } catch (error) {
         console.error("Error generating automatic message:", error);
-        rightPageMessageContent = prompt; // Fallback to using the prompt
+        rightPageMessageContent = prompt; 
         toast.info("Using your theme as the card message");
       }
     }
@@ -347,299 +350,182 @@ Return ONLY the message text - no quotes, no explanations, just the message that
     setIsGenerating(true);
     
     try {
-      // --- Prepare base image template if applicable ---
-      let baseImageTemplateB64 = null;
-      const usingGptImage1ForSplit = selectedImageModel === "gpt-image-1" || selectedHandwritingModel === "gpt-image-1";
-      
-      // Automatically load the server-side base split image for GPT-1
-      if (usingGptImage1ForSplit) {
-        try {
-          // Try to load the base split image from the server
-          const baseImageUrl = `https://jordanjohngilbert.link/utils/base_split_image_1536x1024.png`;
-          const response = await fetch(baseImageUrl);
-          if (response.ok) {
-            const blob = await response.blob();
-            baseImageTemplateB64 = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result as string);
-              reader.onerror = reject;
-              reader.readAsDataURL(blob);
-            });
-            console.log("✅ Successfully loaded server base split template for GPT-1.");
-            toast.info("Using server template for GPT-1 for precise split.");
-          } else {
-            console.warn("⚠️ Could not load server base split template. GPT-1 will attempt split without template.");
-          }
-        } catch (error) {
-          console.error("Error loading server base split template:", error);
-          console.log("GPT-1 will attempt split without template.");
-        }
-      }
-      // --- End preparing base image template ---
-
-      const cardTypeContext = selectedType ? `This is a ${selectedType} card. ` : "";
-      
-      // STEP 1: Generate 2 detailed prompts using AI (Updated to use ai_chat tool)
-      console.log("🎯 Step 1: Generating detailed prompts for both card layout images...");
-      
-      // Get the selected artistic style details
       const selectedStyle = artisticStyles.find(style => style.id === selectedArtisticStyle);
       const styleModifier = selectedStyle ? selectedStyle.promptModifier : "";
       const styleContext = selectedStyle ? `Artistic Style: ${selectedStyle.label} - ${selectedStyle.description}` : "";
       
-      const promptGenerationQuery = `You are an expert greeting card designer. Create 2 detailed image generation prompts for a perfectly aligned greeting card based on this user request:
+      // No base image template needed for 3-panel approach
+      const baseImageTemplateB64 = null; // Explicitly null
+      const usingGptImage1ForSplit = false; // No split, no template needed for this flag
 
-User Request: "${prompt}"
+      const panelPromptGenerationQuery = `You are an expert greeting card designer. Create 3 detailed image generation prompts for three SEPARATE panels of a greeting card. Each panel should be designed for a 9:16 portrait aspect ratio.
+
+User Request (Overall Theme): "${prompt}"
 Card Type: ${selectedType || "General"}
 ${styleContext}
 ${toField ? `To: ${toField}` : ""}
 ${fromField ? `From: ${fromField}` : ""}
-Message for inside: "${rightPageMessageContent}"
+Message for Interior Right Panel: "${rightPageMessageContent}"
 ${handwritingSampleUrl ? "Note: User has provided a handwriting sample for the message page." : ""}
-${baseImageTemplateB64 && usingGptImage1ForSplit ? "IMPORTANT: You will be using a server-side template image that features a clear vertical centerline. This line is an ABSOLUTE, UNBREAKABLE BOUNDARY. Treat the areas to the left and right of this centerline as two completely separate visual regions. \
-LEFT HALF (Region strictly to the left of the centerline): This entire region MUST be rendered as pure, unadulterated blank white space. This white space must extend fully to the extreme left edge of the image. NO design element, color, texture, or even a single stray pixel from the right half may bleed, extend, or intrude into this left half. \
-RIGHT HALF (Region strictly to the right of the centerline): This entire region is dedicated to the front cover artwork and any greeting text. All visual elements for the front cover—text, illustrations, background colors/textures—MUST be strictly confined within this right half. The design must extend fully to the extreme right edge of the image. NO part of this right-half design is permitted to cross the centerline into the left half. The centerline defines the exact, sharp meeting point of these two distinct regions." : ""}
 
-Create prompts for:
-1. FRONT/BACK LAYOUT - A landscape 16:9 image split perfectly in half vertically. 
-   ${baseImageTemplateB64 && usingGptImage1ForSplit 
-     ? "Template Context: You are working with a server-provided template image that features a clear vertical centerline. This line is an ABSOLUTE, UNBREAKABLE BOUNDARY. Treat the areas to the left and right of this centerline as two completely separate visual regions. \
-LEFT HALF (Region strictly to the left of the centerline): This entire region MUST be rendered as pure, unadulterated blank white space. This white space must extend fully to the extreme left edge of the image. NO design element, color, texture, or even a single stray pixel from the right half may bleed, extend, or intrude into this left half. \
-RIGHT HALF (Region strictly to the right of the centerline): This entire region is dedicated to the front cover artwork and any greeting text. All visual elements for the front cover—text, illustrations, background colors/textures—MUST be strictly confined within this right half. The design must extend fully to the extreme right edge of the image. NO part of this right-half design is permitted to cross the centerline into the left half. The centerline defines the exact, sharp meeting point of these two distinct regions."
-     : "LEFT HALF: completely blank/white space. RIGHT HALF: the front cover artwork with greeting text. The split must be perfectly centered with a clean vertical division."}
-   ${styleModifier ? `Apply this artistic style to the front cover (right half): ${styleModifier}` : ""}
+CRITICAL ANTI-BORDER REQUIREMENTS (Apply to ALL 3 panels):
+⚠️ ABSOLUTELY FORBIDDEN: Each generated panel image must NEVER create any of the following:
+- Borders of ANY kind (thin, thick, decorative, simple) around the panel itself.
+- Frames around the panel image or its content.
+- The image content must extend to all four edges of its 9:16 frame.
 
-2. INTERIOR LAYOUT - A landscape 16:9 image split perfectly in half vertically. 
-   ${baseImageTemplateB64 && usingGptImage1ForSplit
-     ? "Template Context: You are working with a server-provided template image that features a clear vertical centerline. This line is an ABSOLUTE, UNBREAKABLE BOUNDARY. Treat the areas to the left and right of this centerline as two completely separate visual regions. \
-LEFT HALF (Region strictly to the left of the centerline): This entire region is for decorative artwork that complements the front cover. All elements of this decorative design MUST be strictly confined within this left half and extend fully to the extreme left edge of the image. NO part of this left-half design is permitted to cross the centerline into the right half. \
-RIGHT HALF (Region strictly to the right of the centerline): This entire region is for the handwritten message. The message text, its background, and any associated minor decorative elements MUST be strictly confined within this right half and extend fully to the extreme right edge of the image. NO part of this right-half design is permitted to cross the centerline into the left half. \
-Maintain a cohesive artistic style across both halves, but they must meet precisely at the centerline without any overlap."
-     : "LEFT HALF: decorative artwork/design that complements the front cover. RIGHT HALF: the handwritten message page with authentic handwriting style. Both sides should have cohesive design elements that flow together naturally."}
-   ${styleModifier ? `Apply this artistic style consistently across both halves, respecting the centerline on the template: ${styleModifier}` : ""}
+✅ MANDATORY INSTEAD: Every single visual element must extend seamlessly to the absolute edges of EACH 9:16 panel. Each panel must be completely borderless and frameless.
 
-CRITICAL ANTI-BORDER REQUIREMENTS:
-⚠️ ABSOLUTELY FORBIDDEN: The image generation model must NEVER create any of the following:
-- Borders of ANY kind (thin, thick, decorative, simple)
-- Frames around the image or content
-- Rectangular outlines or boxes
-- Decorative border patterns
-- Edge lines or perimeter markings
-- Card-like frames or boundaries
-- White borders or margins within the image
-- Any visual separation between content and image edges
-- Picture frame effects
-- Letterbox or pillarbox borders
-- Ornamental borders or trim
+CRITICAL TEXT GENERATION REQUIREMENTS (Apply to panels with text):
+- Be explicit: "The text says: 'Happy Birthday, Alex!'"
+- Specify style (e.g., "elegant handwritten script", "bold modern font").
+- Specify placement (e.g., "centered at the top", "bottom right corner").
 
-✅ MANDATORY INSTEAD: Every single visual element must extend seamlessly to the absolute edge of the 9:16 frame. The design must be completely borderless and frameless.
-
-CRITICAL TEXT GENERATION REQUIREMENTS:
-For ALL text in images, you must be extremely explicit and specific about text placement and formatting:
-
-- Use phrases like "The text says in clear letters:" or "Written in elegant script:"
-- For speech bubbles or text areas, specify: "in a text bubble:", "in a speech balloon:", "in a decorative text box:"
-- Always put the EXACT text in quotes within the prompt
-- Specify text style: "handwritten", "calligraphy", "printed letters", "script font", etc.
-- Specify text placement: "centered at the top", "written across the middle", "at the bottom in cursive"
-- For greeting cards, be very explicit: "The greeting card displays the text 'Happy Birthday' in elegant gold lettering across the top"
-
-Requirements for ALL prompts:
-- **Critical Visual Mandate**: All images must strictly adhere to a full-bleed design. The artwork, background, and all visual elements must extend to the absolute edges of the 16:9 frame without any form of internal visual boxing.
-- **MANDATORY: 16:9 landscape aspect ratio (wider than tall)** - This is non-negotiable for proper card printing layout.
-- Print-ready, flat 2D design.
-- **PERFECT SPLIT**: Each image must be split exactly in half vertically with a clean, precise division. No overlap or misalignment.
-- **ZERO TOLERANCE FOR BORDERS**: Generated image prompts must explicitly instruct the image model to create a completely borderless, frameless design. Use phrases like "borderless design", "no frame", "no border", "edge-to-edge", "full-bleed", "seamless to edges".
-- Cohesive color palette and style across both images.
+Requirements for ALL 3 Panel Prompts:
+- **MANDATORY: 9:16 portrait aspect ratio (taller than wide) for EACH panel.**
+- Print-ready, flat 2D design for each panel.
+- Cohesive color palette and style across all three panels to ensure they look like part of the same card set.
 - Professional greeting card quality.
-- Safe, appropriate content for image generation.
-- Include relevant text in each image to make the card more complete and meaningful.
+- Safe, appropriate content.
 
-Enhanced Text Guidelines:
-- FRONT/BACK LAYOUT: Left half must be blank. Right half (front cover) needs greeting text. ${selectedStyle && selectedStyle.id === 'studio-ghibli' ? "Ghibli style: all text handwritten." : ""} ${baseImageTemplateB64 && usingGptImage1ForSplit ? "Adhere to the center line on the server template." : ""}
-- INTERIOR LAYOUT: Left half decorative. Right half has message: '${rightPageMessageContent}'. ${selectedStyle && (selectedStyle.id === 'studio-ghibli' || selectedStyle.id === 'hand-drawn-sketchy') ? "Handwritten styles: all text on both halves handwritten." : ""} ${baseImageTemplateB64 && usingGptImage1ForSplit ? "Adhere to the center line on the server template." : ""}
+Panel Descriptions:
+
+1.  **FRONT COVER PANEL (9:16 Portrait):**
+    *   Design: Main artwork for the front of the card. Should include greeting text (e.g., "Happy Birthday, Alex!", "Future Tech Star!").
+    *   Theme: Based on the user's overall request.
+    *   Style: ${selectedStyle ? selectedStyle.label : "Artist's choice, matching theme"}.
+    *   ${styleModifier ? `Apply this artistic style: ${styleModifier}` : ""}
+    *   Ensure text is clear, legible, and artistically integrated.
+
+2.  **INTERIOR LEFT PANEL (9:16 Portrait - Decorative):**
+    *   Design: Purely decorative artwork that complements the front cover and overall theme. NO TEXT ON THIS PANEL.
+    *   Style: ${selectedStyle ? selectedStyle.label : "Artist's choice, matching theme"}.
+    *   ${styleModifier ? `Apply this artistic style: ${styleModifier}` : ""}
+    *   This panel faces the message panel when the card is open.
+
+3.  **INTERIOR RIGHT PANEL (9:16 Portrait - Message):**
+    *   Design: Primarily features the handwritten message: "${rightPageMessageContent}".
+    *   The message text should be rendered clearly and prominently in an authentic, appealing handwritten style.
+    *   Background should be relatively simple or complementary to the message, ensuring text readability. Minor decorative elements related to the theme/style are okay if they don't obscure the message.
+    *   Style: ${selectedStyle ? selectedStyle.label : "Artist's choice, matching theme, focus on handwritten text"}.
+    *   ${(selectedStyle && (selectedStyle.id === 'studio-ghibli' || selectedStyle.id === 'hand-drawn-sketchy')) || handwritingSampleUrl ? "Ensure all text on this panel is in a handwritten style." : "Render text in an elegant, clear handwritten style."}
+    *   ${styleModifier ? `Apply this artistic style: ${styleModifier}` : ""}
 
 Return ONLY a JSON object with this exact structure:
 {
-  "frontBackLayout": "detailed prompt for front/back layout. ${baseImageTemplateB64 && usingGptImage1ForSplit ? 'Using server template. Left of center line: blank. Right of center line: front cover art & text.' : 'Left: blank. Right: front cover art & text.'} MUST specify: 16:9 landscape. CRITICAL: anti-border, perfect vertical split. ${styleModifier ? `ARTISTIC STYLE: ${styleModifier}` : ''}",
-  "interiorLayout": "detailed prompt for interior layout. ${baseImageTemplateB64 && usingGptImage1ForSplit ? 'Using server template. Left of center line: decor. Right of center line: message.' : 'Left: decor. Right: message.'} MUST specify: 16:9 landscape. CRITICAL: anti-border, perfect vertical split. ${styleModifier ? `ARTISTIC STYLE: ${styleModifier}` : ''}"
+  "frontCoverPanelPrompt": "Detailed prompt for the 9:16 FRONT COVER PANEL. CRITICAL: anti-border. ${styleModifier ? `ARTISTIC STYLE: ${styleModifier}` : ''}",
+  "interiorLeftPanelPrompt": "Detailed prompt for the 9:16 INTERIOR LEFT (DECORATIVE) PANEL. NO TEXT. CRITICAL: anti-border. ${styleModifier ? `ARTISTIC STYLE: ${styleModifier}` : ''}",
+  "interiorRightPanelPrompt": "Detailed prompt for the 9:16 INTERIOR RIGHT (MESSAGE) PANEL. Features message: '${rightPageMessageContent}'. CRITICAL: anti-border. ${styleModifier ? `ARTISTIC STYLE: ${styleModifier}` : ''}"
 }`;
 
-      const generatedPromptsResponse = await chatWithAI(promptGenerationQuery, {
-        model: "gemini-2.5-flash-preview-05-20",
+      const generatedPanelPrompts = await chatWithAI(panelPromptGenerationQuery, {
+        model: "gemini-2.5-flash-preview-05-20", // Or gemini-2.5-pro if more detail needed
         jsonSchema: {
           type: "object",
           properties: {
-            frontBackLayout: { type: "string" },
-            interiorLayout: { type: "string" }
+            frontCoverPanelPrompt: { type: "string" },
+            interiorLeftPanelPrompt: { type: "string" },
+            interiorRightPanelPrompt: { type: "string" }
           },
-          required: ["frontBackLayout", "interiorLayout"]
+          required: ["frontCoverPanelPrompt", "interiorLeftPanelPrompt", "interiorRightPanelPrompt"]
         }
       });
 
-      console.log("✅ Generated prompts:", generatedPromptsResponse);
+      console.log("✅ Generated 3 panel prompts:", generatedPanelPrompts);
 
-      // Define a critical suffix to be appended to all image generation prompts
-      const criticalSuffix = " CRITICAL IMAGE RULE: The final image must be strictly full-bleed with a 16:9 landscape aspect ratio (wider than tall). ABSOLUTELY NO BORDERS OR FRAMES OF ANY KIND - this includes thin borders, thick borders, decorative borders, rectangular frames, white margins, edge lines, or any visual boundary around the content. The image must be completely borderless and frameless with all visual elements extending seamlessly to the very edges of the 16:9 horizontal frame. PERFECT VERTICAL SPLIT: The image must be split exactly in half vertically with precise alignment. Do not add any form of border, frame, outline, or visual separation. CRITICAL ASPECT RATIO: The image must be in 16:9 landscape orientation. CRITICAL TEXT RULE: Any text in the image must be rendered exactly as specified in quotes, with clear, readable lettering in the specified style and placement. Pay careful attention to text positioning and formatting instructions. BORDERLESS DESIGN MANDATORY: Use phrases like 'borderless design', 'no frame', 'no border', 'edge-to-edge', 'full-bleed' in your generation.";
+      const criticalSuffix = " CRITICAL IMAGE RULE: The final image must be strictly full-bleed with a 9:16 portrait aspect ratio (taller than wide). ABSOLUTELY NO BORDERS OR FRAMES OF ANY KIND. The image must be completely borderless and frameless with all visual elements extending seamlessly to the very edges of the 9:16 portrait frame. CRITICAL TEXT RULE: Any text in the image must be rendered exactly as specified in quotes, with clear, readable lettering in the specified style and placement.";
 
-      // Append the critical suffix to each generated prompt
-      const finalFrontBackPrompt = generatedPromptsResponse.frontBackLayout + criticalSuffix;
-      const finalInteriorPrompt = generatedPromptsResponse.interiorLayout + criticalSuffix;
-
-      console.log("🎨 강화된 프롬프트 - Front/Back Layout:", finalFrontBackPrompt);
-      console.log("🎨 강화된 프롬프트 - Interior Layout:", finalInteriorPrompt);
+      const promptsForApi = [
+        generatedPanelPrompts.frontCoverPanelPrompt + criticalSuffix,
+        generatedPanelPrompts.interiorLeftPanelPrompt + criticalSuffix,
+        generatedPanelPrompts.interiorRightPanelPrompt + criticalSuffix
+      ];
       
-      // STEP 2: Generate both images in parallel
-      console.log("🎨 Step 2: Generating both card layout images in parallel...");
-
-      const imageGenerationTasks = [];
-
-      // Front/Back Layout - only use base template (no handwriting needed for front/back)
-      const frontBackInputImages = [];
-      if (selectedImageModel === "gpt-image-1" && baseImageTemplateB64) {
-        frontBackInputImages.push(baseImageTemplateB64);
+      const inputImagesForApi = [];
+      // Front cover - no specific input image other than global style
+      inputImagesForApi.push(undefined); 
+      // Interior Left - no specific input image
+      inputImagesForApi.push(undefined);
+      // Interior Right - potentially handwriting sample
+      if (selectedHandwritingModel === "gpt-image-1" && handwritingSampleUrl) {
+        inputImagesForApi.push([handwritingSampleUrl]); // API expects array of data URLs
+      } else {
+        inputImagesForApi.push(undefined);
       }
+
+      console.log("🎨 Sending 3 prompts to image generation API...");
       
-      const frontBackPayload = {
+      const imageGenerationPayload = {
         tool_name: "generate_images_with_prompts",
         arguments: {
           user_number: "+17145986105",
-          prompts: [finalFrontBackPrompt],
-          model_version: selectedImageModel,
-          aspect_ratio: "16:9",
-          ...(frontBackInputImages.length > 0 && { input_images: frontBackInputImages })
+          prompts: promptsForApi,
+          model_version: selectedImageModel, // Use selectedImageModel for front & left, selectedHandwritingModel for right
+                                           // This might need refinement if we want different models per panel.
+                                           // For now, let's assume selectedImageModel applies unless handwriting is involved.
+                                           // The backend now handles input_images per prompt.
+          aspect_ratio: "9:16", // All panels are 9:16
+          input_images: inputImagesForApi 
         },
         user_id_context: "+17145986105"
       };
+       // Adjust model for the message panel if handwriting model is different and selected
+      // The backend needs to be able to handle a list of models or make three separate calls if models differ.
+      // For now, we send one model, and the backend uses it for all prompts unless input_images implies gpt-image-1.
+      // The current image_services_server.py will use gpt-image-1 for prompts with input_images.
 
-      // Interior Layout - can use both base template AND handwriting sample
-      const interiorInputImages = [];
-      if (selectedHandwritingModel === "gpt-image-1") {
-        if (baseImageTemplateB64) {
-          interiorInputImages.push(baseImageTemplateB64);
-        }
-        if (handwritingSampleUrl) {
-          interiorInputImages.push(handwritingSampleUrl);
-        }
-      }
-      
-      const interiorArguments: any = {
-          user_number: "+17145986105",
-        prompts: [finalInteriorPrompt],
-        model_version: selectedHandwritingModel,
-        aspect_ratio: "16:9",
-        ...(interiorInputImages.length > 0 && { input_images: interiorInputImages })
-      };
-
-      // Debug: Log the exact payloads being sent
-      console.log("📦 Front/Back Layout Payload:", {
-        model: selectedImageModel,
-        aspect_ratio: "16:9",
-        prompt_length: finalFrontBackPrompt.length,
-        input_images_count: frontBackInputImages.length,
-        has_base_template: !!baseImageTemplateB64,
-        base_template_size: baseImageTemplateB64 ? baseImageTemplateB64.length : 0,
-        input_images_preview: frontBackInputImages.map(img => `${img.substring(0, 50)}...`)
-      });
-      console.log("📦 Interior Layout Payload:", {
-        model: selectedHandwritingModel,
-        aspect_ratio: "16:9", 
-        prompt_length: finalInteriorPrompt.length,
-        input_images_count: interiorInputImages.length,
-        has_base_template: !!baseImageTemplateB64,
-        base_template_size: baseImageTemplateB64 ? baseImageTemplateB64.length : 0,
-        has_handwriting_sample: !!handwritingSampleUrl,
-        input_images_preview: interiorInputImages.map(img => `${img.substring(0, 50)}...`)
+      const response = await fetch(`${BACKEND_API_BASE_URL}/internal/call_mcp_tool`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(imageGenerationPayload),
       });
 
-      // Note: input_images is now conditionally included using spread operator, so no need to delete undefined values
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Image generation API call failed: ${response.status} ${errorText}`);
+      }
+      const result = await response.json();
+      if (result.error) throw new Error(result.error);
 
-      // Create the payload for the interior layout using the potentially modified interiorArguments
-      const interiorPayload = {
-        tool_name: "generate_images_with_prompts",
-        arguments: interiorArguments,
-        user_id_context: "+17145986105"
+      let toolResponse = JSON.parse(result.result);
+      if (toolResponse.status !== "success" && toolResponse.status !== "partial_error") {
+        throw new Error(toolResponse.message || "Image panel generation failed");
+      }
+
+      if (!toolResponse.results || toolResponse.results.length < 3) {
+        throw new Error("Did not receive 3 image panels from the generation service.");
+      }
+      
+      const [frontCoverResult, interiorLeftResult, interiorRightResult] = toolResponse.results;
+
+      const getUrlFromResult = (panelResult: any, panelName: string) => {
+        if (panelResult.error) throw new Error(`${panelName} panel generation error: ${panelResult.error}`);
+        if (!Array.isArray(panelResult) || panelResult.length === 0) throw new Error(`No image URL for ${panelName} panel`);
+        return panelResult[0];
       };
 
-      // Launch both generations in parallel
-      imageGenerationTasks.push(
-        fetch(`${BACKEND_API_BASE_URL}/internal/call_mcp_tool`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(frontBackPayload),
-        }),
-        fetch(`${BACKEND_API_BASE_URL}/internal/call_mcp_tool`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(interiorPayload),
-        })
-      );
-
-      const [frontBackResponse, interiorResponse] = await Promise.all(imageGenerationTasks);
-
-      // Process Front/Back Layout
-      if (!frontBackResponse.ok) {
-        throw new Error(`Front/Back layout generation failed: ${frontBackResponse.status}`);
-      }
-      const frontBackResult = await frontBackResponse.json();
-      if (frontBackResult.error) throw new Error(frontBackResult.error);
-
-      let frontBackToolResponse = JSON.parse(frontBackResult.result);
-      if (frontBackToolResponse.status !== "success") throw new Error(frontBackToolResponse.message || "Front/Back layout generation failed");
-
-      const frontBackResults = frontBackToolResponse.results[0];
-      let frontBackUrl;
-      if (Array.isArray(frontBackResults) && frontBackResults.length > 0) {
-        frontBackUrl = frontBackResults[0];
-      } else if (frontBackResults.error) {
-        throw new Error(`Front/Back layout generation error: ${frontBackResults.error}`);
-      } else {
-        throw new Error("No front/back layout image generated");
-      }
-
-      // Process Interior Layout
-      if (!interiorResponse.ok) {
-        throw new Error(`Interior layout generation failed: ${interiorResponse.status}`);
-      }
-      const interiorResult = await interiorResponse.json();
-      if (interiorResult.error) throw new Error(interiorResult.error);
-
-      let interiorToolResponse = JSON.parse(interiorResult.result);
-      if (interiorToolResponse.status !== "success") throw new Error(interiorToolResponse.message || "Interior layout generation failed");
-
-      const interiorResults = interiorToolResponse.results[0];
-      let interiorUrl;
-      if (Array.isArray(interiorResults) && interiorResults.length > 0) {
-        interiorUrl = interiorResults[0];
-      } else if (interiorResults.error) {
-        throw new Error(`Interior layout generation error: ${interiorResults.error}`);
-      } else {
-        throw new Error("No interior layout image generated");
-      }
-
-      console.log("✅ Both layout images generated successfully!");
-      console.log("Front/Back Layout:", frontBackUrl);
-      console.log("Interior Layout:", interiorUrl);
+      const frontCoverUrl = getUrlFromResult(frontCoverResult, "Front Cover");
+      const interiorLeftUrl = getUrlFromResult(interiorLeftResult, "Interior Left");
+      const interiorRightUrl = getUrlFromResult(interiorRightResult, "Interior Right");
       
-      // Debug: Check if URLs suggest different image services/processing
-      console.log("🔍 Image URL Analysis:");
-      console.log("- Front/Back Layout URL domain:", new URL(frontBackUrl).hostname);
-      console.log("- Interior Layout URL domain:", new URL(interiorUrl).hostname);
+      console.log("✅ All 3 panels generated successfully!");
+      console.log("Front Cover Panel:", frontCoverUrl);
+      console.log("Interior Left Panel:", interiorLeftUrl);
+      console.log("Interior Right Panel:", interiorRightUrl);
       
-      // Add a note about the new 2-image approach
-      toast.info("New 2-image layout generated! Perfect alignment for printing.");
+      toast.info("3-panel layout generated! Preview will arrange them for printing.");
 
       const newCard: GeneratedCard = {
         id: Date.now().toString(),
         prompt,
-        frontCover: frontBackUrl,
-        leftPage: interiorUrl,
-        rightPage: interiorUrl, // Same as leftPage since it's one split image
+        frontCoverImageUrl: frontCoverUrl,
+        interiorLeftImageUrl: interiorLeftUrl,
+        interiorRightImageUrl: interiorRightUrl,
         createdAt: new Date(),
       };
       
       setGeneratedCard(newCard);
-      toast.success("Card generated successfully with new 2-image layout! Perfect alignment for printing.");
+      toast.success("Card generated successfully with new 3-panel approach!");
 
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to generate card. Please try again.");
@@ -657,14 +543,12 @@ Return ONLY a JSON object with this exact structure:
   const handlePrint = () => {
     if (!generatedCard) return;
     
-    // Create a new window for printing
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       toast.error("Please allow popups to enable printing");
       return;
     }
 
-    // Create the print layout HTML
     const printHTML = `
       <!DOCTYPE html>
       <html>
@@ -675,133 +559,55 @@ Return ONLY a JSON object with this exact structure:
               size: 11in 8.5in; /* Landscape orientation */
               margin: 0;
             }
+            body { margin: 0; padding: 0; font-family: Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .page { width: 100vw; height: 100vh; display: flex; position: relative; page-break-after: always; overflow: hidden; }
+            .page-1 { /* Front/Back */ }
+            .page-2 { transform: rotate(180deg); /* Ensures proper orientation after flip */ }
+            .half { width: 50%; height: 100%; position: relative; overflow: hidden; }
+            .left-half { left: 0; }
+            .right-half { right: 0; }
+            .panel-image { width: 100%; height: 100%; object-fit: cover; display: block; }
+            .blank-back { background-color: white; }
             
-            * {
-              margin: 0;
-              padding: 0;
-              box-sizing: border-box;
-            }
-            
-            body {
-              margin: 0;
-              padding: 0;
-              font-family: Arial, sans-serif;
-            }
-            
-            /* Page 1: Front/Back Layout */
-            .page-1 {
-              width: 100vw;
-              height: 100vh;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              page-break-after: always;
-              position: relative;
-            }
-            
-            /* Page 2: Interior Layout */
-            .page-2 {
-              width: 100vw;
-              height: 100vh;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              transform: rotate(180deg); /* This ensures proper orientation after flip */
-              position: relative;
-            }
-            
-            .layout-image {
-              width: 100%;
-              height: 100%;
-              object-fit: contain;
-            }
-            
-            .fold-instructions {
-              position: absolute;
-              top: 10px;
-              left: 10px;
-              font-size: 12px;
-              color: #666;
-              background: rgba(255, 255, 255, 0.9);
-              padding: 8px 12px;
-              border-radius: 4px;
-              border: 1px solid #ccc;
-              z-index: 10;
-            }
-            
-            @media print {
-              .fold-instructions {
-                display: none;
-              }
-              
-              body {
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-              }
-              
-              .page-1, .page-2 {
-                page-break-inside: avoid;
-              }
-              
-              .layout-image {
-                max-width: none;
-                max-height: none;
-                width: 100%;
-                height: 100%;
-              }
-            }
-            
-            @media screen {
-              .page-1 {
-                border-bottom: 2px dashed #ccc;
-                margin-bottom: 20px;
-              }
-              
-              .page-2 {
-                margin-top: 20px;
-              }
-            }
+            .fold-instructions { position: absolute; top: 10px; left: 10px; font-size: 10px; color: #333; background: rgba(255,255,255,0.8); padding: 5px; border-radius: 3px; border: 1px solid #ccc; z-index: 100; }
+            @media print { .fold-instructions { display: none; } }
           </style>
         </head>
         <body>
           <!-- Page 1: Front/Back Layout -->
-            <div class="page-1">
-              <div class="fold-instructions">
-              📄 Page 1: Print this first (Front/Back Layout)<br/>
-              💡 Settings: Double-sided, flip on long edge
-              </div>
-            <img src="${generatedCard.frontCover}" alt="Front/Back Layout" class="layout-image" />
+          <div class="page page-1">
+            <div class="fold-instructions">Page 1: Front/Back (Blank Left, Front Cover Right)<br/>Print double-sided, flip on long edge.</div>
+            <div class="half left-half blank-back"></div>
+            <div class="half right-half">
+              <img src="${generatedCard.frontCoverImageUrl}" alt="Front Cover" class="panel-image" />
             </div>
+          </div>
             
           <!-- Page 2: Interior Layout -->
-            <div class="page-2">
-            <div class="fold-instructions">
-              📄 Page 2: Interior Layout (rotated for proper alignment)<br/>
-              🔄 This page is pre-rotated for double-sided printing
-              </div>
-            <img src="${generatedCard.leftPage}" alt="Interior Layout" class="layout-image" />
+          <div class="page page-2">
+            <div class="fold-instructions">Page 2: Interior (Decorative Left, Message Right)<br/>This page is pre-rotated for printing.</div>
+            <div class="half left-half">
+              <img src="${generatedCard.interiorLeftImageUrl}" alt="Interior Left Decorative" class="panel-image" />
+            </div>
+            <div class="half right-half">
+              <img src="${generatedCard.interiorRightImageUrl}" alt="Interior Right Message" class="panel-image" />
+            </div>
           </div>
         </body>
       </html>
     `;
 
-    // Write the HTML to the print window
     printWindow.document.write(printHTML);
     printWindow.document.close();
 
-    // Wait for images to load, then print
     printWindow.onload = () => {
-      // Give a moment for images to fully load
       setTimeout(() => {
         printWindow.print();
-        // Close the window after printing (optional)
-        printWindow.onafterprint = () => {
-          printWindow.close();
-        };
+        printWindow.onafterprint = () => { printWindow.close(); };
       }, 1000);
     };
 
-    toast.success("Print dialog opened! Make sure to select 'Print on both sides' and 'Flip on long edge'");
+    toast.success("Print dialog opened! Ensure 'Print on both sides' & 'Flip on long edge'.");
   };
 
   // NEW: Handwriting sample upload handler
