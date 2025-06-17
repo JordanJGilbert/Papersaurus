@@ -1,6 +1,0 @@
-=== COMPLETE FASTMCP TOOL ATTRIBUTES SUMMARY ===
-## 1. MCP Standard Tool Attributes (mcp.types.Tool)
-- name: str (required) - The name of the tool
-- description: str | None (optional) - Human-readable description
-- inputSchema: dict[str, Any] (required) - JSON Schema for parameters
-- annotations: ToolAnnotations | None (optional) - Behavioral hints

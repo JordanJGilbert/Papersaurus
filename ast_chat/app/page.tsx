@@ -1,16 +1,20 @@
 "use client";
 
-import React, { useState, useEffect, useRef, FormEvent } from "react";
+import React, { useState, useEffect, useRef, FormEvent, useCallback } from "react";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ChevronDown, Menu, Lock, Paperclip, ArrowUp, MapPin, Loader2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ChevronDown, Menu, Lock, Paperclip, ArrowUp, MapPin, Loader2, Edit3, ExternalLink, Settings, Bot, Zap, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { v4 as uuidv4 } from 'uuid';
+import { toast } from "sonner";
 import ToolCallDisplay from "@/components/ToolCallDisplay";
-import URLPreview from "@/components/URLPreview";
 import MapDisplay, { defaultTheme, nightTheme } from "@/components/MapDisplay";
 import DirectionsSteps from "@/components/DirectionsSteps";
 import ImageDisplay from "@/components/ImageDisplay";
@@ -18,6 +22,10 @@ import { useTheme } from "next-themes";
 import { useContentPreviews } from "@/hooks/useContentPreviews";
 import ContentPreview from "@/components/ContentPreview";
 import { extractPreviewFromToolCall, shouldExtractPreview } from "@/utils/previewExtractors";
+import ArtifactEditor, { ArtifactsList } from "@/components/ArtifactEditor";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
 // Ensure marked runs synchronously for this page too, if not already global
 marked.setOptions({ async: false });
@@ -57,12 +65,19 @@ interface Message {
   generatedImageUrls?: string[]; // <-- Store generated image URLs
 }
 
+// Add ToolMeta type for available tools
+interface ToolMeta {
+  name: string;
+  description: string;
+}
+
 export default function ChatPage() {
   const [userInput, setUserInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]); // <-- New state for selected files
   const fileInputRef = useRef<HTMLInputElement>(null); // <-- Ref for file input
   const [fileProcessingStatus, setFileProcessingStatus] = useState<string | null>(null); // <-- Status for file processing
+  const [isPasteReady, setIsPasteReady] = useState(false); // <-- NEW: State for paste readiness indicator
   const [showInitialView, setShowInitialView] = useState(true);
   const scrollAreaRef = useRef<HTMLDivElement>(null); // Ref for the ScrollArea's viewport element
   const [status, setStatus] = useState('Ready');
@@ -74,6 +89,8 @@ export default function ChatPage() {
   const [mapDisplayKey, setMapDisplayKey] = useState(0); // Key for forcing MapDisplay re-render
   const [showTraffic, setShowTraffic] = useState(false); // State for traffic layer
   const [isMapSectionVisible, setIsMapSectionVisible] = useState(false); // <-- State for map section visibility
+  const [availableTools, setAvailableTools] = useState<ToolMeta[]>([]);
+  const [selectedTools, setSelectedTools] = useState<string[]>([]);
 
   const { theme: appTheme } = useTheme(); // Get current application theme
 
@@ -94,12 +111,25 @@ export default function ChatPage() {
   ];
   const [selectedModel, setSelectedModel] = useState(modelOptions[1].value); // Default to the second model (Pro)
 
+  // NEW: Define available system prompts
+  const systemPromptOptions = [
+    { value: "default", label: "Default", description: "Standard AI assistant" },
+    { value: "artifact_editor", label: "Artifact Editor", description: "Specialized for creating/editing web apps" },
+    { value: "professional", label: "Professional", description: "Formal business communication" },
+    { value: "web_chat", label: "Web Chat", description: "Casual conversational style" },
+  ];
+  const [selectedSystemPrompt, setSelectedSystemPrompt] = useState(systemPromptOptions[0].value); // Default to "default"
+
   // NEW: Helper function to process tool calls for preview extraction
   const processToolCallForPreview = (toolCall: ToolCallData, messageId: string) => {
+    console.log(`[PAGE.TSX] Processing tool call for preview: ${toolCall.name}, status: ${toolCall.status}, call_id: ${toolCall.call_id}`);
+    
     if (shouldExtractPreview(toolCall)) {
       const extractedPreview = extractPreviewFromToolCall(toolCall);
+      console.log(`[PAGE.TSX] Extracted preview for tool ${toolCall.name}:`, extractedPreview);
+      
       if (extractedPreview && extractedPreview.shouldShow) {
-        console.log(`[PAGE.TSX] Extracted preview for tool ${toolCall.name}:`, extractedPreview);
+        console.log(`[PAGE.TSX] Upserting preview with id: ${extractedPreview.id}, type: ${extractedPreview.type}`);
         upsertPreview(
           extractedPreview.id,
           extractedPreview.type,
@@ -111,7 +141,11 @@ export default function ChatPage() {
             status: toolCall.status,
           }
         );
+      } else {
+        console.log(`[PAGE.TSX] Preview extraction returned null or shouldShow=false for ${toolCall.name}`);
       }
+    } else {
+      console.log(`[PAGE.TSX] Tool ${toolCall.name} should not extract preview (status: ${toolCall.status})`);
     }
   };
 
@@ -279,59 +313,6 @@ export default function ChatPage() {
     return DOMPurify.sanitize(dirtyHtml);
   };
 
-  // NEW: Function to parse text and extract URLs for special rendering
-  interface TextPart {
-    type: 'text' | 'url';
-    content: string;
-  }
-
-  const parseTextWithURLs = (text: string): TextPart[] => {
-    const urlRegex = /https?:\/\/[^\s<>"'\]\)\}]+/g;
-    const parts: TextPart[] = [];
-    let lastIndex = 0;
-    let match;
-
-    while ((match = urlRegex.exec(text)) !== null) {
-      // Add text before the URL
-      if (match.index > lastIndex) {
-        const beforeText = text.substring(lastIndex, match.index);
-        if (beforeText.trim()) {
-          parts.push({ type: 'text', content: beforeText });
-        }
-      }
-
-      // Add the URL (clean up trailing punctuation)
-      const url = match[0].replace(/[.,;:!?)"'\}]+$/, '');
-      
-      // Skip if it's already an image/video (handled by markdown)
-      const isMedia = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|tiff|mp4|webm|ogg|mov|avi|wmv|flv|m4v)(\?[^)\s"']*)?$/i.test(url);
-      
-      if (!isMedia) {
-        parts.push({ type: 'url', content: url });
-      } else {
-        // Keep as text for markdown processing
-        parts.push({ type: 'text', content: match[0] });
-      }
-
-      lastIndex = urlRegex.lastIndex;
-    }
-
-    // Add remaining text
-    if (lastIndex < text.length) {
-      const remainingText = text.substring(lastIndex);
-      if (remainingText.trim()) {
-        parts.push({ type: 'text', content: remainingText });
-      }
-    }
-
-    // If no URLs found, return the whole text as one part
-    if (parts.length === 0) {
-      parts.push({ type: 'text', content: text });
-    }
-
-    return parts;
-  };
-
   const getCurrentLocation = (): Promise<string> => {
     console.log("[PAGE.TSX] getCurrentLocation called");
     return new Promise((resolve, reject) => {
@@ -430,6 +411,73 @@ export default function ChatPage() {
     setSelectedFiles(prevFiles => prevFiles.filter(file => file.name !== fileNameToRemove));
   };
 
+  // NEW: Handle clipboard paste events for images
+  // Supports pasting images from:
+  // - Screenshots (Cmd/Ctrl + Shift + 4 on Mac, Print Screen on Windows)
+  // - Copied images from web browsers
+  // - Images copied from image editing software
+  // - Images copied from file managers
+  const handlePaste = useCallback(async (event: ClipboardEvent) => {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+
+    const imageFiles: File[] = [];
+    
+    // Check all clipboard items for images
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      
+      // Handle image files
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          // Create a more descriptive filename
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const extension = item.type.split('/')[1] || 'png';
+          const fileName = `pasted-image-${timestamp}.${extension}`;
+          
+          // Create a new File object with a proper name
+          const namedFile = new File([file], fileName, {
+            type: file.type,
+            lastModified: file.lastModified,
+          });
+          
+          imageFiles.push(namedFile);
+          console.log(`📋 Pasted image: ${fileName} (${Math.round(file.size / 1024)}KB)`);
+        }
+      }
+    }
+
+    // Process pasted images if any were found
+    if (imageFiles.length > 0) {
+      event.preventDefault(); // Prevent default paste behavior
+      
+      try {
+        setFileProcessingStatus(`Processing ${imageFiles.length} pasted image${imageFiles.length > 1 ? 's' : ''}...`);
+        
+        // Convert any HEIC files (though rare from clipboard)
+        const convertedFiles = await Promise.all(
+          imageFiles.map(file => convertHeicToJpeg(file))
+        );
+        
+        setSelectedFiles(prevFiles => [...prevFiles, ...convertedFiles]);
+        setFileProcessingStatus(null);
+        
+        // Show success toast
+        toast.success(`Added ${imageFiles.length} image${imageFiles.length > 1 ? 's' : ''} from clipboard`, {
+          description: `${imageFiles.map(f => f.name).join(', ')}`
+        });
+        
+      } catch (error) {
+        console.error('Error processing pasted images:', error);
+        setFileProcessingStatus(null);
+        toast.error("Failed to process pasted images", {
+          description: error instanceof Error ? error.message : "Unknown error occurred"
+        });
+      }
+    }
+  }, [convertHeicToJpeg, setFileProcessingStatus, setSelectedFiles]);
+
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -495,24 +543,22 @@ export default function ChatPage() {
     if (selectedFiles.length > 0) {
       try {
         setStatus('Uploading files...');
+        toast.loading(`Uploading ${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''}...`, {
+          id: 'file-upload'
+        });
         attachmentUrls = await uploadFiles(selectedFiles);
         console.log('Files uploaded successfully:', attachmentUrls);
+        toast.success(`Successfully uploaded ${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''}`, {
+          id: 'file-upload'
+        });
       } catch (error) {
         console.error('File upload failed:', error);
         setStatus('Ready');
-        // Show error to user
-        const errorMessageId = uuidv4();
-        setMessages(prev => [
-          ...prev,
-          {
-            id: errorMessageId,
-            sender: 'bot',
-            parts: [{type: "text", id: uuidv4(), content: `<strong style="color: red;">Upload Error:</strong> Failed to upload files. Please try again.`}],
-            timestamp: Date.now(),
-            thinking: false,
-            is_error_message: true
-          }
-        ]);
+        // Show error to user with toast instead of inline message
+        toast.error("Upload failed. Please try again.", {
+          id: 'file-upload',
+          description: error instanceof Error ? error.message : "Unknown error occurred"
+        });
         return;
       }
     }
@@ -530,25 +576,10 @@ export default function ChatPage() {
           console.log("Current location obtained for query:", location);
         } catch (locationError: any) {
           console.error("Error getting location for query:", locationError);
-          // Display error to user immediately, similar to before, but tied to bot's thinking message
-          const tempBotMessageId = uuidv4(); // Create a temporary ID for this error message
-          setMessages(prev => [
-            ...prev, // Keep previous messages
-            { // Add the user's attempt (if any text was typed)
-              id: uuidv4(),
-              sender: "user",
-              parts: currentMessageText ? [{ type: "text", id: uuidv4(), content: currentMessageText }] : [],
-              timestamp: Date.now(),
-            },
-            { // Add the bot's error response
-              id: tempBotMessageId,
-              sender: 'bot',
-              parts: [{type: "text", id: uuidv4(), content: `<strong style=\"color: red;\">Location Error:</strong> ${locationError}`}],
-              timestamp: Date.now(),
-              thinking: false,
-              is_error_message: true
-            }
-          ]);
+          // Show location error with toast instead of chat message
+          toast.error("Location Error", {
+            description: locationError.toString()
+          });
           if (showInitialView) setShowInitialView(false);
           setUserInput(""); // Clear input
           setSelectedFiles([]); // Clear files
@@ -610,6 +641,8 @@ export default function ChatPage() {
         stream: true,
         model: selectedModel,
         attachment_urls: attachmentUrls.length > 0 ? attachmentUrls : undefined, // NEW: Direct URL array
+        system_prompt: selectedSystemPrompt !== "default" ? selectedSystemPrompt : undefined, // NEW: Include system prompt if not default
+        allowed_tools: selectedTools, // Always send the array, even if empty
       };
 
       // Clear selected files now that they're uploaded and in the message
@@ -1513,9 +1546,14 @@ export default function ChatPage() {
         color: hsl(var(--muted-foreground));
         padding: 1em;
         border-radius: 0.375rem; 
-        overflow-x: auto;
+        overflow-x: auto; /* Horizontal scroll for wide code */
         font-size: 0.875em;
         border: 1px solid hsl(var(--border));
+        /* NEW: Add vertical scrolling for very tall code blocks */
+        max-height: 60vh; /* Limit height to 60% of viewport height */
+        overflow-y: auto; /* Add vertical scrollbar if content exceeds max-height */
+        word-break: break-all; /* Ensure long lines without spaces can break */
+        white-space: pre-wrap; /* Allow wrapping and preserve whitespace */
       }
       .prose code:not(pre code) {
         background-color: hsl(var(--muted));
@@ -1580,6 +1618,20 @@ export default function ChatPage() {
           max-height: 600px; /* Allow larger videos on desktop */
         }
       }
+ 
+      /* Ensure ScrollArea Viewport takes full height of its ScrollAreaRoot parent */
+      /* We assume ScrollAreaRoot is correctly sized by flex (e.g. flex-1 h-full min-h-0) */
+      .scroll-area-viewport-target div[data-radix-scroll-area-viewport] {
+        height: 100%; /* Try without !important first */
+        /* overflow-y: auto; /* Ensure it can scroll its content */ /* This should be default */
+      }
+
+      /* Global style for all Radix ScrollArea Viewports */
+      div[data-radix-scroll-area-viewport] {
+        width: 100% !important;
+        height: 100% !important;
+        overflow-y: auto !important;
+      }
     `;
     document.head.appendChild(style);
 
@@ -1587,7 +1639,7 @@ export default function ChatPage() {
     return () => {
       document.head.removeChild(style);
     };
-  }, []); // Empty dependency array ensures this runs only once on mount and unmount
+  }, []);
 
   useEffect(() => {
     const setVh = () => {
@@ -1595,46 +1647,261 @@ export default function ChatPage() {
     };
     window.addEventListener('resize', setVh);
     setVh();
-    return () => window.removeEventListener('resize', setVh);
-  }, []);
+
+    // Apply styles to prevent body scrolling and overscroll bounce
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.height = '100%';
+    document.body.style.height = '100%';
+    document.documentElement.style.overscrollBehaviorY = 'contain';
+    document.body.style.overscrollBehaviorY = 'contain';
+
+    // NEW: Add clipboard paste event listener
+    document.addEventListener('paste', handlePaste);
+
+    // NEW: Add keyboard event listeners for paste detection
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'v') {
+        setIsPasteReady(true);
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Control' || event.key === 'Meta' || event.key === 'v') {
+        setIsPasteReady(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('resize', setVh);
+      document.removeEventListener('paste', handlePaste); // NEW: Cleanup paste listener
+      document.removeEventListener('keydown', handleKeyDown); // NEW: Cleanup keyboard listeners
+      document.removeEventListener('keyup', handleKeyUp);
+      // Clean up styles on unmount
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+      document.documentElement.style.height = '';
+      document.body.style.height = '';
+      document.documentElement.style.overscrollBehaviorY = '';
+      document.body.style.overscrollBehaviorY = '';
+    };
+  }, [handlePaste]);
 
   useEffect(() => {
     // Force re-render of MapDisplay when appTheme changes to apply new mapId
     setMapDisplayKey(prevKey => prevKey + 1);
   }, [appTheme]);
 
+  // NEW: Add artifact editor state
+  const [artifactEditorOpen, setArtifactEditorOpen] = useState(false);
+  const [currentArtifact, setCurrentArtifact] = useState<{
+    type: "web_app" | "pdf_document" | "mcp_server";
+    name: string;
+    url: string;
+  } | null>(null);
+
+  // NEW: Add artifacts list state
+  const [artifactsListOpen, setArtifactsListOpen] = useState(false);
+
+  // NEW: Function to open artifact editor
+  const openArtifactEditor = (type: "web_app" | "pdf_document" | "mcp_server", name: string, url: string) => {
+    setCurrentArtifact({ type, name, url });
+    setArtifactEditorOpen(true);
+  };
+
+  // NEW: Function to handle artifact selection from ArtifactsList
+  const handleArtifactSelection = (artifactName: string, artifactUrl: string, artifactType: "web_app" | "pdf_document" | "mcp_server") => {
+    openArtifactEditor(artifactType, artifactName, artifactUrl);
+  };
+
+  // Add useEffect to fetch tools list on mount
+  useEffect(() => {
+    // Fetch available tools for the current user
+    const fetchTools = async () => {
+      try {
+        const resp = await fetch(`${BACKEND_API_BASE_URL}/users/${apiSender.replace('+','')}/tools`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data && Array.isArray(data.tools)) {
+          const tools: ToolMeta[] = data.tools.map((t:any)=>({name:t.name,description:t.description||""}));
+          setAvailableTools(tools);
+          setSelectedTools(tools.map(t=>t.name)); // default select all
+        }
+      } catch(e){
+        console.warn("Failed to fetch tools list",e);
+      }
+    };
+    fetchTools();
+  }, [apiSender]);
+
   return (
-    <div className="flex flex-col h-[calc(var(--vh))] bg-background text-foreground transition-colors duration-300">
-      <header className="px-2 py-2 sm:px-4 sm:py-3 border-b border-border flex justify-between items-center bg-muted/40 transition-colors duration-300">
-        <div className="flex items-center space-x-2">
-          <Button variant="ghost" size="icon" className="hover:bg-muted">
-            <Menu className="w-5 h-5" />
-          </Button>
-          {/* Replace Button with a Select dropdown for model selection */}
-          <div className="relative">
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="bg-background border border-input text-foreground rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring hover:bg-muted cursor-pointer appearance-none pr-8 w-auto sm:min-w-[150px]"
-            >
-              {modelOptions.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="w-4 h-4 absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none text-muted-foreground" />
+    <div className="fixed inset-0 flex flex-col bg-background text-foreground transition-colors duration-300 overflow-hidden">
+      <header className="px-2 py-2 sm:px-4 sm:py-3 border-b border-border flex justify-between items-center bg-muted/40 transition-colors duration-300 flex-shrink-0">
+        <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="hover:bg-muted flex-shrink-0">
+                <Menu className="w-5 h-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuLabel className="flex items-center gap-2">
+                <Bot className="w-4 h-4" />
+                AST. Chat Settings
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {/* NEW: System Prompt Selection INSIDE DropdownMenu */}
+              <DropdownMenuLabel>Style</DropdownMenuLabel>
+              <div className="px-2 py-1">
+                <Select value={selectedSystemPrompt} onValueChange={setSelectedSystemPrompt}>
+                  <SelectTrigger className="w-full h-8">
+                    <SelectValue placeholder="Select style" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {systemPromptOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value} className="text-sm">
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-2">
+                            <Zap className="w-3 h-3" />
+                            {option.label}
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {option.description}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/card-studio" className="flex items-center">
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Buddy's Card Studio
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>
+                <Settings className="w-4 h-4 mr-2" />
+                Preferences
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Zap className="w-4 h-4 mr-2" />
+                Keyboard Shortcuts
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>
+                Clear Chat History
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          
+          {/* Enhanced Model Selection */}
+          <div className="hidden sm:flex items-center space-x-2">
+            <Badge variant="secondary" className="text-xs">
+              Model
+            </Badge>
+            <Select value={selectedModel} onValueChange={setSelectedModel}>
+              <SelectTrigger className="w-[180px] h-8">
+                <SelectValue placeholder="Select model" />
+              </SelectTrigger>
+              <SelectContent>
+                {modelOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value} className="text-sm">
+                    <div className="flex items-center gap-2">
+                      <Bot className="w-3 h-3" />
+                      {option.label}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+          
+          {/* Current Style Indicator */}
+          {selectedSystemPrompt !== "default" && (
+            <Badge variant="outline" className="text-xs flex-shrink-0">
+              {systemPromptOptions.find(opt => opt.value === selectedSystemPrompt)?.label}
+            </Badge>
+          )}
+          {/* Tool Selection Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-1">
+                Tools ({selectedTools.length})
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="max-h-64 overflow-y-auto w-56">
+              <DropdownMenuLabel>Select Tools</DropdownMenuLabel>
+              {/* Bulk selection controls */}
+              <DropdownMenuItem className="text-xs font-medium gap-2" onSelect={(e)=>{e.preventDefault(); setSelectedTools(availableTools.map(t=>t.name));}}>
+                Select All
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-xs font-medium gap-2" onSelect={(e)=>{e.preventDefault(); setSelectedTools([]);}}>
+                Deselect All
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {availableTools.map(tool => (
+                <DropdownMenuItem key={tool.name} className="gap-2" onSelect={(e)=>{e.preventDefault();}}>
+                  <input
+                    type="checkbox"
+                    className="flex-shrink-0 h-3 w-3 accent-primary mr-1"
+                    checked={selectedTools.includes(tool.name)}
+                    onChange={(e)=>{
+                      const checked = e.target.checked;
+                      setSelectedTools(prev=>{
+                        if(checked){return [...prev, tool.name];}
+                        return prev.filter(n=>n!==tool.name);
+                      });
+                    }}
+                  />
+                  <span className="text-xs truncate" title={tool.description}>{tool.name}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-        <div className="flex items-center space-x-2">
+        
+        <div className="flex items-center space-x-3">
+          {/* Status Badge REMOVED */}
+          {/*
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge 
+                  variant={status === 'Ready' ? 'default' : status === 'Processing...' ? 'secondary' : 'destructive'}
+                  className="text-xs cursor-help"
+                >
+                  {status === 'Ready' && <div className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1.5" />}
+                  {status === 'Processing...' && <Loader2 className="w-3 h-3 animate-spin mr-1" />}
+                  {status}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Current system status</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          */}
+
+          {/* NEW: Artifacts List Button */}
+          <ArtifactsList
+            userNumber={apiSender}
+            open={artifactsListOpen}
+            onOpenChange={setArtifactsListOpen}
+            onSelectApp={handleArtifactSelection}
+          />
+          
           <ModeToggle />
-          <Button variant="ghost" size="icon" className="hover:bg-muted">
-            <Menu className="w-5 h-5" />
-          </Button>
         </div>
       </header>
 
-      <main className="flex-grow flex flex-col items-center p-2 sm:p-4 relative overflow-hidden transition-colors duration-300">
+      {/* Allow main to scroll if needed, ScrollArea will be auto height within it */}
+      <main className="flex-grow flex flex-col relative transition-colors duration-300 overflow-hidden min-h-0">
         {showInitialView ? (
           <div id="initialView" className="text-center w-full px-2 flex-grow flex flex-col justify-center items-center">
             <h1 className="text-3xl sm:text-4xl font-semibold text-foreground mb-2 transition-colors duration-300">
@@ -1644,6 +1911,28 @@ export default function ChatPage() {
               How can I help you today?
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto w-full">
+              {/* Special Card Studio Button */}
+              <Link href="/card-studio" className="col-span-1 sm:col-span-2">
+                <Button
+                  variant="outline"
+                  className="h-auto text-left p-4 sm:p-6 border-border rounded-lg shadow hover:shadow-md dark:hover:bg-muted transition w-full bg-gradient-to-r from-pink-50 to-purple-50 dark:from-pink-950/20 dark:to-purple-950/20 border-pink-200 dark:border-pink-800"
+                >
+                  <div className="flex items-center gap-4 w-full">
+                    <div className="w-12 h-12 bg-gradient-to-br from-pink-500 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Sparkles className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-foreground text-base sm:text-lg">
+                        🎨 Buddy's Card Studio
+                      </h3>
+                      <p className="text-sm sm:text-base text-muted-foreground">
+                        Create beautiful AI-powered greeting cards for birthdays, holidays, and special occasions
+                      </p>
+                    </div>
+                  </div>
+                </Button>
+              </Link>
+              
               {examplePrompts.map((prompt, index) => (
                 <Button
                   key={index}
@@ -1662,8 +1951,8 @@ export default function ChatPage() {
             </div>
           </div>
         ) : (
-          <ScrollArea className="w-full mx-auto flex-grow" ref={scrollAreaRef}>
-            <div id="chatLog" className="space-y-3 sm:space-y-4 flex flex-col pb-[calc(68px+env(safe-area-inset-bottom))] max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto px-2 sm:px-4">
+          <ScrollArea className="w-full mx-auto flex-1 min-h-0" ref={scrollAreaRef}>
+            <div id="chatLog" className="space-y-3 sm:space-y-4 flex flex-col pb-[calc(68px+env(safe-area-inset-bottom))] max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto px-2 sm:px-4 pt-2 sm:pt-4">
               {messages.map((msg) => {
                 // Define base and conditional classes for the message bubble
                 let bubbleClasses = "flex flex-col break-words"; // Common base for all
@@ -1691,6 +1980,13 @@ export default function ChatPage() {
                       return idx >= 0 ? msg.parts.slice(0, idx) : msg.parts;
                     })()
                   : msg.parts;
+
+                // Debug: Log previews for this message
+                const messagePreviews = getPreviewsForMessage(msg.id);
+                if (messagePreviews.length > 0) {
+                  console.log(`[PAGE.TSX] Message ${msg.id} has ${messagePreviews.length} previews:`, messagePreviews);
+                }
+
                 return (
                   <div
                     key={msg.id}
@@ -1700,29 +1996,47 @@ export default function ChatPage() {
                       <React.Fragment key={part.id}>
                         {part.type === "text" && part.content && (
                           <div className="w-full max-w-full min-w-0">
-                            {parseTextWithURLs(part.content).map((textPart, index) => (
-                              <React.Fragment key={`${part.id}-${index}`}>
-                                {textPart.type === 'text' ? (
-                                  <div 
-                                    key={`${part.id}-text-${index}`}
-                                    className="message-content prose dark:prose-invert w-full max-w-full min-w-0 text-part-fade-in" 
-                                    style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
-                                    dangerouslySetInnerHTML={{ __html: renderSanitizedMarkdown(textPart.content) }} 
-                                  />
-                                ) : (
-                                  <URLPreview 
-                                    key={`${part.id}-url-${index}`}
-                                    url={textPart.content} 
-                                    className="my-2 w-full max-w-full"
-                                  />
-                                )}
-                              </React.Fragment>
-                            ))}
+                            <div 
+                              className="message-content prose dark:prose-invert w-full max-w-full min-w-0 text-part-fade-in" 
+                              style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                              dangerouslySetInnerHTML={{ __html: renderSanitizedMarkdown(part.content) }} 
+                            />
                           </div>
                         )}
                         {part.type === "tool_call" && (
                           <>
                             <ToolCallDisplay toolCall={part.toolCall} renderSanitizedMarkdown={renderSanitizedMarkdown} />
+                            {/* Render ContentPreviews inline right after each tool call */}
+                            {getPreviewsForMessage(msg.id).filter(preview => 
+                              preview.toolCall?.call_id === part.toolCall.call_id
+                            ).map((preview) => {
+                              console.log(`[PAGE.TSX] Rendering ContentPreview for tool call ${part.toolCall.call_id}:`, preview);
+                              return (
+                                <ContentPreview
+                                  key={preview.id}
+                                  id={preview.id}
+                                  type={preview.type}
+                                  data={preview.data}
+                                  toolCall={preview.toolCall}
+                                  onUpdate={updatePreview}
+                                />
+                              );
+                            })}
+                            {/* NEW: Render ImageDisplay directly after generate_images_with_prompts tool call */}
+                            {part.toolCall.name === "generate_images_with_prompts" && 
+                             part.toolCall.status === "Completed" && 
+                             !part.toolCall.is_error && 
+                             msg.generatedImageUrls && 
+                             msg.generatedImageUrls.length > 0 && (
+                              <div className="mt-4 border rounded-lg shadow-md bg-muted/40 overflow-hidden">
+                                <div className="flex items-center justify-between p-3 bg-background border-b border-border">
+                                  <h4 className="text-sm font-semibold text-foreground">Generated Images</h4>
+                                </div>
+                                <div className="bg-background">
+                                  <ImageDisplay imageUrls={msg.generatedImageUrls} />
+                                </div>
+                              </div>
+                            )}
                           </>
                         )}
                         {part.type === "thought_summary" && (
@@ -1744,24 +2058,20 @@ export default function ChatPage() {
                             </summary>
                             {part.content && (
                               <div className="w-full max-w-full min-w-0 p-3 border-t border-border bg-background rounded-b-lg">
-                                {parseTextWithURLs(part.content).map((textPart, index) => (
-                                  <React.Fragment key={`${part.id}-thought-${index}`}>
-                                    {textPart.type === 'text' ? (
-                                      <div
-                                        key={`${part.id}-thought-text-${index}`}
-                                        className="message-content prose-sm italic text-muted-foreground dark:prose-invert w-full max-w-full min-w-0 text-part-fade-in"
-                                        style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
-                                        dangerouslySetInnerHTML={{ __html: renderSanitizedMarkdown(textPart.content) }}
-                                      />
-                                    ) : (
-                                      <URLPreview 
-                                        key={`${part.id}-thought-url-${index}`}
-                                        url={textPart.content} 
-                                        className="my-2 w-full max-w-full"
-                                      />
-                                    )}
-                                  </React.Fragment>
-                                ))}
+                                <div
+                                  className="message-content prose-sm italic text-muted-foreground dark:prose-invert w-full max-w-full min-w-0 text-part-fade-in"
+                                  style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
+                                  dangerouslySetInnerHTML={{ __html: renderSanitizedMarkdown(part.content) }}
+                                />
+                              </div>
+                            )}
+                            {msg.thinking && !part.content && (
+                              <div className="w-full max-w-full min-w-0 p-3 border-t border-border bg-background rounded-b-lg">
+                                <div className="space-y-2">
+                                  <Skeleton className="h-3 w-[250px]" />
+                                  <Skeleton className="h-3 w-[200px]" />
+                                  <Skeleton className="h-3 w-[180px]" />
+                                </div>
                               </div>
                             )}
                           </details>
@@ -1769,17 +2079,7 @@ export default function ChatPage() {
                       </React.Fragment>
                     ))}
                     
-                    {/* NEW: Render persistent content previews */}
-                    {getPreviewsForMessage(msg.id).map((preview) => (
-                      <ContentPreview
-                        key={preview.id}
-                        id={preview.id}
-                        type={preview.type}
-                        data={preview.data}
-                        toolCall={preview.toolCall}
-                        onUpdate={updatePreview}
-                      />
-                    ))}
+                    {/* REMOVED: Global content preview rendering - now handled inline above */}
                     
                     {msg.directionsData && (
                       <>
@@ -1804,16 +2104,100 @@ export default function ChatPage() {
                         )}
                       </>
                     )}
-                    {msg.showImagesForThisMessage && msg.generatedImageUrls && (
+                    {/* Web App Action Buttons - Enhanced fallback for both create and edit */}
+                    {/* Only show fallback if ContentPreview system isn't handling this message */}
+                    {((msg.showWebAppForThisMessage && msg.webAppUrl) || 
+                     (msg.parts.some(part => 
+                       part.type === "tool_call" && 
+                       (part.toolCall.name === "create_web_app" || part.toolCall.name === "edit_web_app") &&
+                       part.toolCall.status === "Completed" &&
+                       !part.toolCall.is_error &&
+                       part.toolCall.result
+                     ))) && 
+                     /* Only show if ContentPreview system isn't already handling this */
+                     getPreviewsForMessage(msg.id).filter(preview => preview.type === 'web_app').length === 0 ? (
                       <div className="mt-4 border rounded-lg shadow-md bg-muted/40 overflow-hidden">
                         <div className="flex items-center justify-between p-3 bg-background border-b border-border">
-                          <h4 className="text-sm font-semibold text-foreground">Generated Images</h4>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-semibold text-foreground">
+                              {msg.parts.find(part => 
+                                part.type === "tool_call" && 
+                                part.toolCall.name === "edit_web_app"
+                              ) ? "Web Application Edited" : "Web Application Created"}
+                            </h4>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {(() => {
+                              // Extract URL from either the message or tool call result
+                              let appUrl = msg.webAppUrl;
+                              if (!appUrl) {
+                                const webAppToolCall = msg.parts.find(part => 
+                                  part.type === "tool_call" && 
+                                  (part.toolCall.name === "create_web_app" || part.toolCall.name === "edit_web_app") &&
+                                  part.toolCall.result
+                                );
+                                if (webAppToolCall && webAppToolCall.type === "tool_call") {
+                                  try {
+                                    const result = JSON.parse(webAppToolCall.toolCall.result!);
+                                    appUrl = result.url;
+                                  } catch (e) {
+                                    console.warn("Failed to parse web app result for URL:", e);
+                                  }
+                                }
+                              }
+                              
+                              return appUrl ? (
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  asChild
+                                  className="gap-2"
+                                >
+                                  <a href={appUrl} target="_blank" rel="noopener noreferrer">
+                                    <ExternalLink className="w-4 h-4" />
+                                    Open in New Tab
+                                  </a>
+                                </Button>
+                              ) : null;
+                            })()}
+                          </div>
                         </div>
-                        <div className="bg-background">
-                          <ImageDisplay imageUrls={msg.generatedImageUrls} />
-                        </div>
+                        {(() => {
+                          // Show iframe preview if we have a URL
+                          let appUrl = msg.webAppUrl;
+                          let appName = "Web Application";
+                          
+                          if (!appUrl) {
+                            const webAppToolCall = msg.parts.find(part => 
+                              part.type === "tool_call" && 
+                              (part.toolCall.name === "create_web_app" || part.toolCall.name === "edit_web_app") &&
+                              part.toolCall.result
+                            );
+                            if (webAppToolCall && webAppToolCall.type === "tool_call") {
+                              try {
+                                const result = JSON.parse(webAppToolCall.toolCall.result!);
+                                appUrl = result.url;
+                                appName = result.app_name || appName;
+                              } catch (e) {
+                                console.warn("Failed to parse web app result:", e);
+                              }
+                            }
+                          }
+                          
+                          return appUrl ? (
+                            <div className="bg-background">
+                              <iframe
+                                src={appUrl}
+                                className="w-full h-64 sm:h-80 md:h-96"
+                                title={`Web App Preview: ${appName}`}
+                                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation-by-user-activation"
+                                loading="lazy"
+                              />
+                            </div>
+                          ) : null;
+                        })()}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 );
               })}
@@ -1822,79 +2206,158 @@ export default function ChatPage() {
         )}
       </main>
 
-      <footer className="flex-none px-2 pb-[env(safe-area-inset-bottom)] pt-2 sm:px-4 sm:pb-[env(safe-area-inset-bottom)] sm:pt-3 bg-muted/40 border-t border-border transition-colors duration-300">
+      <footer className="flex-none px-2 pb-[env(safe-area-inset-bottom)] pt-2 sm:px-4 sm:pb-[env(safe-area-inset-bottom)] sm:pt-3 bg-muted/40 border-t border-border transition-colors duration-300 flex-shrink-0">
         <form onSubmit={handleSend} className="max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto">
-          <div className="flex items-center bg-background border border-input rounded-xl shadow-sm p-2 transition-colors duration-300 focus-within:ring-2 focus-within:ring-ring">
-            <Button 
-              type="button" 
-              variant="ghost" 
-              size="icon" 
-              className="text-muted-foreground hover:text-foreground" 
-              onClick={() => fileInputRef.current?.click()}
-              title="Attach files"
-            >
-              <Paperclip className="w-5 h-5" />
-            </Button>
-            {/* Hidden file input */}
-            <input 
-              type="file" 
-              multiple 
-              ref={fileInputRef} 
-              onChange={handleFileSelect} 
-              style={{ display: 'none' }} 
-              accept="image/*,.heic,.heif,application/pdf,.txt,.md,.py,.js,.html,.css,.json,.csv,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            />
-            <Button 
-              type="button" 
-              variant={sendLocation ? "secondary" : "ghost"} 
-              size="icon" 
-              onClick={() => setSendLocation(!sendLocation)}
-              className={`mr-2 ${sendLocation ? "text-primary" : "text-muted-foreground"} hover:text-foreground`}
-              title={sendLocation ? "Stop sending location" : "Send current location with query"}
-            >
-              <MapPin className="w-5 h-5" />
-            </Button>
-            <Input
-              type="text"
-              id="userInput"
-              value={userInput}
-              onChange={(e) => setUserInput(e.target.value)}
-              className="flex-grow p-2 bg-transparent focus:outline-none border-0 focus:ring-0 placeholder-muted-foreground"
-              placeholder="Send a message..."
-              autoComplete="off"
-            />
-            <Button type="submit" variant="default" size="icon" disabled={!(userInput.trim() || selectedFiles.length > 0) || status !== 'Ready'} className="rounded-lg">
-              <ArrowUp className="w-5 h-5" />
-            </Button>
-          </div>
-        </form>
-        {/* Display selected files (optional UX) */}
-        {selectedFiles.length > 0 && (
-          <div className="max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto mt-2 text-xs text-muted-foreground">
-            <p className="font-medium mb-1">Selected files:</p>
-            <ul className="list-disc list-inside pl-1 space-y-0.5">
-              {selectedFiles.map(file => (
-                <li key={file.name} className="flex items-center justify-between">
-                  <span>{file.name} ({Math.round(file.size / 1024)} KB)</span>
-                  <Button variant="ghost" size="sm" onClick={() => removeSelectedFile(file.name)} className="text-red-500 hover:text-red-700 p-1 h-auto">
-                    Remove
+          <TooltipProvider>
+            <div className={`flex items-center bg-background border border-input rounded-xl shadow-sm p-2 transition-colors duration-300 focus-within:ring-2 focus-within:ring-ring ${isPasteReady ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-950' : ''}`}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    type="button" 
+                    variant="ghost" 
+                    size="icon" 
+                    className="text-muted-foreground hover:text-foreground" 
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Paperclip className="w-5 h-5" />
                   </Button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {/* Display file processing status */}
-        {fileProcessingStatus && (
-          <div className="max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto mt-2 text-xs text-blue-600 dark:text-blue-400">
-            <div className="flex items-center">
-              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              {fileProcessingStatus}
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Attach files (images, documents, etc.)</p>
+                  <p className="text-xs text-muted-foreground mt-1">💡 Tip: You can also paste images directly!</p>
+                </TooltipContent>
+              </Tooltip>
+              {/* Hidden file input */}
+              <input 
+                type="file" 
+                multiple 
+                ref={fileInputRef} 
+                onChange={handleFileSelect} 
+                style={{ display: 'none' }} 
+                accept="image/*,.heic,.heif,application/pdf,.txt,.md,.py,.js,.html,.css,.json,.csv,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    type="button" 
+                    variant={sendLocation ? "secondary" : "ghost"} 
+                    size="icon" 
+                    onClick={() => setSendLocation(!sendLocation)}
+                    className={`mr-2 ${sendLocation ? "text-primary" : "text-muted-foreground"} hover:text-foreground`}
+                  >
+                    <MapPin className="w-5 h-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{sendLocation ? "Stop sending location" : "Send current location with query"}</p>
+                </TooltipContent>
+              </Tooltip>
+              <Input
+                type="text"
+                id="userInput"
+                value={userInput}
+                onChange={(e) => setUserInput(e.target.value)}
+                className="flex-grow p-2 bg-transparent focus:outline-none border-0 focus:ring-0 placeholder-muted-foreground"
+                placeholder={isPasteReady ? "📋 Ready to paste images..." : "Send a message..."}
+                autoComplete="off"
+              />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    type="submit" 
+                    variant="default" 
+                    size="icon" 
+                    disabled={!(userInput.trim() || selectedFiles.length > 0) || status !== 'Ready'} 
+                    className="rounded-lg"
+                  >
+                    <ArrowUp className="w-5 h-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Send message</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
+          </TooltipProvider>
+        </form>
+        {/* Enhanced selected files display */}
+        {selectedFiles.length > 0 && (
+          <div className="max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto mt-3">
+            <Card className="border-dashed">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Paperclip className="w-4 h-4" />
+                    Selected Files ({selectedFiles.length})
+                  </CardTitle>
+                  <Badge variant="secondary" className="text-xs">
+                    {selectedFiles.reduce((total, file) => total + file.size, 0) > 1024 * 1024 
+                      ? `${(selectedFiles.reduce((total, file) => total + file.size, 0) / (1024 * 1024)).toFixed(1)} MB`
+                      : `${Math.round(selectedFiles.reduce((total, file) => total + file.size, 0) / 1024)} KB`
+                    }
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="space-y-2">
+                  {selectedFiles.map(file => (
+                    <div key={file.name} className="flex items-center justify-between p-2 bg-muted/50 rounded-md">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
+                        <span className="text-sm truncate">{file.name}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {Math.round(file.size / 1024)} KB
+                        </Badge>
+                      </div>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => removeSelectedFile(file.name)} 
+                        className="text-red-500 hover:text-red-700 h-6 w-6 p-0 flex-shrink-0"
+                      >
+                        ×
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
-         <p className="text-xs text-muted-foreground/80 text-center mt-2 pb-1">Status: {status}</p>
+        {/* Enhanced file processing status */}
+        {fileProcessingStatus && (
+          <div className="max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto mt-3">
+            <Card className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-600 dark:text-blue-400" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                      Processing Files
+                    </p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                      {fileProcessingStatus}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
       </footer>
+      
+      {/* NEW: Artifact Editor Dialog */}
+      {currentArtifact && (
+        <ArtifactEditor
+          artifactType={currentArtifact.type}
+          artifactName={currentArtifact.name}
+          artifactUrl={currentArtifact.url}
+          userNumber={apiSender}
+          open={artifactEditorOpen}
+          onOpenChange={setArtifactEditorOpen}
+        />
+      )}
     </div>
   );
-} 
+}

@@ -41,7 +41,9 @@ import datetime
 from utils.search_replace import (
     SearchReplaceBlockParser,
     SearchReplaceApplicator,
-    apply_search_replace_blocks
+    apply_search_replace_blocks,
+    flexible_search_and_replace,
+    editblock_strategies
 )
 
 logging.basicConfig(stream=sys.stderr, level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -69,152 +71,128 @@ SUPPORTED_MODELS_TUPLE = (
     "o4-mini-2025-04-16"
 )
 
-# --- System Prompts for Editing ---
-EDIT_WEB_APP_SYSTEM_PROMPT = """You are an expert code editor. You will be given the complete original content of an HTML file and a user's request describing desired modifications.
-You may also receive an `additional_context` string containing information from previous steps (e.g., search results, API documentation) that should inform your edits.
-
-You must provide your changes in the *SEARCH/REPLACE block* format as follows:
-
-file.html
-```html
-<<<<<<< SEARCH
-[Exact lines from the ORIGINAL HTML content that you want to replace or modify]
-=======
-[The new lines that should replace the content in the SEARCH block]
->>>>>>> REPLACE
-```
-
-Guidelines:
-1. The content within the `<<<<<<< SEARCH` and `=======` part (the SEARCH block) MUST be an exact, contiguous segment from the ORIGINAL HTML provided to you.
-2. The content within the `=======` and `>>>>>>> REPLACE` part (the REPLACE block) is the new content.
-3. To insert content, identify a line or block to replace. Include the original line/block in SEARCH and the original line/block plus your new content in REPLACE. For example, to insert "NEW_LINE" after "EXISTING_LINE":
-    file.html
-    ```html
-    <<<<<<< SEARCH
-    EXISTING_LINE
-    =======
-    EXISTING_LINE
-    NEW_LINE
-    >>>>>>> REPLACE
-    ```
-4. To delete content, the REPLACE block should be empty (it may contain a newline if the original block ended with one and you want to preserve that structure, or be completely empty). Example of deleting "CONTENT_TO_DELETE":
-    file.html
-    ```html
-    <<<<<<< SEARCH
-    CONTENT_TO_DELETE
-    =======
-    >>>>>>> REPLACE
-    ```
-5. You can provide multiple *SEARCH/REPLACE blocks* one after another if multiple distinct changes are needed. Order them logically.
-6. Ensure that your SEARCH blocks are precise and correctly reflect the parts of the original HTML you intend to change. If a text segment appears multiple times, make your SEARCH block specific enough to target only the intended instance (e.g., by including surrounding unique text).
-7. ALWAYS include the filename before each block (e.g., "file.html" or whatever the actual filename is).
-8. Output ONLY the *SEARCH/REPLACE blocks*. Do NOT include any other text, explanations, or markdown formatting beyond the blocks themselves.
-9. If `additional_context` is provided, ensure your blocks reflect the information or requirements mentioned in it, in addition to the primary user's edit request.
-
-Example format:
-filename.html
-```html
-<<<<<<< SEARCH
-<div class="old-content">
-    <p>Old text</p>
-</div>
-=======
-<div class="new-content">
-    <p>New text</p>
-    <p>Additional content</p>
-</div>
->>>>>>> REPLACE
-```
-"""
-
-EDIT_PDF_SYSTEM_PROMPT = """You are an expert at editing HTML documents that will be converted to PDFs. You will receive the original HTML content and a user's request for changes.
-You may also receive an `additional_context` string containing information from previous steps (e.g., search results, API documentation) that should inform your edits.
-Your task is to generate diffs in the "diff-fenced" format to apply these changes.
-
-The "diff-fenced" format for each change:
-<<<<<<< SEARCH
-[Exact lines from the ORIGINAL HTML content to be replaced/modified]
-=======
-[New lines to replace the SEARCH block. Ensure HTML is valid and PDF-friendly.]
->>>>>>> REPLACE
-
-Guidelines:
-1.  SEARCH Block: Must be an exact segment from the ORIGINAL HTML.
-2.  REPLACE Block: New HTML content. Remember this HTML will be rendered to a PDF, so maintain PDF compatibility (e.g., image sizing with `width` attribute, standard HTML/CSS).
-3.  Insertions: To insert "NEW_CONTENT" after "EXISTING_LINE":
-    <<<<<<< SEARCH
-    EXISTING_LINE
-    =======
-    EXISTING_LINE
-    NEW_CONTENT
-    >>>>>>> REPLACE
-4.  Deletions: To delete "CONTENT_TO_DELETE", make REPLACE block empty or contain just a newline if appropriate.
-    <<<<<<< SEARCH
-    CONTENT_TO_DELETE
-    =======
-    >>>>>>> REPLACE
-5.  Multiple Diffs: Provide multiple blocks if needed, in logical order.
-6.  Specificity: SEARCH blocks must be specific to target the correct HTML segment.
-7.  Output: ONLY the raw `<<<<<<< SEARCH ... >>>>>>> REPLACE` diff blocks. No extra text, filenames, or markdown.
-8.  PDF Context: Remember all images must still adhere to PDF sizing (max-width 600px via `width` attribute) and HTML should be well-structured for PDF conversion.
-9.  If `additional_context` is provided, ensure your diffs reflect the information or requirements mentioned in it, in addition to the primary user's edit request.
-"""
-
-# --- Helper function to apply diffs ---
-def apply_fenced_diffs(original_content: str, diff_output: str) -> str:
-    """
-    Applies a series of "diff-fenced" changes to the original content.
-    Each SEARCH block is expected to be found in the content as modified by previous diffs.
-    
-    NOTE: This function is still used by PDF editing but has been replaced by the robust 
-    search/replace functionality (utils.search_replace) for web app editing which provides
-    better error handling and multiple fallback strategies.
-    """
-    current_content = original_content
-    
-    diff_pattern = re.compile(
-        r"<<<<<<< SEARCH\s*?\n(.*?)\s*?\n=======\s*?\n(.*?)\s*?\n>>>>>>> REPLACE",
-        re.DOTALL
-    )
-    
-    processed_diff_indices = set()
-
-    # Iterate multiple passes if necessary, though ideally one pass is enough if LLM orders correctly.
-    # This is a simplified approach. True diff patching can be more complex.
-    # For now, assume diffs apply sequentially.
-    
-    matches = list(diff_pattern.finditer(diff_output))
-    if not matches:
-        if diff_output.strip(): # If diff_output is not empty but no matches, it's a format error
-            print(f"Diff output provided but no valid diff blocks found. Diff output: {diff_output[:200]}...")
-        else: # LLM intentionally returned no diffs, meaning no changes needed.
-            print("LLM returned empty diff, indicating no changes.")
-        return original_content # Return original content if no diffs or format error
-
-    for i, match in enumerate(matches):
-        search_block = match.group(1)
-        # Normalize potential leading/trailing whitespace from LLM capture for replace_block
-        # For search_block, exact match is more critical, including its original whitespace.
-        replace_block = match.group(2) 
-
-        # Attempt to replace the first occurrence of search_block in the current_content
-        try:
-            # A simple string replacement. If search_block is not unique, this might be an issue.
-            # The prompt guides the LLM to make search_block specific.
-            if search_block in current_content:
-                current_content = current_content.replace(search_block, replace_block, 1)
-            else:
-                # This block was not found. It might have been altered by a previous replacement
-                # in a way that makes this search_block no longer match, or it was never there.
-                error_msg = f"Diff application warning: SEARCH block not found or already modified. Skipped. Block: '{search_block[:100]}...'"
-                print(error_msg)
-                # Continue to try applying subsequent diffs.
-        except Exception as e:
-            print(f"Error applying diff block: {e}. Search block: '{search_block[:100]}...'")
-            # Decide whether to raise or continue. For now, log and continue.
-            # raise ValueError(f"Error during diff application for block: {search_block[:100]}...") from e
+async def download_and_create_attachment_part(url: str) -> Optional[AttachmentPart]:
+    """Download a URL and convert it to an AttachmentPart for AI processing."""
+    try:
+        print(f"Downloading attachment: {url}")
+        response = await asyncio.to_thread(requests.get, url, timeout=10)
+        response.raise_for_status()
+        
+        content_type = response.headers.get('Content-Type', '')
+        
+        # Check if it's an image
+        if content_type.startswith('image/'):
+            print(f"Successfully downloaded image: {url} ({content_type}, {len(response.content)} bytes)")
+            return AttachmentPart(
+                mime_type=content_type,
+                data=response.content,
+                name=url.split('/')[-1].split('?')[0] or "image"
+            )
+        else:
+            print(f"Skipping non-image attachment: {url} (type: {content_type})")
+            return None
             
-    return current_content
+    except Exception as e:
+        print(f"Failed to download attachment {url}: {e}")
+        return None
+
+# --- System Prompts for Editing ---
+EDIT_WEB_APP_SYSTEM_PROMPT = """You will be given the complete original content of an HTML file and a user's request describing desired modifications.
+
+Once you understand the request:
+
+1. Think step-by-step and explain the needed changes in a few short sentences.
+
+2. Provide each change using SEARCH/REPLACE blocks in standard markdown format.
+
+You can format your response naturally - the system will automatically parse and extract the search/replace blocks from your response, whether they're in ```html code blocks or plain text.
+
+# Example conversations:
+
+## USER: Add a dark mode toggle button to the header
+
+## ASSISTANT: I need to add a dark mode toggle button to the header section and implement the toggle functionality.
+
+Here are the *SEARCH/REPLACE* blocks:
+
+```html
+<<<<<<< SEARCH
+    <header class="bg-white shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h1 class="text-2xl font-bold text-gray-900">My App</h1>
+        </div>
+    </header>
+=======
+    <header class="bg-white dark:bg-gray-900 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-gray-900 dark:text-white">My App</h1>
+            <button id="darkModeToggle" class="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
+                🌙
+            </button>
+        </div>
+    </header>
+>>>>>>> REPLACE
+```
+
+```html
+<<<<<<< SEARCH
+    <script>
+        // Existing JavaScript
+    </script>
+=======
+    <script>
+        // Dark mode toggle functionality
+        const darkModeToggle = document.getElementById('darkModeToggle');
+        darkModeToggle.addEventListener('click', () => {
+            document.documentElement.classList.toggle('dark');
+            const isDark = document.documentElement.classList.contains('dark');
+            darkModeToggle.textContent = isDark ? '☀️' : '🌙';
+            localStorage.setItem('darkMode', isDark);
+        });
+
+        // Existing JavaScript
+    </script>
+>>>>>>> REPLACE
+```
+
+# *SEARCH/REPLACE block* Rules:
+
+Every *SEARCH/REPLACE block* must use this format:
+1. The opening fence and code language: ```html
+2. The start of search block: <<<<<<< SEARCH
+3. A contiguous chunk of lines to search for in the existing source code
+4. The dividing line: =======
+5. The lines to replace into the source code
+6. The end of the replace block: >>>>>>> REPLACE
+7. The closing fence: ```
+
+Every *SEARCH* section must *EXACTLY MATCH* the existing file content, character for character, including all comments, docstrings, etc.
+If the file contains code or other data wrapped/escaped in json/xml/quotes or other containers, you need to propose edits to the literal contents of the file, including the container markup.
+
+*SEARCH/REPLACE* blocks will *only* replace the first match occurrence.
+Include multiple unique *SEARCH/REPLACE* blocks if needed.
+Include enough lines in each SEARCH section to uniquely match each set of lines that need to change.
+
+Keep *SEARCH/REPLACE* blocks concise.
+Break large *SEARCH/REPLACE* blocks into a series of smaller blocks that each change a small portion of the file.
+Include just the changing lines, and a few surrounding lines if needed for uniqueness.
+Do not include long runs of unchanging lines in *SEARCH/REPLACE* blocks.
+
+To move code within a file, use 2 *SEARCH/REPLACE* blocks: 1 to delete it from its current location, 1 to insert it in the new location.
+
+Pay careful attention to the scope of the user's request.
+Do what they ask, but no more.
+
+IMPORTANT EDITING GUIDELINES:
+1. Use precise SEARCH/REPLACE blocks for targeted edits
+2. Preserve all existing functionality unless explicitly asked to change it
+3. Make minimal changes necessary to implement the request
+4. Maintain code structure, styling, and architecture
+5. Keep responsive design and accessibility features intact
+6. Preserve any localStorage, API calls, or MCP tool integrations
+7. Follow all web development principles
+
+The system will automatically extract your search/replace blocks regardless of markdown formatting, so focus on providing clear, accurate edits."""
 
 def sanitize_for_path(name_part: str) -> str:
     """Sanitizes a string to be safe for use as part of a directory or file name."""
@@ -324,22 +302,6 @@ def prepare_standardized_attachments(processed_attachments: list) -> List[Attach
             except Exception as e:
                 print(f"Warning: Error processing URL attachment {url} for LLM: {e}")
                 continue
-        # Since base64 attachments are no longer processed by `process_attachments`,
-        # the following 'elif 'base64' in att:' block is no longer needed and can be removed.
-        # elif 'base64' in att:
-        #     try:
-        #         data_bytes = base64.b64decode(att['base64'])
-        #         if not mime_type or mime_type == 'application/octet-stream': # Re-guess if needed for base64
-        #             kind = filetype.guess(data_bytes)
-        #             if kind: mime_type = kind.mime
-        #             else: mime_type = 'application/octet-stream' # fallback
-        #         # Try to create a pseudo-name for base64 attachments
-        #         if not name:
-        #             name = f"base64_attachment_{mime_type.replace('/', '_')}"
-
-        #     except Exception as e:
-        #         print(f"Warning: Could not decode base64 attachment for LLM: {e}")
-        #         continue
         
         if data_bytes and mime_type:
             # The adapter will handle images. PDFs are generally not sent as raw bytes to Gemini chat models.
@@ -435,7 +397,8 @@ Inspired by Apple, Steve Jobs, Jony Ive, and Dieter Rams
 - For persistent data storage use local storage.
 
 ## Implementation Guidelines
-- ALWAYS use Tailwind CSS CDN
+- ALWAYS use Tailwind CSS CDN via script tag
+  Example: `<script src="https://cdn.tailwindcss.com"></script>`
 - Maintain code simplicity and elegance
 - Incorporate glassmorphism thoughtfully
 - Focus on minimalist solutions
@@ -443,12 +406,129 @@ Inspired by Apple, Steve Jobs, Jony Ive, and Dieter Rams
 - ALWAYS include appropriate meta tags and Open Graph tags for social sharing
 - NEVER use static image URLs, placeholder images, or third-party image services
 
+## JavaScript Libraries and Frameworks
+- **FIRST STEP: Always evaluate existing solutions** - Before writing any custom JavaScript functionality, think through if there are well-established libraries that already solve the problem
+- Don't reinvent the wheel - Leverage existing, tested, and maintained solutions rather than building from scratch
+- ALWAYS consider if JavaScript libraries would enhance the user experience or simplify implementation
+- Popular libraries to consider when relevant:
+  - **Three.js**: For 3D graphics, WebGL scenes, interactive 3D visualizations
+  - **Chart.js**: For data visualization, charts, graphs, and analytics dashboards
+  - **D3.js**: For complex data visualizations and interactive graphics
+  - **Anime.js**: For smooth animations and micro-interactions
+  - **Lottie**: For high-quality animations from After Effects
+  - **Particles.js**: For particle systems and background effects
+  - **AOS (Animate On Scroll)**: For scroll-triggered animations
+  - **Swiper.js**: For touch sliders, carousels, and galleries
+  - **GSAP**: For advanced animations and timeline control
+  - **Socket.io**: For real-time communication features
+  - **Marked.js**: For markdown parsing and rendering
+  - **Highlight.js**: For syntax highlighting of code blocks
+  - **QR Code libraries**: For generating QR codes
+  - **Canvas libraries**: For drawing, image manipulation, or creative tools
+  - **Sortable.js**: For drag-and-drop functionality
+  - **Moment.js/Day.js**: For date manipulation and formatting
+  - **Lodash**: For utility functions and data manipulation
+  - **Axios**: For HTTP requests and API calls
+  - **Toastify/Notyf**: For notifications and toast messages
+  - **SweetAlert2**: For beautiful alert dialogs and confirmations
+  - **Flatpickr**: For date/time pickers with extensive customization
+  - **Choices.js**: For enhanced select dropdowns and multi-select
+  - **Fuse.js**: For fuzzy search functionality
+  - **Clipboard.js**: For copy-to-clipboard functionality
+  - **Dropzone.js**: For drag-and-drop file uploads
+  - **Vanilla-tilt.js**: For tilt hover effects
+  - **Intersection Observer polyfill**: For scroll-based triggers
+  - **Masonry/Isotope**: For grid layouts and filtering
+  - **Lightbox libraries (Fancybox, GLightbox)**: For image galleries
+  - **Progress bars (NProgress, ProgressBar.js)**: For loading indicators
+  - **Color picker libraries (Pickr)**: For color selection interfaces
+  - **Rich text editors (Quill, TinyMCE)**: For content editing
+  - **PDF.js**: For displaying PDF documents in browser
+  - **Howler.js**: For audio playback and sound effects
+  - **Virtual scrolling libraries**: For handling large lists efficiently
+  - These are just a few examples, there are many more libraries that can be used.
+- **Decision Process**: 
+  1. Identify the functionality needed
+  2. Think if there are existing libraries that provide this functionality
+  3. Only write custom code if no suitable library exists or if the requirement is very simple
+- Include libraries via CDN for reliability and ease of implementation
+- Choose libraries that are:
+  - Well-maintained and widely used
+  - Lightweight and performant
+  - Compatible with mobile browsers
+  - Easy to implement without complex build processes
+- **Remember**: A few lines of library code can often replace hundreds of lines of custom implementation
+
 ## JavaScript Security and Escaping Guidelines
+
+### CRITICAL: Template Literal Syntax Rules
+**ALWAYS use proper template literal syntax to avoid JavaScript errors:**
+
+1. **Use backticks (`) for template literals, NOT escaped backticks (\`)**
+   - ✅ CORRECT: `Hello ${name}`
+   - ❌ WRONG: \`Hello \${name}\`
+
+2. **Use ${variable} for variable interpolation, NOT \${variable}**
+   - ✅ CORRECT: `The topic is ${topic}`
+   - ❌ WRONG: \`The topic is \${topic}\`
+
+3. **Common template literal patterns:**
+   ```javascript
+   // ✅ CORRECT examples:
+   const message = `Hello ${userName}!`;
+   const html = `<div class="item">${content}</div>`;
+   const url = `https://api.example.com/users/${userId}`;
+   img.alt = `Image for ${topic} - Item ${index}`;
+   
+   // ❌ WRONG examples (will cause syntax errors):
+   const message = \`Hello \${userName}!\`;
+   const html = \`<div class="item">\${content}</div>\`;
+   img.alt = \`Image for \${topic} - Item \${index}\`;
+   ```
+
+4. **When template literals contain HTML with quotes:**
+   ```javascript
+   // ✅ CORRECT:
+   element.innerHTML = `<p class="error">Error: ${errorMessage}</p>`;
+   
+   // ✅ CORRECT with mixed quotes:
+   element.innerHTML = `<p class='error'>Error: ${errorMessage}</p>`;
+   
+   // ❌ WRONG:
+   element.innerHTML = \`<p class="error">Error: \${errorMessage}</p>\`;
+   ```
+
+5. **Multi-line template literals:**
+   ```javascript
+   // ✅ CORRECT:
+   const template = `
+     <div class="card">
+       <h3>${title}</h3>
+       <p>${description}</p>
+     </div>
+   `;
+   
+   // ❌ WRONG:
+   const template = \`
+     <div class="card">
+       <h3>\${title}</h3>
+       <p>\${description}</p>
+     </div>
+   \`;
+   ```
+
+### Other JavaScript Security Guidelines
 - Escape closing script tags inside template literals or string literals by using <\/script> instead of </script>
 - Properly escape special characters in JavaScript strings and template literals:
   - Use \' for single quotes within single-quoted strings
   - Use \" for double quotes within double-quoted strings
   - Use \\ for backslashes
+
+### Template Literal Best Practices
+- Always use template literals for string interpolation instead of concatenation
+- Use template literals for multi-line strings
+- Be consistent with quote usage inside template literals
+- Test template literals in browser console if unsure about syntax
 
 ## SEO and Social Media Integration
 1. ALWAYS include these essential meta tags and Open Graph tags in the head:
@@ -475,6 +555,295 @@ OPTIMIZE FOR MOBILE FIRST design unless otherwise specified.
 2. Ensure NO horizontal scrolling occurs on any screen size
 3. Use flexible layouts that adapt to different screen sizes
 4. Implement appropriate touch targets and spacing for mobile users
+
+## Working with Visual References
+
+When images are provided as attachments, use them to:
+- **Design Recreation**: Analyze layouts, colors, typography, and component arrangements to recreate similar designs
+- **Visual Debugging**: Compare current implementation with reference images to identify and fix visual discrepancies  
+- **Style Matching**: Extract design patterns, color schemes, and visual elements to apply consistently
+- **Layout Analysis**: Study spacing, proportions, and visual hierarchy to improve the user interface
+- **Component Inspiration**: Identify UI elements, buttons, forms, and navigation patterns to implement
+- **Color Palette**: Extract colors from reference images and apply them to CSS variables and design elements
+- **Content Structure**: Understand how information is organized and presented in the reference
+
+Pay close attention to:
+- Specific UI components visible in the images
+- Color schemes and gradients used
+- Typography styles and font hierarchies  
+- Spacing and padding patterns
+- Interactive elements like buttons, forms, menus
+- Overall layout structure and responsive design
+- Visual effects like shadows, borders, animations
+
+When implementing based on visual references, describe what you see in the images and how you're translating those visual elements into working code.
+
+## Perfect Web App Template Example
+
+Here's a comprehensive example of a simple "Hello World" web application that meets ALL requirements:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Essential Meta Tags -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="description" content="A beautifully designed Hello World web application showcasing modern web development principles">
+    
+    <!-- Open Graph Tags for Social Media Sharing -->
+    <meta property="og:title" content="Hello World - Modern Web App">
+    <meta property="og:description" content="Experience a minimalist, Apple-inspired Hello World application with dark mode support">
+    <meta property="og:type" content="website">
+    
+    <!-- Favicon using SVG with emoji -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👋</text></svg>">
+    
+    <title>Hello World - Modern Web App</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Dark mode detection script -->
+    <script>
+        // On page load or when changing themes, best practice to add both dark class and colorScheme
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+            document.documentElement.style.colorScheme = 'dark';
+        } else {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.style.colorScheme = 'light';
+        }
+    </script>
+    
+    <!-- Custom Tailwind Configuration -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'sans': ['-apple-system', 'BlinkMacSystemFont', 'SF Pro Display', 'Segoe UI', 'Roboto', 'sans-serif'],
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.8s ease-in-out',
+                        'slide-up': 'slideUp 0.6s ease-out',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideUp {
+            from { 
+                opacity: 0; 
+                transform: translateY(20px); 
+            }
+            to { 
+                opacity: 1; 
+                transform: translateY(0); 
+            }
+        }
+        
+        /* Glassmorphism effect */
+        .glass {
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+        
+        .dark .glass {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900 transition-colors duration-300">
+    
+    <!-- Main Container -->
+    <div class="min-h-screen flex flex-col items-center justify-center px-4 py-8 relative overflow-hidden">
+        
+        <!-- Background decoration -->
+        <div class="absolute inset-0 overflow-hidden pointer-events-none">
+            <div class="absolute -top-40 -right-40 w-80 h-80 bg-purple-300 dark:bg-purple-600 rounded-full mix-blend-multiply dark:mix-blend-normal filter blur-xl opacity-20 animate-pulse"></div>
+            <div class="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-300 dark:bg-blue-600 rounded-full mix-blend-multiply dark:mix-blend-normal filter blur-xl opacity-20 animate-pulse animation-delay-2000"></div>
+        </div>
+        
+        <!-- Main Content Card -->
+        <main class="relative z-10 w-full max-w-md mx-auto">
+            <div class="glass rounded-3xl p-8 sm:p-10 shadow-2xl animate-fade-in">
+                
+                <!-- Header -->
+                <header class="text-center mb-8">
+                    <div class="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg animate-slide-up">
+                        <span class="text-3xl">👋</span>
+                    </div>
+                    
+                    <h1 class="text-3xl sm:text-4xl font-light text-gray-900 dark:text-white mb-3 animate-slide-up animation-delay-200">
+                        Hello World
+                    </h1>
+                    
+                    <p class="text-gray-600 dark:text-gray-300 text-lg font-light animate-slide-up animation-delay-400">
+                        Welcome to a beautifully crafted web experience
+                    </p>
+                </header>
+                
+                <!-- Content -->
+                <section class="text-center space-y-6">
+                    <div class="animate-slide-up animation-delay-600">
+                        <p class="text-gray-700 dark:text-gray-200 leading-relaxed">
+                            This application demonstrates modern web development principles with 
+                            <span class="font-medium text-blue-600 dark:text-blue-400">clean design</span>, 
+                            <span class="font-medium text-purple-600 dark:text-purple-400">responsive layout</span>, 
+                            and <span class="font-medium text-green-600 dark:text-green-400">accessibility</span>.
+                        </p>
+                    </div>
+                    
+                    <!-- Interactive Elements -->
+                    <div class="flex flex-col sm:flex-row gap-4 animate-slide-up animation-delay-800">
+                        <button 
+                            onclick="showMessage()"
+                            class="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-medium py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-lg hover:shadow-xl touch-manipulation"
+                        >
+                            Say Hello
+                        </button>
+                        
+                        <button 
+                            onclick="toggleTheme()"
+                            class="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-medium py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-lg hover:shadow-xl touch-manipulation"
+                            aria-label="Toggle dark mode"
+                        >
+                            <span class="dark:hidden">🌙 Dark</span>
+                            <span class="hidden dark:inline">☀️ Light</span>
+                        </button>
+                    </div>
+                </section>
+                
+                <!-- Message Display -->
+                <div id="message" class="hidden mt-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl text-green-800 dark:text-green-200 text-center animate-slide-up">
+                    <p class="font-medium">Hello from the modern web! 🎉</p>
+                </div>
+                
+            </div>
+        </main>
+        
+        <!-- Footer -->
+        <footer class="relative z-10 mt-8 text-center">
+            <p class="text-sm text-gray-500 dark:text-gray-400 animate-fade-in animation-delay-1000">
+                Built with ❤️ using modern web standards
+            </p>
+        </footer>
+        
+    </div>
+    
+    <script>
+        // Message interaction
+        function showMessage() {
+            const messageEl = document.getElementById('message');
+            messageEl.classList.remove('hidden');
+            
+            // Auto-hide after 3 seconds
+            setTimeout(() => {
+                messageEl.classList.add('hidden');
+            }, 3000);
+        }
+        
+        // Theme toggle functionality
+        function toggleTheme() {
+            const html = document.documentElement;
+            const isDark = html.classList.contains('dark');
+            
+            if (isDark) {
+                html.classList.remove('dark');
+                html.style.colorScheme = 'light';
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                html.style.colorScheme = 'dark';
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+        
+        // Restore theme preference on load
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme) {
+                if (savedTheme === 'dark') {
+                    document.documentElement.classList.add('dark');
+                    document.documentElement.style.colorScheme = 'dark';
+                } else {
+                    document.documentElement.classList.remove('dark');
+                    document.documentElement.style.colorScheme = 'light';
+                }
+            }
+        });
+        
+        // Add staggered animation delays
+        document.addEventListener('DOMContentLoaded', () => {
+            const elements = document.querySelectorAll('.animation-delay-200');
+            elements.forEach(el => el.style.animationDelay = '200ms');
+            
+            const elements400 = document.querySelectorAll('.animation-delay-400');
+            elements400.forEach(el => el.style.animationDelay = '400ms');
+            
+            const elements600 = document.querySelectorAll('.animation-delay-600');
+            elements600.forEach(el => el.style.animationDelay = '600ms');
+            
+            const elements800 = document.querySelectorAll('.animation-delay-800');
+            elements800.forEach(el => el.style.animationDelay = '800ms');
+            
+            const elements1000 = document.querySelectorAll('.animation-delay-1000');
+            elements1000.forEach(el => el.style.animationDelay = '1000ms');
+        });
+        
+        // Accessibility: Respect reduced motion preferences
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            document.documentElement.style.setProperty('--animation-duration', '0.01ms');
+        }
+        
+        // Touch-friendly interactions for mobile
+        const buttons = document.querySelectorAll('button');
+        buttons.forEach(button => {
+            button.addEventListener('touchstart', () => {
+                button.style.transform = 'scale(0.95)';
+            });
+            
+            button.addEventListener('touchend', () => {
+                setTimeout(() => {
+                    button.style.transform = '';
+                }, 100);
+            });
+        });
+    </script>
+    
+</body>
+</html>
+```
+
+This example demonstrates:
+- ✅ Tailwind CSS CDN implementation
+- ✅ System-based dark mode with manual toggle
+- ✅ Mobile-first responsive design
+- ✅ Apple-inspired minimalist aesthetics
+- ✅ Proper meta tags and Open Graph
+- ✅ SVG emoji favicon
+- ✅ Glassmorphism effects
+- ✅ Smooth animations and micro-interactions
+- ✅ Touch-friendly buttons for mobile
+- ✅ Accessibility considerations
+- ✅ No horizontal scrolling
+- ✅ Progressive enhancement
+- ✅ Clean, purposeful design
+- ✅ CORRECT template literal syntax
+
+Use this as a reference template for creating web applications that meet all requirements.
 
 # Calling Backend MCP Tools from JavaScript
 
@@ -537,11 +906,206 @@ async function callTool(toolName, args = {}) {
     }
 }
 
-// Usage examples:
+// Usage examples with CORRECT template literal syntax:
 // const images = await callTool('generate_images_with_prompts', {prompts: ['a cat', 'a dog']});
 // const analysis = await callTool('analyze_images', {urls: ['http://...'], analysis_prompt: 'What is this?'});
 // const webApp = await callTool('create_web_app', {description: 'A todo app', mcp_tool_names: ['save_file']});
 ```
+
+## AI Chat Integration
+
+Web applications can integrate conversational AI using the `ai_chat` tool. This enables powerful AI-powered features like chatbots, content generation, code assistance, and data analysis.
+
+**AI Chat Helper Function:**
+```javascript
+// AI Chat Helper - Add this to web apps that need AI capabilities
+async function chatWithAI(userMessage, options = {}) {
+    const {
+        systemPrompt = null,
+        model = 'gemini-2.5-flash-preview-05-20',
+        includeThoughts = false,
+        jsonSchema = null  // NEW: Optional JSON schema for structured responses
+    } = options;
+    
+    try {
+        const response = await fetch('/internal/call_mcp_tool', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tool_name: 'ai_chat',
+                arguments: {
+                    messages: userMessage,
+                    system_prompt: systemPrompt,
+                    model: model,
+                    include_thoughts: includeThoughts,
+                    json_schema: jsonSchema  // NEW: Pass JSON schema
+                }
+            })
+        });
+        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const data = await response.json();
+        if (data.error && data.error !== "None" && data.error !== null) {
+            throw new Error(data.error);
+        }
+        
+        // Handle ai_chat result - it's already parsed JSON, not a string
+        let result;
+        if (typeof data.result === 'string') {
+            try {
+                result = JSON.parse(data.result);
+            } catch {
+                result = { status: 'error', message: 'Invalid JSON response' };
+            }
+        } else {
+            result = data.result; // Already an object
+        }
+        
+        if (result.status === 'error') {
+            throw new Error(result.message);
+        }
+        
+        // IMPORTANT: result.response is already parsed when using json_schema
+        // Do NOT call JSON.parse() on it again - it's already an object
+        return result.response; // Return the AI's response (text or structured JSON)
+        
+    } catch (error) {
+        console.error('AI chat failed:', error);
+        throw error;
+    }
+}
+
+// Advanced AI Chat with conversation history
+async function chatWithAIAdvanced(messages, options = {}) {
+    const {
+        systemPrompt = null,
+        model = 'gemini-2.5-flash-preview-05-20',
+        includeThoughts = false
+    } = options;
+    
+    // Convert message array to conversation format if needed
+    let conversationText = '';
+    if (Array.isArray(messages)) {
+        conversationText = messages.map(msg => 
+            `${msg.role || 'user'}: ${msg.content}`
+        ).join('\n');
+    } else {
+        conversationText = messages;
+    }
+    
+    return await chatWithAI(conversationText, options);
+}
+
+// Usage examples with CORRECT template literal syntax:
+// Simple AI chat (returns string)
+// const response = await chatWithAI("Hello, how are you?");
+// console.log(typeof response); // "string"
+
+// AI with custom system prompt (returns string)
+// const response = await chatWithAI("Analyze this data", {
+//     systemPrompt: "You are a data analysis expert. Provide clear insights.",
+//     model: "gemini-2.5-pro-preview-05-06"
+// });
+
+// Structured JSON response (returns object - DO NOT parse again!)
+// const analysisResult = await chatWithAI("Analyze this image", {
+//     jsonSchema: {
+//         type: "object",
+//         properties: {
+//             analysis: { type: "string" },
+//             confidence: { type: "number" }
+//         }
+//     }
+// });
+// console.log(typeof analysisResult); // "object"
+// console.log(analysisResult.analysis); // Direct access - already parsed!
+
+// Multi-turn conversation
+// const conversation = [
+//     { role: 'user', content: 'What is Python?' },
+//     { role: 'assistant', content: 'Python is a programming language...' },
+//     { role: 'user', content: 'Show me a simple example' }
+// ];
+// const response = await chatWithAIAdvanced(conversation);
+
+// Code assistance
+// const codeHelp = await chatWithAI("Write a function to sort an array", {
+//     systemPrompt: "You are a helpful coding assistant. Provide clean, well-commented code.",
+//     model: "claude-3-7-sonnet-latest"
+// });
+
+// NEW: Structured JSON responses with schema
+// Extract structured data from text
+// const userInfo = await chatWithAI("My name is John, I'm 25 years old, and I live in New York", {
+//     jsonSchema: {
+//         type: "object",
+//         properties: {
+//             name: { type: "string" },
+//             age: { type: "number" },
+//             location: { type: "string" }
+//         },
+//         required: ["name", "age", "location"]
+//     }
+// });
+// // Returns: { name: "John", age: 25, location: "New York" }
+
+// Generate structured content
+// const blogPost = await chatWithAI("Write a blog post about AI", {
+//     jsonSchema: {
+//         type: "object",
+//         properties: {
+//             title: { type: "string" },
+//             summary: { type: "string" },
+//             content: { type: "string" },
+//             tags: { type: "array", items: { type: "string" } },
+//             readTime: { type: "number" }
+//         },
+//         required: ["title", "content"]
+//     }
+// });
+
+// Form validation and processing
+// const formAnalysis = await chatWithAI("Check if this email is valid: test@example.com", {
+//     jsonSchema: {
+//         type: "object",
+//         properties: {
+//             isValid: { type: "boolean" },
+//             issues: { type: "array", items: { type: "string" } },
+//             suggestions: { type: "string" }
+//         },
+//         required: ["isValid"]
+//     }
+// });
+
+// Data analysis with structured output
+// const analysis = await chatWithAI("Analyze this sales data: [100, 200, 150, 300]", {
+//     jsonSchema: {
+//         type: "object",
+//         properties: {
+//             total: { type: "number" },
+//             average: { type: "number" },
+//             trend: { type: "string", enum: ["increasing", "decreasing", "stable"] },
+//             insights: { type: "array", items: { type: "string" } }
+//         },
+//         required: ["total", "average", "trend"]
+//     }
+// });
+```
+
+**AI Chat Use Cases:**
+- **Chatbots**: Customer service, FAQ answering, general conversation
+- **Content Generation**: Blog posts, product descriptions, creative writing
+- **Code Assistants**: Explain code, generate functions, debug help
+- **Data Analysis**: Analyze uploaded data, generate insights and reports
+- **Smart Forms**: AI-powered form validation and intelligent suggestions
+- **Educational Tools**: Tutoring, explanations, interactive learning
+- **Creative Tools**: Story writing, brainstorming, idea generation
+- **Language Translation**: Real-time translation between languages
+- **Technical Support**: Troubleshooting, documentation assistance
+- **Structured Data Extraction**: Extract specific information from text into JSON format
+- **Form Processing**: Validate and process form data with AI intelligence
+- **API Response Generation**: Create structured API responses based on user queries
 
 Use this pattern to enable dynamic interactions with backend tools. Make sure your JavaScript handles the asynchronous nature of these calls and updates the web page appropriately.
 
@@ -549,7 +1113,10 @@ ALWAYS BE SURE TO SUPPORT BOTH ANDROID AND APPLE PHONES EVERYTIME. THIS IS VERY 
 
 Create a complete implementation that captures the essence of the user's request. Make it beautiful and modern.
 
-You must format the output as a complete HTML document like this:
+ALWAYS BE SURE TO SUPPORT BOTH ANDROID AND APPLE PHONES EVERYTIME. THIS IS VERY IMPORTANT TO BE SURE THAT ANDROID COMPATIBILITY IS INCLUDED.
+"""
+
+WEB_APP_PROMPT_OUTPUT_FORMAT = """You must format the output as a complete HTML document like this:
 
 Output Format Example:
 webapp.html
@@ -563,457 +1130,39 @@ webapp.html
 <body>
     <!-- Complete HTML content here -->
     <script>
-    // JavaScript here
+    // JavaScript here - ALWAYS use proper template literal syntax:
+    // ✅ CORRECT: `Hello ${name}`
+    // ❌ WRONG: \`Hello \${name}\`
     </script>
 </body>
 </html>
 ```
 
-VERY IMPORTANT: You MUST return ONLY the complete HTML code inside a single Markdown code block (triple backticks). Do NOT include any explanations, comments, or text outside the code block. The code block should start with ```html and contain the full HTML document.
-
-# AI-Powered Structured Content Generation
-
-The web application can leverage AI to generate arbitrary structured content using the `ai_sample` MCP tool with JSON schema validation. This enables creating dynamic, AI-generated content that follows specific formats.
-
-## Using ai_sample Tool for Structured AI Content
-
-When you need the AI to generate content in a specific structure, you can use the `ai_sample` tool with a JSON schema to enforce the output format:
-
-**Basic Syntax:**
-```javascript
-// Method 1: Generate structured content with JSON schema
-async function sampleAI(prompt, schema = null, systemPrompt = null, model = "gemini-2.5-flash-preview-05-20") {
-    try {
-        const result = await callTool('ai_sample', {
-            messages: prompt,
-            json_schema: schema,
-            system_prompt: systemPrompt,
-            model: model
-        });
-        
-        if (result.status === 'error') {
-            throw new Error(result.error);
-        }
-        
-        return result.result;
-    } catch (error) {
-        console.error('AI sampling failed:', error);
-        throw error;
-    }
-}
-
-// Method 2: Simple text generation without schema
-const simpleText = await callTool('ai_sample', {
-    messages: "Write a creative story about a robot",
-    model: "gemini-2.5-flash-preview-05-20"
-});
-```
-
-## Practical Examples
-
-**Example 1: Generate User Profiles**
-```javascript
-async function generateUserProfile() {
-    const profileSchema = {
-        "type": "object",
-        "properties": {
-            "name": {"type": "string"},
-            "age": {"type": "number", "minimum": 18, "maximum": 65},
-            "email": {"type": "string", "format": "email"},
-            "skills": {"type": "array", "items": {"type": "string"}},
-            "experience_years": {"type": "number"},
-            "bio": {"type": "string"}
-        },
-        "required": ["name", "age", "email", "skills", "experience_years"]
-    };
-    
-    const profile = await callTool('ai_sample', {
-        messages: "Generate a realistic user profile for a tech professional",
-        json_schema: profileSchema
-    });
-    
-    if (profile.status === 'success') {
-        // Use the structured result
-        document.getElementById('profile-name').textContent = profile.result.name;
-        document.getElementById('profile-email').textContent = profile.result.email;
-        profile.result.skills.forEach(skill => {
-            const skillElement = document.createElement('span');
-            skillElement.textContent = skill;
-            document.getElementById('skills-container').appendChild(skillElement);
-        });
-    }
-}
-```
-
-**Example 2: Generate Product Listings**
-```javascript
-async function generateProducts(category) {
-    const productsSchema = {
-        "type": "object",
-        "properties": {
-            "products": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "price": {"type": "number"},
-                        "description": {"type": "string"},
-                        "rating": {"type": "number", "minimum": 1, "maximum": 5},
-                        "inStock": {"type": "boolean"}
-                    },
-                    "required": ["name", "price", "description", "rating", "inStock"]
-                }
-            }
-        },
-        "required": ["products"]
-    };
-    
-    const result = await callTool('ai_sample', {
-        messages: `Generate 5 ${category} products with realistic details`,
-        json_schema: productsSchema
-    });
-    
-    if (result.status === 'success') {
-        // Render products in the UI
-        const container = document.getElementById('products-container');
-        result.result.products.forEach(product => {
-            const productElement = document.createElement('div');
-            productElement.className = 'product-card p-4 border rounded-lg';
-            productElement.innerHTML = `
-                <h3 class="text-lg font-semibold">${product.name}</h3>
-                <p class="text-xl text-green-600">$${product.price}</p>
-                <p class="text-gray-600">${product.description}</p>
-                <div class="flex justify-between items-center mt-2">
-                    <div>Rating: ${product.rating}/5 ⭐</div>
-                    <div class="${product.inStock ? 'text-green-600' : 'text-red-600'}">
-                        ${product.inStock ? 'In Stock' : 'Out of Stock'}
-                    </div>
-                </div>
-            `;
-            container.appendChild(productElement);
-        });
-    }
-}
-```
-
-**Example 3: Generate Dynamic Form Fields**
-```javascript
-async function generateFormData(formType) {
-    const formSchema = {
-        "type": "object",
-        "properties": {
-            "fields": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "id": {"type": "string"},
-                        "label": {"type": "string"},
-                        "type": {"type": "string", "enum": ["text", "email", "number", "select", "textarea"]},
-                        "placeholder": {"type": "string"},
-                        "required": {"type": "boolean"},
-                        "options": {"type": "array", "items": {"type": "string"}}
-                    },
-                    "required": ["id", "label", "type", "required"]
-                }
-            }
-        },
-        "required": ["fields"]
-    };
-    
-    const result = await callTool('ai_sample', {
-        messages: `Generate realistic ${formType} form fields`,
-        json_schema: formSchema
-    });
-    
-    if (result.status === 'success') {
-        // Dynamically create form
-        const form = document.getElementById('dynamic-form');
-        result.result.fields.forEach(field => {
-            const fieldElement = createFormField(field);
-            form.appendChild(fieldElement);
-        });
-    }
-}
-
-function createFormField(field) {
-    const div = document.createElement('div');
-    div.className = 'mb-4';
-    
-    const label = document.createElement('label');
-    label.textContent = field.label;
-    label.className = 'block text-sm font-medium mb-2';
-    
-    let input;
-    if (field.type === 'select') {
-        input = document.createElement('select');
-        field.options?.forEach(option => {
-            const optionElement = document.createElement('option');
-            optionElement.value = option;
-            optionElement.textContent = option;
-            input.appendChild(optionElement);
-        });
-    } else if (field.type === 'textarea') {
-        input = document.createElement('textarea');
-        input.rows = 4;
-    } else {
-        input = document.createElement('input');
-        input.type = field.type;
-    }
-    
-    input.id = field.id;
-    input.name = field.id;
-    input.placeholder = field.placeholder || '';
-    input.required = field.required;
-    input.className = 'w-full p-2 border border-gray-300 rounded-md';
-    
-    div.appendChild(label);
-    div.appendChild(input);
-    return div;
-}
-```
-
-**Example 4: Generate Chart Data**
-```javascript
-async function generateChartData(chartType, topic) {
-    const chartSchema = {
-        "type": "object",
-        "properties": {
-            "title": {"type": "string"},
-            "labels": {"type": "array", "items": {"type": "string"}},
-            "datasets": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "label": {"type": "string"},
-                        "data": {"type": "array", "items": {"type": "number"}},
-                        "backgroundColor": {"type": "string"},
-                        "borderColor": {"type": "string"}
-                    },
-                    "required": ["label", "data"]
-                }
-            }
-        },
-        "required": ["title", "labels", "datasets"]
-    };
-    
-    const result = await callTool('ai_sample', {
-        messages: `Generate realistic ${chartType} chart data for ${topic}`,
-        json_schema: chartSchema
-    });
-    
-    if (result.status === 'success') {
-        // Use with Chart.js or similar
-        new Chart(document.getElementById('myChart'), {
-            type: chartType,
-            data: {
-                labels: result.result.labels,
-                datasets: result.result.datasets
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: result.result.title
-                    }
-                }
-            }
-        });
-    }
-}
-```
-
-**Example 5: Generate Creative Content**
-```javascript
-async function generateCreativeContent() {
-    // Without schema - returns text
-    const story = await callTool('ai_sample', {
-        messages: "Write a short science fiction story about time travel",
-        system_prompt: "You are a creative writer who specializes in engaging, plot-driven science fiction."
-    });
-    
-    if (story.status === 'success') {
-        document.getElementById('story-content').textContent = story.result;
-    }
-    
-    // With schema - returns structured content
-    const blogPost = await callTool('ai_sample', {
-        messages: "Create a blog post about renewable energy",
-        json_schema: {
-            "type": "object",
-            "properties": {
-                "title": {"type": "string"},
-                "introduction": {"type": "string"},
-                "sections": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "heading": {"type": "string"},
-                            "content": {"type": "string"}
-                        }
-                    }
-                },
-                "conclusion": {"type": "string"},
-                "tags": {"type": "array", "items": {"type": "string"}}
-            }
-        }
-    });
-    
-    if (blogPost.status === 'success') {
-        const post = blogPost.result;
-        document.getElementById('blog-title').textContent = post.title;
-        document.getElementById('blog-intro').textContent = post.introduction;
-        
-        const sectionsContainer = document.getElementById('blog-sections');
-        post.sections.forEach(section => {
-            const sectionDiv = document.createElement('div');
-            sectionDiv.innerHTML = `
-                <h3 class="text-lg font-semibold mb-2">${section.heading}</h3>
-                <p class="mb-4">${section.content}</p>
-            `;
-            sectionsContainer.appendChild(sectionDiv);
-        });
-        
-        document.getElementById('blog-conclusion').textContent = post.conclusion;
-    }
-}
-```
-
-## Advanced Schema Features
-
-You can use advanced JSON Schema features for more sophisticated validation:
-
-```javascript
-// Complex nested structures
-const complexSchema = {
-    "type": "object",
-    "properties": {
-        "user": {
-            "type": "object",
-            "properties": {
-                "profile": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "settings": {
-                            "type": "object",
-                            "properties": {
-                                "theme": {"type": "string", "enum": ["light", "dark"]},
-                                "notifications": {"type": "boolean"}
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "data": {
-            "type": "array",
-            "items": {
-                "anyOf": [
-                    {"type": "string"},
-                    {"type": "number"},
-                    {"type": "object"}
-                ]
-            }
-        }
-    }
-};
-
-// String patterns and formats
-const validationSchema = {
-    "type": "object",
-    "properties": {
-        "email": {"type": "string", "format": "email"},
-        "phone": {"type": "string", "pattern": "^\\+?[1-9]\\d{1,14}$"},
-        "website": {"type": "string", "format": "uri"},
-        "age": {"type": "number", "minimum": 0, "maximum": 120}
-    }
-};
-
-// Use the complex schema
-const complexData = await callTool('ai_sample', {
-    messages: "Generate user data with settings",
-    json_schema: complexSchema
-});
-```
-
-## Integration Tips
-
-1. **Error Handling**: Always check `result.status` and handle errors gracefully
-2. **Loading States**: Show loading indicators while AI generates content
-3. **Fallbacks**: Provide default content if AI generation fails
-4. **Caching**: Cache generated content when appropriate to avoid re-generation
-5. **User Feedback**: Allow users to regenerate content if not satisfied
-6. **Progressive Enhancement**: Start with static content, then enhance with AI-generated content
-
-```javascript
-// Example with proper error handling and loading states
-async function generateWithFeedback() {
-    const loadingElement = document.getElementById('loading');
-    const contentElement = document.getElementById('content');
-    const errorElement = document.getElementById('error');
-    
-    try {
-        loadingElement.style.display = 'block';
-        errorElement.style.display = 'none';
-        
-        const result = await callTool('ai_sample', {
-            messages: "Generate product recommendations",
-            json_schema: {
-                "type": "object",
-                "properties": {
-                    "recommendations": {
-                        "type": "array",
-                        "items": {"type": "string"}
-                    }
-                }
-            }
-        });
-        
-        if (result.status === 'success') {
-            contentElement.innerHTML = result.result.recommendations
-                .map(rec => `<li>${rec}</li>`)
-                .join('');
-        } else {
-            throw new Error(result.error);
-        }
-        
-    } catch (error) {
-        errorElement.textContent = `Failed to generate content: ${error.message}`;
-        errorElement.style.display = 'block';
-    } finally {
-        loadingElement.style.display = 'none';
-    }
-}
-```
-
-This structured approach enables creating highly dynamic web applications where AI can generate content in predictable, usable formats through the server-side `ai_sample` tool.
-
-ALWAYS BE SURE TO SUPPORT BOTH ANDROID AND APPLE PHONES EVERYTIME. THIS IS VERY IMPORTANT TO BE SURE THAT ANDROID COMPATIBILITY IS INCLUDED.
+## HTML Output Format
+When generating HTML code, use standard markdown formatting:
+- Wrap your HTML in ```html code blocks
+- Include any brief explanations before or after the code block as needed
+- The system will automatically extract and parse the HTML content from the code blocks
 """
 
 @mcp.tool()
 async def create_web_app(
     ctx: Context,
+    project_spec: Annotated[str, Field(
+        description="A detailed description/specification of the web application to create. This should describe the functionality, features, design requirements, and any specific needs. The AI will use this to generate the complete HTML application."
+    )],
     user_number: Annotated[str, Field(
         description="The user's unique identifier (e.g., phone number), used for directory structuring. This is typically provided by the backend system and should not be solicited from the end-user by the LLM."
     )] = "+17145986105",
     app_name: Annotated[Optional[str], Field(
         description="The desired name for the web application. If not provided, a relevant name will be automatically generated. Use underscores for spaces (e.g., 'my_cool_app'). The LLM should choose a short, concise name relevant to the request if one isn't given by the user."
-    )] = None,
+    )] = None, 
     attachments: Annotated[Optional[List[str]], Field(
         description="A list of attachment URLs. These will be processed and potentially included or referenced in the web application. Provide the full URLS here."
     )] = None,
-    user_request: Annotated[Optional[str], Field(
-        description="The user's exact request as they stated it, without any technical details or modifications. The powerful AI will handle all technical implementation."
-    )] = None,
     model: Annotated[MODELS_LITERAL, Field(
-        description="The LLM model to use for HTML generation. If user does not specify, use gemini-2.5-flash-preview-05-20"
-    )] = "gemini-2.5-flash-preview-05-20",
+        description="The LLM model to use for HTML generation. If user does not specify, use gemini-2.5-pro-preview-05-06."
+    )] = "gemini-2.5-pro-preview-05-06",
     mcp_tool_names: Annotated[Optional[List[str]], Field(
         description="Pass a list of relevant MCP tool names that the generated web application should use. The system will fetch their schemas.",
         default=None
@@ -1024,35 +1173,42 @@ async def create_web_app(
     )] = None
 ) -> dict:
     """
-    Creates a custom web application based on user specifications and provided attachments.
-    The tool generates HTML content and hosts it, returning a URL to the created web app.
-
-    IMPORTANT: The LLM calling this tool does NOT need to specify web design, layout, or detailed implementation instructions.
-    The underlying system prompt (WEB_APP_PROMPT) is highly capable and will handle all aspects of web app generation,
-    including design, interactivity, and advanced features. The LLM should focus on conveying the user's core request,
-    any relevant contextual information, and attachments. Avoid adding prescriptive instructions on *how* to build or
-    style the web app, unless these are specific, explicit user requirements.
+    Creates a custom web application from a project specification using AI generation.
     
-    Caller of this tool is simply routing the user's request to this MCP service. If user requests a web app just route the request to this tool.
+    This tool:
+    - Takes a project specification describing the desired web application
+    - Uses AI to generate complete HTML content based on the specification
+    - Sets up directory structure and versioning
+    - Creates metadata and commit summaries
+    - Handles attachments and MCP tool integration
+    
+    The AI generation follows modern web development best practices including:
+    - Mobile-first responsive design
+    - Dark mode support
+    - Apple-inspired aesthetics
+    - Tailwind CSS styling
+    - JavaScript interactivity
+    - MCP tool integration when requested
 
     Returns:
         dict: A dictionary with the following structure:
+        
+        For successful implementation:
         {
-            "status": str,      # "success" or "error"
-            "message": str,     # Human-readable description of the result
-            "url": str          # URL to access the created web app (only on success)
+            "status": "success",
+            "message": str,
+            "url": str,
+            "app_name": str,
+            "html_content": str
         }
         
-        On success:
-        - status: "success"
-        - message: Confirmation message with app name and URL
-        - url: Direct URL to access the web application
-        
-        On error:
-        - status: "error"
-        - message: Description of the error that occurred
-        - url: Not present
+        For errors:
+        {
+            "status": "error",
+            "message": str
+        }
     """
+    print("DEBUG: INSIDE OF CREATE_WEB_APP - Generating web app from project specification")
     # Use default user number if empty
     if not user_number or user_number == "--user_number_not_needed--":
         user_number = "+17145986105" # Default user_id
@@ -1062,13 +1218,18 @@ async def create_web_app(
     app_name = app_name or f"web-app-{str(uuid.uuid4())[:8]}"
     app_name_safe = sanitize_for_path(app_name)
 
+    # Use project_spec as the main context
+    main_request = project_spec  # Use the project specification directly
+
+    # --- IMPLEMENTATION PHASE ---
+    print(f"Proceeding with AI generation for '{app_name_safe}' based on project specification.")
+
     # --- Attachment Handling ---
-    # Simplified: just use URLs directly instead of processing them
     attachment_info_for_prompt = []
+    attachment_parts = []
     if attachments and isinstance(attachments, list):
         for url in attachments:
             if isinstance(url, str) and url.startswith(('http://', 'https://')):
-                # Infer type from file extension or assume image
                 if url.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg')):
                     mime_type = 'image/*'
                 elif url.lower().endswith('.pdf'):
@@ -1076,787 +1237,248 @@ async def create_web_app(
                 else:
                     mime_type = 'unknown'
                 attachment_info_for_prompt.append({"url": url, "mime_type": mime_type})
-            else:
-                print(f"Skipping invalid URL: {url}")
-
-    # --- Prepare LLM Call ---
-    adapter = get_llm_adapter(model_name=model)
-
-    # Use user_request as the main context
-    main_request = user_request or ""
-
-    # --- Dynamically construct the system prompt for web app generation ---
-    # Start with the base WEB_APP_PROMPT
-    current_web_app_system_prompt = WEB_APP_PROMPT # Assuming WEB_APP_PROMPT is globally available
-    current_web_app_system_prompt += "\n\nNote: An `additional_context` field might be passed to you along with the user's primary request. This context MUST be a string that you (the LLM) have synthesized from relevant information (e.g., previous search results, or API documentation) to inform the web app's content and features. Do not expect this field to be auto-populated with complex objects via @@ref syntax; you are responsible for crafting this string context."
-
-    # Append attachment information and instructions if attachments are present
-    if attachment_info_for_prompt:
-        current_web_app_system_prompt += "\n\n# Attached Files for Web App Inclusion\n"
-        current_web_app_system_prompt += "The following files are provided. You MUST incorporate them into the web application as appropriate:\n"
-        for idx, att_info in enumerate(attachment_info_for_prompt):
-            current_web_app_system_prompt += f"- File {idx+1}: URL: {att_info['url']}, Type: {att_info['mime_type']}\n"
-            if att_info['mime_type'].startswith('image'):
-                current_web_app_system_prompt += f"  Instruction: Embed this image using an `<img>` tag. Use its URL as the `src` attribute. You may add relevant alt text and captions.\n"
-            elif att_info['mime_type'] == 'application/pdf':
-                current_web_app_system_prompt += f"  Instruction: Provide a link to this PDF document. Do not attempt to embed its content directly.\n"
-            else:
-                current_web_app_system_prompt += f"  Instruction: Reference or link to this file as appropriate for its type.\n"
-        current_web_app_system_prompt += "\nEnsure all referenced attachments are displayed or linked correctly in the final HTML."
-
-    # --- Fetch and Append available MCP tools information if mcp_tool_names are provided ---
-    if mcp_tool_names:
-        tool_schemas_context = ""
-        try:
-            # Use the new comprehensive tools endpoint that includes output_schema
-            mcp_service_tools_url = f"http://localhost:5001/tools/all"
-            
-            # Using requests synchronously for simplicity within this async function.
-            # Consider using an async HTTP client like aiohttp if this becomes a bottleneck.
-            response = await asyncio.to_thread(requests.get, mcp_service_tools_url, timeout=10)
-            response.raise_for_status() # Raise an exception for HTTP errors
-            all_tools_data = response.json() # Expects JSON like {"tools": [...], "count": ...}
-            
-            available_tools_details = all_tools_data.get("tools", [])
-            
-            if available_tools_details:
-                tool_schemas_context += "\n\n# Available MCP System Tools\n"
-                tool_schemas_context += "The broader system has access to the following tools. You can design the web application to leverage these capabilities by making HTTP POST requests to `/internal/call_mcp_tool` as described in the system prompt. Each tool below includes its complete input and output schemas:\n"
                 
-                matched_tools_count = 0
-                for tool_detail in available_tools_details:
-                    if tool_detail.get("name") in mcp_tool_names:
-                        tool_schemas_context += f"\n## Tool: {tool_detail.get('name')}\n"
-                        tool_schemas_context += f"   Description: {tool_detail.get('description')}\n"
-                        tool_schemas_context += f"   Input Schema: {json.dumps(tool_detail.get('input_schema', {}), indent=2)}\n"
-                        
-                        # Include output schema if available
-                        output_schema = tool_detail.get('output_schema')
-                        if output_schema:
-                            tool_schemas_context += f"   Output Schema: {json.dumps(output_schema, indent=2)}\n"
-                            tool_schemas_context += f"   Note: This tool returns structured data matching the output schema above.\n"
-                        else:
-                            tool_schemas_context += f"   Output Schema: Not defined (tool may return plain text or unstructured data)\n"
-                        
-                        # Add usage example for calling this tool
-                        tool_schemas_context += f"   JavaScript Usage Example:\n"
-                        tool_schemas_context += f"   ```javascript\n"
-                        tool_schemas_context += f"   // Call {tool_detail.get('name')} tool\n"
-                        tool_schemas_context += f"   const result = await callTool(\n"
-                        tool_schemas_context += f"       '{tool_detail.get('name')}',\n"
-                        tool_schemas_context += f"       {{ /* your arguments matching input schema */ }}\n"
-                        tool_schemas_context += f"   );\n"
-                        if output_schema:
-                            tool_schemas_context += f"   // result will be a parsed object matching the output schema above\n"
-                            if 'properties' in output_schema:
-                                example_props = list(output_schema['properties'].keys())[:3]  # Show first 3 properties
-                                for prop in example_props:
-                                    prop_desc = output_schema['properties'][prop].get('description', 'see schema above')
-                                    tool_schemas_context += f"   // result.{prop} - {prop_desc}\n"
-                            tool_schemas_context += f"   console.log('Tool result:', result);\n"
-                        else:
-                            tool_schemas_context += f"   // result will be the tool's output (format not specified)\n"
-                            tool_schemas_context += f"   console.log('Tool result:', result);\n"
-                        tool_schemas_context += f"   ```\n"
-                        
-                        matched_tools_count += 1
-                        
-                if matched_tools_count == 0:
-                    tool_schemas_context += "No specific tools from the provided list were found available. General tool interaction patterns can still be used if applicable tools are known by other means.\n"
+                # Download attachment for AI processing
+                attachment_part = await download_and_create_attachment_part(url)
+                if attachment_part:
+                    attachment_parts.append(attachment_part)
             else:
-                tool_schemas_context += "\n\n# Available MCP System Tools\nNo tools were found available via the MCP service tool listing.\n"
-        except requests.exceptions.RequestException as e:
-            tool_schemas_context += f"\n\n# Available MCP System Tools\nError fetching tool schemas: {str(e)}. Proceeding without specific tool context.\n"
-        except json.JSONDecodeError as e:
-            tool_schemas_context += f"\n\n# Available MCP System Tools\nError parsing tool schemas from MCP service: {str(e)}. Proceeding without specific tool context.\n"
-        except Exception as e: # Catch any other unexpected error during schema fetching
-            tool_schemas_context += f"\n\n# Available MCP System Tools\nAn unexpected error occurred while fetching tool schemas: {str(e)}. Proceeding without specific tool context.\n"
+                print(f"Skipping invalid URL in attachments: {url}")
 
-        current_web_app_system_prompt += tool_schemas_context
+    # --- Tool Schema Context ---
+    tool_schemas_context = ""
+    if mcp_tool_names:
+        tool_schemas_context = await fetch_tool_schemas_for_tools(mcp_tool_names)
 
-
-    # Original prompt construction for the user message partx
-    prompt_text = f"Create a web app titled '{app_name}'.\n\n**User Request:**\n{main_request}"
-    
-    if additional_context:
-        prompt_text += f"\n\n**Additional Context to Consider:**\n{additional_context}"
-
+    # --- AI Generation using ctx.sample ---
     try:
-        print(f"Starting LLM call for web app '{app_name_safe}'. Model: {model}. Prompt length: {len(prompt_text)} characters. System prompt length: {len(current_web_app_system_prompt)} characters.")
+        # Build comprehensive prompt
+        prompt_parts = []
         
-        # Add a timeout wrapper around the ctx.sample call
-        import asyncio
+        # Add the main project specification
+        prompt_parts.append(f"Create a web application based on this specification:\n{project_spec}")
         
-        async def sample_with_timeout():
-            return await ctx.sample(
-                messages=prompt_text,
-                system_prompt=current_web_app_system_prompt,
-                model_preferences=[model]
-            )
+        # Add attachment context if available
+        if attachment_info_for_prompt:
+            attachment_context = "\n\nAttachments provided:\n"
+            for att in attachment_info_for_prompt:
+                attachment_context += f"- {att['url']} (type: {att['mime_type']})\n"
+            prompt_parts.append(attachment_context)
         
-        # 120 second timeout for complex web app generation
-        llm_response_content = await asyncio.wait_for(sample_with_timeout(), timeout=120.0)
+        # Add tool integration context if available
+        if tool_schemas_context:
+            prompt_parts.append(tool_schemas_context)
         
-        print(f"LLM call completed successfully for web app '{app_name_safe}'.")
+        # Add additional context if provided
+        if additional_context:
+            prompt_parts.append(f"\nAdditional Context:\n{additional_context}")
         
-        # Extract text from the response content
-        if hasattr(llm_response_content, 'text'):
-            response_text = llm_response_content.text
+        # Add output format instruction
+        prompt_parts.append("\nProvide the complete HTML application as a single file, wrapped in ```html code blocks.")
+        
+        final_prompt = "\n".join(prompt_parts)
+        
+        print(f"Generating web app with model: {model}")
+        print(f"Prompt length: {len(final_prompt)} characters")
+        
+        # Use ctx.sample to generate the web app
+        response = await ctx.sample(
+            messages=final_prompt,
+            system_prompt=WEB_APP_PROMPT + WEB_APP_PROMPT_OUTPUT_FORMAT,
+            model_preferences=[model]
+        )
+        
+        # Extract HTML content from response
+        html_content = ""
+        if hasattr(response, 'text') and response.text:
+            html_content = response.text
+        elif hasattr(response, 'content') and response.content:
+            html_content = response.content
         else:
-            print(f"LLM response for '{app_name_safe}' missing text attribute. Response type: {type(llm_response_content)}")
-            return {"status": "error", "message": "LLM sampling returned unexpected response format."}
-            
-        if not response_text:
-            print(f"LLM returned empty response text for web app '{app_name_safe}'.")
-            return {"status": "error", "message": "LLM returned no content for web app generation."}
-            
-        print(f"LLM response received for '{app_name_safe}'. Response length: {len(response_text)} characters.")
-            
-    except asyncio.TimeoutError:
-        print(f"LLM call timed out after 120 seconds for web app '{app_name_safe}'.")
-        return {"status": "error", "message": "Web app generation timed out. The request may be too complex. Please try simplifying your request or try again."}
+            response_str = str(response)
+            if 'text=' in response_str:
+                import re
+                text_match = re.search(r'text=[\'"](.*?)[\'"]', response_str, re.DOTALL)
+                if text_match:
+                    html_content = text_match.group(1)
+                    html_content = html_content.replace('\\\\n', '\n').replace('\\"', '"').replace("\\'", "'")
+        
+        if not html_content:
+            return {"status": "error", "message": "Failed to generate HTML content from AI response"}
+        
+        # Extract HTML from code blocks if present
+        import re
+        html_match = re.search(r'```html\s*(.*?)\s*```', html_content, re.DOTALL)
+        if html_match:
+            html_content = html_match.group(1).strip()
+        
+        print(f"Generated HTML content for '{app_name_safe}'. Length: {len(html_content)} characters")
+        
     except Exception as e:
-        print(f"Error during LLM sampling for web app '{app_name_safe}': {str(e)}")
-        return {"status": "error", "message": f"Error during LLM sampling for web app: {str(e)}"}
+        print(f"Error generating web app with AI: {str(e)}")
+        return {"status": "error", "message": f"Failed to generate web application: {str(e)}"}
 
-    # --- Extract HTML from LLM response ---
-    html_content = ""
-    code_block_match = re.search(r'```(?:html)?\s*([\s\S]*?)\s*```', response_text)
-    if code_block_match:
-        html_content = code_block_match.group(1)
+    # Validate that html_content was generated
     if not html_content:
-        # Attempt to reconstruct from stream if direct extraction fails and logs were kept (now removed)
-        # This fallback might be less relevant now without detailed streaming logs of html_fragments
-        pass # Placeholder, as the original logic for this fallback relied on generation_log
-
-    if not html_content: # Re-check after potential fallback
-        return {"status": "error", "message": "LLM did not return HTML code in the expected format for saving."}
-
-    # --- Save HTML to user directory ---
+        print(f"Error for '{app_name_safe}': No HTML content was generated.")
+        return {"status": "error", "message": "Failed to generate HTML content from project specification."}
+            
+    # --- Save HTML to user directory with versioning (using the provided html_content) ---
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
     user_specific_data_dir = os.path.join(base_dir, user_id_safe)
-    app_dir = os.path.join(user_specific_data_dir, "web_apps")
-    os.makedirs(app_dir, exist_ok=True)
+    app_dir = os.path.join(user_specific_data_dir, "web_apps", app_name_safe)
+    versions_dir = os.path.join(app_dir, "versions")
+    os.makedirs(versions_dir, exist_ok=True)
 
-    html_filename = f"{app_name_safe}.html"
-    html_path = os.path.join(app_dir, html_filename)
+    # Load existing metadata
+    metadata_path = os.path.join(app_dir, "app.json")
+    metadata = await load_app_metadata(metadata_path)
+    
+    # Determine new version number
+    current_version = metadata.get("current_version", 0)
+    new_version = current_version + 1
+    
+    # Load previous version content for commit summary generation
+    previous_version_content = None
+    if current_version > 0:
+        # This logic might be less relevant for a direct HTML provision for v1,
+        # but good to keep for future if create_web_app is called to overwrite (though it shouldn't be)
+        try:
+            previous_version_path = os.path.join(versions_dir, f"v{current_version}.html")
+            if os.path.exists(previous_version_path):
+                with open(previous_version_path, 'r', encoding='utf-8') as f:
+                    previous_version_content = f.read()
+        except Exception as e:
+            print(f"Warning: Could not load previous version content: {e}")
 
+    # Save new version file
+    version_filename = f"v{new_version}.html"
+    version_path = os.path.join(versions_dir, version_filename)
+    
     try:
-        with open(html_path, 'w', encoding='utf-8') as f:
+        with open(version_path, 'w', encoding='utf-8') as f:
             await asyncio.to_thread(f.write, html_content)
     except Exception as e:
-        return {"status": "error", "message": f"Failed to save web app HTML: {str(e)}"}
+        return {"status": "error", "message": f"Failed to save web app version: {str(e)}"}
 
-    serve_url = f"{DOMAIN}/user_data/{user_id_safe}/web_apps/{app_name_safe}.html"
+    # NEW: Use placeholder commit summary initially
+    placeholder_commit_summary = f"🔄 {'Created' if new_version == 1 else 'Updated'} web application: {main_request[:80]}..."
+    
+    # Update metadata with placeholder first
+    now = datetime.datetime.now().isoformat()
+    if not metadata:
+        metadata = {
+            "app_name": app_name,
+            "created_at": now,
+            "last_updated": now,
+            "description": f"{main_request[:250]}", # Use main_request for description
+            "current_version": new_version,
+            "versions": []
+        }
+    else:
+        metadata["last_updated"] = now
+        metadata["current_version"] = new_version
 
+    # Add version entry with placeholder
+    version_entry = {
+        "version": new_version,
+        "timestamp": now,
+        "file": f"versions/{version_filename}",
+        "user_request": main_request,
+        "commit_summary": placeholder_commit_summary,
+        "size": len(html_content),
+        "line_count": len(html_content.splitlines()),  # NEW: Add line count
+        "generating_summary": True  # Flag to indicate summary is being generated
+    }
+    metadata["versions"].append(version_entry)
+
+    # Save metadata with placeholder
+    try:
+        await save_app_metadata(metadata_path, metadata)
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to save app metadata: {str(e)}"}
+
+    # Create current.html symlink (THIS WAS MISSING!)
+    current_path = os.path.join(app_dir, "current.html")
+    try:
+        if os.path.exists(current_path) or os.path.islink(current_path):
+            os.remove(current_path)
+        # Create relative symlink for portability
+        os.symlink(f"versions/{version_filename}", current_path)
+    except Exception as e:
+        print(f"Warning: Could not create current.html symlink: {e}")
+        # Fallback: copy file instead of symlink
+        try:
+            import shutil
+            shutil.copy2(version_path, current_path)
+        except Exception as e2:
+            return {"status": "error", "message": f"Failed to create current app file: {str(e2)}"}
+
+    # Update serve URL to point to current.html
+    serve_url = f"{DOMAIN}/user_data/{user_id_safe}/web_apps/{app_name_safe}/current.html"
+
+    # NEW: Start background task to generate real commit summary
+    asyncio.create_task(update_commit_summary_background(
+        metadata_path, new_version, main_request, html_content, 
+        previous_version_content, metadata.get("versions", [])
+    ))
+
+    # Return immediately with placeholder
     return {
         "status": "success",
         "message": f"Web app '{app_name}' created successfully. Access it at {serve_url}",
         "url": serve_url,
         "html_content": html_content,
-        "app_name": app_name
+        "app_name": app_name,
+        "commit_summary": placeholder_commit_summary,  # Return placeholder
     }
 
-@mcp.tool()
-async def create_pdf_document(
-    user_number: Annotated[str, Field(
-        description="The user's unique identifier (e.g., phone number), used for directory structuring. This is typically provided by the backend."
-    )] = "+17145986105",
-    doc_name: Annotated[Optional[str], Field(
-        description="The desired name for the PDF document. If not provided, a name will be generated (e.g., 'financial_report'). Use underscores for spaces."
-    )] = None,
-    user_request: Annotated[Optional[str], Field(
-        description="The user's exact request as they stated it, without any technical details or modifications. The powerful AI will handle all technical implementation."
-    )] = None,
-    attachments: Annotated[Optional[List[str]], Field(
-        description="A list of attachment URLs (e.g., for images) to be included or referenced in the PDF document. Base64 encoded data is no longer supported."
-    )] = None,
-    model: Annotated[MODELS_LITERAL, Field(
-        description="The LLM model to use for generating the HTML source of the PDF."
-    )] = "gemini-2.5-pro-preview-05-06",
-    mcp_tools: Annotated[Optional[List[str]], Field(
-        description="Optional list of MCP tool names that can inform the content generation, making the LLM aware of other system capabilities.",
-        default=None
-    )] = None,
-    additional_context: Annotated[Optional[str], Field(
-        description="Optional textual context to guide PDF generation. This string should contain all necessary and relevant details from previous tool calls (e.g., search results, API documentation, user clarifications) to produce the optimal PDF. The LLM is responsible for synthesizing this string to be as detailed as required for the task. Do not use @@ref_ to pass complex objects directly into this field; provide the synthesized string context yourself.",
-        default=None
-    )] = None
-) -> dict:
-    """
-    Creates a custom PDF document based on the user's request and any provided attachments.
-    This tool leverages a powerful AI to generate HTML, which is then converted to a PDF.
-    It is highly flexible and can produce a wide range of documents, from simple pages to complex reports.
-    The LLM should assume this tool can fulfill any PDF creation request by describing the desired content and structure.
-    """
-    # Use default user number if empty
-    if not user_number or user_number == "--user_number_not_needed--":
-        user_number = "+17145986105" # Default user_id
-    
-    # --- Sanitize inputs ---
-    user_id_safe = sanitize_for_path(user_number)
-    doc_name = doc_name or f"pdf-doc-{str(uuid.uuid4())[:8]}"
-    # Remove .pdf extension if it already exists to prevent double extension
-    if doc_name.endswith('.pdf'):
-        doc_name = doc_name[:-4]
-    doc_name_safe = sanitize_for_path(doc_name)
-
-    # --- Attachment Handling ---
-    # Simplified: just use URLs directly instead of processing them
-    attachment_urls = []
-    if attachments and isinstance(attachments, list):
-        for url in attachments:
-            if isinstance(url, str) and url.startswith(('http://', 'https://')):
-                # Infer type from file extension
-                if url.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg')):
-                    mime_type = 'image/*'
-                elif url.lower().endswith('.pdf'):
-                    mime_type = 'application/pdf'
-                else:
-                    mime_type = 'unknown'
-                attachment_urls.append((url, mime_type))
-            else:
-                print(f"Skipping invalid URL: {url}")
-
-    # --- LLM SYSTEM PROMPT (NEW) ---
-    PDF_SYSTEM_PROMPT = f"""
-You are an expert at generating HTML documents for PDF conversion.
-
-# PDF Generation Instructions
-
-- You will be given a list of URLs (images, PDFs, or other files) to include in the document.
-- For each URL, analyze the file type and include it in the document in the most appropriate way:
-    - For image URLs, embed them as <img> tags with descriptive alt text and captions.
-    - For PDF URLs, summarize or reference them as appropriate (do not attempt to embed PDFs directly).
-    - For other file types, provide a summary or link as appropriate.
-- You have full flexibility in HTML/CSS layout and can use any features supported by modern browsers.
-- The HTML you generate will be converted to PDF using Playwright.
-- You DO NOT need to embed the actual file data; just use the URLs as sources in <img> tags or as links.
-- You may add captions, context, or summaries for each attachment as appropriate.
-- The rest of the document should follow the user's request and context.
-
-**IMAGE SIZING REQUIREMENT (FOR PDF CONVERSION):**
-- All images you include MUST be sized appropriately for a PDF document page.
-- The **maximum width for any image is 600 pixels**. Do NOT exceed this width.
-- You MAY use smaller widths if it makes sense for the specific image or layout (e.g., for a small icon or a thumbnail).
-- Always set the image size using the `width` attribute in the `<img>` tag (e.g., `<img src=\"...\" width=\"450\">` or `<img src=\"...\" width=\"600\">`).
-- Do NOT use CSS for image sizing—use the `width` attribute only.
-- For best PDF rendering, ensure images are displayed as block elements and consider appropriate margins (e.g., `<img src=\"...\" width=\"600\" style=\"display: block; margin: 1em auto;\">`). You can include such basic inline styles for images if it aids PDF layout.
-
-# Output Format
-
-- Output a complete HTML document, suitable for PDF conversion.
-- Do NOT include any explanations or comments outside the code block.
-- The only output should be a single code block with the HTML.
-
-# Attachments to include
-
-{json.dumps(attachment_urls, indent=2)}
-
-# User Request
-
-{''}
-"""
-    # The {''} above is a placeholder for the actual user request that will be formatted into the history.
-    # We add a note about additional_context to the system prompt here.
-    PDF_SYSTEM_PROMPT += "\n\nNote: An `additional_context` field might be passed to you along with the user's primary request. This context MUST be a string that you (the LLM) have synthesized from relevant information (e.g., previous search results, or API documentation) to inform the PDF's content and structure. Do not expect this field to be auto-populated with complex objects via @@ref syntax; you are responsible for crafting this string context."
-
-    # Append available MCP tools information to PDF_SYSTEM_PROMPT if provided
-    if mcp_tools:
-        PDF_SYSTEM_PROMPT += "\n\n# Aware System Capabilities (MCP Tools)\n"
-        PDF_SYSTEM_PROMPT += "For your awareness, the broader system has access to the following tools. This information may be relevant for the content you generate (e.g., if the document should refer to these capabilities):\n"
-        for tool_name in mcp_tools:
-            PDF_SYSTEM_PROMPT += f"- {tool_name}\n"
-    
-    PDF_SYSTEM_PROMPT += f"""
-
-# Dynamically Fetching Data with MCP Tools for PDF Content
-
-If the PDF content requires data fetched dynamically from MCP tools (from the `mcp_tools` list or other known tools) at the time of generation, you can embed JavaScript in the HTML to achieve this. Playwright will execute this JavaScript before rendering the PDF.
-
-**JavaScript API Call Mechanism:**
--   Your JavaScript should make an HTTP `POST` request to the `/query` endpoint.
--   **Request Format (same as for web apps):**
-    -   **URL:** `/query` (this will be resolved by Playwright relative to the base URL of the loaded HTML content, or use an absolute URL if necessary)
-    -   **Method:** `POST`
-    -   **Headers:** `{{'Content-Type': 'application/json'}}`
-    -   **Body (JSON):**
-        ```json
-        {{
-            "query": "call_tool TOOL_NAME with arguments JSON_ARGUMENTS_STRING",
-            "sender": "USER_ID_PLACEHOLDER_FOR_PDF_CONTEXT", // Context needs to be established for PDF generation run by the system.
-            "attachments": [],
-            "stream": false
-        }}
-        ```
-        -   `TOOL_NAME` and `JSON_ARGUMENTS_STRING` as described for web apps. `JSON_ARGUMENTS_STRING` is a stringified JSON.
--   **Response Handling (same as for web apps):**
-    -   The endpoint responds with `{{"result": "...", "error": "..."}}`.
-    -   Parse `response.result` (potentially twice if it's stringified JSON from the tool).
--   **DOM Manipulation:** The JavaScript *must* take the fetched data and update the HTML DOM *before* Playwright generates the PDF. Ensure all data is present and rendered.
--   **Asynchronous Nature:** Remember these calls are asynchronous. Use `async/await` or Promises carefully. The `wait_until="networkidle"` setting in Playwright helps, but your script should ensure all content is settled.
-
-**Example (Conceptual JavaScript within the HTML for PDF):**
-```html
-<script>
-    async function fetchAndInjectPdfData(toolName, argsObject, elementIdToUpdate) {{
-        // USER_ID_PLACEHOLDER_FOR_PDF_CONTEXT needs to be resolved by the system generating the PDF.
-        // For PDF generation, this 'sender' might be a generic context or a specific user if the PDF is user-centric.
-        const pdfContextUserId = "pdf_generator_service_user"; // Example
-
-        const queryPayload = {{
-            query: `call_tool ${{toolName}} with arguments ${{JSON.stringify(JSON.stringify(argsObject))}}`,
-            sender: pdfContextUserId, 
-            stream: false
-        }};
-        try {{
-            const response = await fetch('/query', {{ // Playwright will make this call
-                method: 'POST',
-                headers: {{ 'Content-Type': 'application/json' }},
-                body: JSON.stringify(queryPayload)
-            }});
-            if (!response.ok) {{
-                throw new Error(`HTTP error! status: ${{response.status}}`);
-            }}
-            const data = await response.json();
-            const targetElement = document.getElementById(elementIdToUpdate);
-            if (!targetElement) return;
-
-            if (data.error) {{
-                console.error('Error calling tool for PDF:', data.error);
-                targetElement.textContent = 'Error loading dynamic content.';
-                return;
-            }}
-            
-            let finalData = data.result;
-            try {{
-                finalData = JSON.parse(data.result); // If tool result is stringified JSON
-            }} catch (e) {{ /* Keep as is if not JSON */ }}
-
-            // Example: Update the DOM. This needs to be specific to the data structure.
-            if (typeof finalData === 'object' && finalData !== null && finalData.content) {{
-                targetElement.innerHTML = finalData.content; // Or textContent, etc.
-            }} else {{
-                targetElement.textContent = String(finalData);
-            }}
-
-        }} catch (error) {{
-            console.error('Failed to call MCP tool for PDF:', error);
-            const targetElement = document.getElementById(elementIdToUpdate);
-            if (targetElement) {{
-                targetElement.textContent = 'Failed to load dynamic content.';
-            }}
-        }}
-    }}
-
-    // Example of how you might invoke this in your HTML:
-    // Ensure the element with ID 'dynamicReportData' exists.
-    // document.addEventListener('DOMContentLoaded', () => {{
-    //     fetchAndInjectPdfData('get_financial_summary', {{'quarter': 'Q4'}}, 'dynamicReportData');
-    // }});
-    // Or, if the script is at the end of the body, DOMContentLoaded might not be strictly needed
-    // if elements are already parsed.
-</script>
-"""
-
-    PDF_SYSTEM_PROMPT += f"""
-VERY IMPORTANT FORMATTING INSTRUCTIONS:
-You must present your HTML output exactly as follows:
-1. Output "document.html" on a line by itself (no quotes or other characters)
-2. On the next line, output three backticks (```) to start a code fence
-3. Output the complete HTML document, including DOCTYPE, html, head, and body tags
-4. End with three backticks (```) on a line by itself
-5. NEVER skip, omit or abbreviate any part of the HTML content
-6. Do not include placeholder comments like "<!-- Content will be generated here -->"
-7. DO NOT include any explanatory text before or after the HTML content
-
-Output Format Example:
-document.html
-```
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Document Title</title>
-    <!-- CSS styling here -->
-</head>
-<body>
-    <!-- Complete HTML content here -->
-</body>
-</html>
-```
-"""
-
-    # --- LLM API Call using Adapter ---
-    adapter = get_llm_adapter(model_name=model)
-    
-    # Use user_request as the main context for PDF generation
-    main_request = user_request or "Please generate a PDF-ready HTML document as described in the system prompt."
-    
-    user_facing_prompt = f"**User Request:**\n{main_request}"
-    if additional_context: # Append additional_context to the user-facing part of the prompt
-        user_facing_prompt += f"\n\n**Additional Context to Consider:**\n{additional_context}"
-    
-    history = [
-        StandardizedMessage(
-            role="user",
-            content=user_facing_prompt
+# NEW: Background function to update commit summary
+async def update_commit_summary_background(
+    metadata_path: str, 
+    version_number: int, 
+    request_for_summary: str, # Renamed from user_request to avoid confusion
+    html_content_for_summary: str, # Renamed for clarity
+    previous_version_content_for_summary: str, # Renamed
+    commit_history_for_summary: List[Dict] # Renamed
+):
+    """Update the commit summary in the background after the tool has already returned."""
+    try:
+        # Generate the real commit summary
+        real_commit_summary = await generate_commit_summary(
+            request_for_summary, html_content_for_summary, previous_version_content_for_summary, commit_history_for_summary
         )
-    ]
-    
-    llm_config = StandardizedLLMConfig(
-        system_prompt=PDF_SYSTEM_PROMPT,
-    )
-
-    try:
-        llm_response = await adapter.generate_content(
-            model_name=model,
-            history=history,
-            tools=None,
-            config=llm_config
-        )
-        if llm_response.error:
-            return {"status": "error", "message": f"LLM API error: {llm_response.error}"}
-        response_text = llm_response.text_content
-        if not response_text:
-            return {"status": "error", "message": "LLM returned no content for PDF generation."}
+        
+        # Load current metadata
+        metadata = await load_app_metadata(metadata_path)
+        if not metadata:
+            return
+        
+        # Find and update the version entry
+        for version_entry in metadata.get("versions", []):
+            if version_entry.get("version") == version_number:
+                version_entry["commit_summary"] = real_commit_summary
+                version_entry.pop("generating_summary", None)  # Remove the flag
+                break
+        
+        # Save updated metadata
+        await save_app_metadata(metadata_path, metadata)
+        print(f"Background commit summary updated for version {version_number}: {real_commit_summary}")
+        
     except Exception as e:
-        import traceback
-        logger.debug("DEBUG: Exception during LLM call for PDF:")
-        traceback.print_exc()
-        return {"status": "error", "message": f"Error during LLM call for PDF: {str(e)}"}
-
-    # --- Extract HTML from LLM response ---
-    html_content = ""
-    code_block_match = re.search(r'```(?:html)?\s*([\s\S]*?)\s*```', response_text)
-    if code_block_match:
-        html_content = code_block_match.group(1)
-    if not html_content:
-        # Attempt to reconstruct from stream if direct extraction fails and logs were kept (now removed)
-        # This fallback might be less relevant now without detailed streaming logs of html_fragments
-        pass # Placeholder, as the original logic for this fallback relied on generation_log
-
-    if not html_content: # Re-check after potential fallback
-        return {"status": "error", "message": "LLM did not return HTML code in the expected format for saving."}
-
-    # --- Save HTML and Convert to PDF with Playwright ---
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
-    user_specific_data_dir = os.path.join(base_dir, user_id_safe)
-    doc_dir = os.path.join(user_specific_data_dir, "pdfs")
-    os.makedirs(doc_dir, exist_ok=True)
-
-    html_filename = f"{doc_name_safe}.html"
-    pdf_filename = f"{doc_name_safe}.pdf"
-    html_path = os.path.join(doc_dir, html_filename)
-    pdf_path = os.path.join(doc_dir, pdf_filename)
-
-    try:
-        with open(html_path, 'w', encoding='utf-8') as f:
-            await asyncio.to_thread(f.write, html_content)
-
-        # --- Playwright PDF generation ---
-        # Requires: pip install playwright && playwright install chromium
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page()
-            # Load HTML from file
-            with open(html_path, 'r', encoding='utf-8') as f:
-                html_for_pdf = f.read()
-            await page.set_content(html_for_pdf, wait_until="networkidle")
-            await page.pdf(path=pdf_path, format="A4")
-            await browser.close()
-    except Exception as e:
-        return {"status": "error", "message": f"Failed to save or convert PDF: {str(e)}"}
-
-    serve_url = f"{DOMAIN}/user_data/{user_id_safe}/pdfs/{doc_name_safe}.pdf"
-
-    return {
-        "status": "success",
-        "message": f"PDF document '{doc_name}' created successfully. Access it at {serve_url}",
-        "url": serve_url
-    }
-
-#
-# Any constants or prompts used by these tools (e.g., DOMAIN, WEB_APP_PROMPT, PDF_HTML_SYSTEM_PROMPT, etc.)
-#
-# Make sure to also include any required imports for Google APIs, Playwright, etc.
-
-# --- End of copy list ---
-
-# --- Start of new edit tools ---
-
-@mcp.tool()
-async def edit_web_app(
-    ctx: Context,
-    user_number: Annotated[str, Field(
-        description="The user's unique identifier, used to locate their data. Typically provided by the backend."
-    )] = "+17145986105",
-    app_name: Annotated[Optional[str], Field(
-        description="The name of the existing web application to edit. This app must have been previously created."
-    )] = None,
-    user_request: Annotated[Optional[str], Field(
-        description="The user's exact request as they stated it, without any technical details or modifications. The powerful AI will handle all technical implementation."
-    )] = None,
-    model: Annotated[MODELS_LITERAL, Field(
-        description="The LLM model to use for generating the diff to edit the HTML content."
-    )] = "gemini-2.5-pro-preview-05-06",
-    additional_context: Annotated[Optional[str], Field(
-        description="Optional textual context to guide web app editing. This string should contain all necessary and relevant details from previous steps (e.g., search results, API documentation, user clarifications) to perform the optimal edit. The LLM should synthesize this string to be as detailed as required. For this edit tool, using @@ref_ to point to a string field within a previous output is also acceptable for this parameter.",
-        default=None
-    )] = None
-) -> dict:
-    """
-    Edits an existing web application based on the user's request using robust SEARCH/REPLACE blocks.
-    The user's request should describe the changes needed for the existing web app.
-    Requires the app_name of a previously created web app.
-    """
-    if not app_name:
-        return {"status": "error", "message": "app_name must be provided to edit an existing web app."}
-    if not user_request:
-        return {"status": "error", "message": "user_request must be provided to describe the changes."}
-
-    if not user_number or user_number == "--user_number_not_needed--":
-        user_number = "+17145986105"
-
-    user_id_safe = sanitize_for_path(user_number)
-    app_name_safe = sanitize_for_path(app_name)
-
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
-    user_specific_data_dir = os.path.join(base_dir, user_id_safe)
-    app_dir = os.path.join(user_specific_data_dir, "web_apps")
-    html_filename = f"{app_name_safe}.html"
-    html_path = os.path.join(app_dir, html_filename)
-
-    if not await asyncio.to_thread(os.path.exists, html_path):
-        return {"status": "error", "message": f"Web app '{app_name}' (path: {html_path}) not found for editing."}
-
-    try:
-        with open(html_path, 'r', encoding='utf-8') as f:
-            original_html_content = await asyncio.to_thread(f.read)
-    except Exception as e:
-        return {"status": "error", "message": f"Failed to read existing web app HTML: {str(e)}"}
-
-    # --- Prepare LLM Call ---
-    prompt_to_llm = f"""Original HTML Content of `{html_filename}`:
-```html
-{original_html_content}
-```
-
-User's request for changes:
-"{user_request}"
-
-Please provide the necessary changes using the *SEARCH/REPLACE block* format as per system instructions.
-"""
-
-    if additional_context:
-        prompt_to_llm += f"\n\n**Additional Context to Consider for this edit:**\n{additional_context}"
-
-    try:
-        print(f"Calling LLM for web app edit. App: {app_name_safe}. Model: {model}.")
-        llm_response = await ctx.sample(
-            messages=prompt_to_llm,
-            system_prompt=EDIT_WEB_APP_SYSTEM_PROMPT,
-            model_preferences=[model]
-        )
-        if hasattr(llm_response, 'text'):
-            ai_output = llm_response.text
-        else:
-            ai_output = str(llm_response)
-        if not ai_output:
-            print(f"LLM returned empty response for {app_name_safe}, assuming no changes needed.")
-            serve_url = f"{DOMAIN}/user_data/{user_id_safe}/web_apps/{app_name_safe}.html"
-            return {
-                "status": "success",
-                "message": f"Web app '{app_name}' was reviewed. No changes applied as per LLM output. Current version at {serve_url}",
-                "url": serve_url
-            }
-
-    except Exception as e:
-        return {"status": "error", "message": f"Error during LLM call for web app edit: {str(e)}"}
-
-    # --- Parse and Apply SEARCH/REPLACE Blocks ---
-    try:
-        print(f"Parsing and applying SEARCH/REPLACE blocks for {app_name_safe}...")
-        import tempfile
-        with tempfile.TemporaryDirectory() as temp_dir:
-            temp_html_path = os.path.join(temp_dir, html_filename)
-            with open(temp_html_path, 'w', encoding='utf-8') as f:
-                f.write(original_html_content)
-            results = apply_search_replace_blocks(
-                ai_output=ai_output,
-                base_dir=temp_dir,
-                backup=False,
-                dry_run=False,
-                strategies=None
-            )
-            if results['successful'] == 0 and results['total_blocks'] > 0:
-                return {"status": "error", "message": f"Failed to apply any of the {results['total_blocks']} SEARCH/REPLACE blocks. The search text may not match the original content exactly."}
-            if results['failed'] > 0:
-                failed_details = [detail for detail in results['details'] if detail['status'] == 'failed']
-                error_messages = [detail['message'] for detail in failed_details]
-                return {"status": "error", "message": f"Some SEARCH/REPLACE blocks failed to apply: {'; '.join(error_messages)}"}
-            if results['successful'] > 0:
-                with open(temp_html_path, 'r', encoding='utf-8') as f:
-                    modified_html_content = f.read()
-            else:
-                modified_html_content = original_html_content
-    except Exception as e:
-        return {"status": "error", "message": f"Error applying SEARCH/REPLACE blocks: {str(e)}"}
-
-    # --- Save Modified HTML ---
-    try:
-        backup_path = html_path + '.bak'
-        with open(backup_path, 'w', encoding='utf-8') as f:
-            await asyncio.to_thread(f.write, original_html_content)
-        with open(html_path, 'w', encoding='utf-8') as f:
-            await asyncio.to_thread(f.write, modified_html_content)
-    except Exception as e:
-        return {"status": "error", "message": f"Failed to save modified web app HTML: {str(e)}"}
-
-    serve_url = f"{DOMAIN}/user_data/{user_id_safe}/web_apps/{app_name_safe}.html"
-    if results['total_blocks'] > 0:
-        success_message = f"Web app '{app_name}' edited successfully. Applied {results['successful']} SEARCH/REPLACE blocks. Access it at {serve_url}"
-        if results['skipped'] > 0:
-            success_message += f" (Note: {results['skipped']} blocks were skipped)"
-    else:
-        success_message = f"Web app '{app_name}' reviewed. No SEARCH/REPLACE blocks found in AI response. Current version at {serve_url}"
-    return {
-        "status": "success",
-        "message": success_message,
-        "url": serve_url,
-        "backup_created": backup_path,
-        "original_html": original_html_content,
-        "modified_html": modified_html_content,
-        "app_name": app_name
-    }
-
-@mcp.tool()
-async def edit_pdf_document(
-    user_number: Annotated[str, Field(
-        description="The user's unique identifier, used to locate their data. Typically provided by the backend."
-    )] = "+17145986105",
-    doc_name: Annotated[Optional[str], Field(
-        description="The name of the existing PDF document to edit. This document must have been previously created."
-    )] = None,
-    user_request: Annotated[Optional[str], Field(
-        description="The user's exact request as they stated it, without any technical details or modifications. The powerful AI will handle all technical implementation."
-    )] = None,
-    model: Annotated[MODELS_LITERAL, Field(
-        description="The LLM model to use for generating the diff to edit the PDF's HTML source."
-    )] = "gemini-2.5-pro-preview-05-06",
-    additional_context: Annotated[Optional[str], Field(
-        description="Optional textual context to guide PDF editing. This string should contain all necessary and relevant details from previous steps (e.g., search results, API documentation, user clarifications) to perform the optimal edit. The LLM should synthesize this string to be as detailed as required. For this edit tool, using @@ref_ to point to a string field within a previous output is also acceptable for this parameter.",
-        default=None
-    )] = None
-) -> dict:
-    """
-    Edits an existing PDF document by modifying its underlying HTML source based on the user's request.
-    The changes are described by the user and applied using a diff-fenced format.
-    Requires the doc_name of a previously created PDF. The PDF is then regenerated from the modified HTML.
-    """
-    if not doc_name:
-        return {"status": "error", "message": "doc_name must be provided to edit an existing PDF."}
-    if not user_request:
-        return {"status": "error", "message": "user_request must be provided to describe the changes."}
-
-    if not user_number or user_number == "--user_number_not_needed--":
-        user_number = "+17145986105"
-
-    user_id_safe = sanitize_for_path(user_number)
-    doc_name_safe = sanitize_for_path(doc_name)
-
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
-    user_specific_data_dir = os.path.join(base_dir, user_id_safe)
-    doc_dir = os.path.join(user_specific_data_dir, "pdfs")
-    
-    html_filename = f"{doc_name_safe}.html"
-    pdf_filename = f"{doc_name_safe}.pdf"
-    html_path = os.path.join(doc_dir, html_filename)
-    pdf_path = os.path.join(doc_dir, pdf_filename)
-
-    if not await asyncio.to_thread(os.path.exists, html_path):
-        return {"status": "error", "message": f"PDF source HTML '{html_filename}' (path: {html_path}) not found for editing."}
-
-    try:
-        with open(html_path, 'r', encoding='utf-8') as f:
-            original_html_content = await asyncio.to_thread(f.read)
-    except Exception as e:
-        return {"status": "error", "message": f"Failed to read existing PDF source HTML: {str(e)}"}
-
-    # --- Prepare LLM Call for Diffs ---
-    adapter = get_llm_adapter(model_name=model)
-    prompt_to_llm = f"""Original HTML Content of `{html_filename}` (source for PDF '{doc_name_safe}.pdf'):
-```html
-{original_html_content}
-```
-
-User's request for changes to the PDF content:
-"{user_request}"
-
-Please provide the necessary changes ONLY in the \"diff-fenced\" format as per system instructions.
-Ensure the edited HTML remains suitable for PDF conversion.
-"""
-
-    if additional_context:
-        prompt_to_llm += f"\n\n**Additional Context to Consider for this edit:**\n{additional_context}"
-
-    history = [StandardizedMessage(role="user", content=prompt_to_llm)]
-    llm_config = StandardizedLLMConfig(system_prompt=EDIT_PDF_SYSTEM_PROMPT)
-
-    try:
-        print(f"Calling LLM for PDF edit. Doc: {doc_name_safe}. Model: {model}.")
-        llm_response = await adapter.generate_content(
-            model_name=model, history=history, tools=None, config=llm_config
-        )
-        if llm_response.error:
-            return {"status": "error", "message": f"LLM API error during PDF edit: {llm_response.error}"}
-
-        diff_output = llm_response.text_content
-        if not diff_output: # Check if LLM returned empty string, meaning no changes.
-            print(f"LLM returned no diff for PDF source {html_filename}, assuming no changes needed.")
-            serve_url = f"{DOMAIN}/user_data/{user_id_safe}/pdfs/{pdf_filename}"
-            # No need to re-write HTML or re-render PDF if no changes.
-            return {
-                "status": "success",
-                "message": f"PDF document '{doc_name}' was reviewed. No changes applied as per LLM output. Current version at {serve_url}",
-                "url": serve_url
-            }
-            
-    except Exception as e:
-        return {"status": "error", "message": f"Error during LLM call for PDF edit: {str(e)}"}
-
-    # --- Apply Diffs ---
-    try:
-        print(f"Applying diffs to PDF source {html_filename}. Diff output:\n{diff_output[:500]}...")
-        modified_html_content = await asyncio.to_thread(apply_fenced_diffs, original_html_content, diff_output)
-    except ValueError as e: 
-        return {"status": "error", "message": f"Failed to apply generated diffs for PDF: {str(e)}"}
-    except Exception as e:
-        return {"status": "error", "message": f"Unexpected error applying diffs for PDF: {str(e)}"}
-
-    # --- Save Modified HTML and Regenerate PDF ---
-    try:
-        with open(html_path, 'w', encoding='utf-8') as f:
-            await asyncio.to_thread(f.write, modified_html_content)
-
-        # Regenerate PDF using Playwright
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page()
-            # Load HTML from file (the modified version)
-            # No need to read again, use modified_html_content directly
-            await page.set_content(modified_html_content, wait_until="networkidle")
-            await page.pdf(path=pdf_path, format="A4") # Ensure pdf_path is correct
-            await browser.close()
-            
-    except Exception as e:
-        return {"status": "error", "message": f"Failed to save modified HTML or regenerate PDF: {str(e)}"}
-
-    serve_url = f"{DOMAIN}/user_data/{user_id_safe}/pdfs/{pdf_filename}"
-    return {
-        "status": "success",
-        "message": f"PDF document '{doc_name}' edited and regenerated successfully. Access it at {serve_url}",
-        "url": serve_url
-    }
+        print(f"Warning: Failed to update commit summary in background: {e}")
+        # If background generation fails, we could update with a fallback message
+        try:
+            metadata = await load_app_metadata(metadata_path)
+            if metadata:
+                for version_entry in metadata.get("versions", []):
+                    if version_entry.get("version") == version_number and version_entry.get("generating_summary"):
+                        version_entry["commit_summary"] = f"🔄 {'Initial version' if version_number == 1 else 'Updated version'}: {request_for_summary[:80]}..."
+                        version_entry.pop("generating_summary", None)
+                        break
+                await save_app_metadata(metadata_path, metadata)
+        except:
+            pass  # If even the fallback fails, just leave the placeholder
 
 @mcp.tool()
 async def list_web_apps(
@@ -1871,36 +1493,70 @@ async def list_web_apps(
     """
     Lists web applications previously created by the specified user.
 
-    Returns a list of web application details, each including 'app_name' and 'url'.
+    Returns a list of web application details, each including 'app_name', 'url', 'current_version', and metadata.
     """
     if not user_number or user_number == "--user_number_not_needed--":
         user_number = "+17145986105" # Default user_id
 
-    user_id_safe = sanitize_for_path(user_number) # Assuming sanitize_for_path is available in this file
+    user_id_safe = sanitize_for_path(user_number)
 
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
-    app_dir = os.path.join(base_dir, user_id_safe, "web_apps")
+    apps_dir = os.path.join(base_dir, user_id_safe, "web_apps")
 
-    if not await asyncio.to_thread(os.path.exists, app_dir) or not await asyncio.to_thread(os.path.isdir, app_dir):
-        print(f"Web app directory not found for user {user_id_safe} at {app_dir}. Returning empty list.")
+    if not await asyncio.to_thread(os.path.exists, apps_dir) or not await asyncio.to_thread(os.path.isdir, apps_dir):
+        print(f"Web apps directory not found for user {user_id_safe} at {apps_dir}. Returning empty list.")
         return {"web_apps": []}
 
     web_apps_list = []
     try:
-        filenames = await asyncio.to_thread(os.listdir, app_dir)
-        html_files = sorted([f for f in filenames if f.endswith(".html")], reverse=True) # Sort by name, newest typically if names are timestamped or sequential
+        app_names = await asyncio.to_thread(os.listdir, apps_dir)
+        app_dirs = [name for name in app_names if os.path.isdir(os.path.join(apps_dir, name))]
+        app_dirs = sorted(app_dirs, reverse=True)  # Sort by name
 
-        for html_filename in html_files:
+        for app_name in app_dirs:
             if len(web_apps_list) >= limit:
                 break
             
-            app_name = html_filename[:-5] # Remove .html extension
-            serve_url = f"{DOMAIN}/user_data/{user_id_safe}/web_apps/{html_filename}" # DOMAIN should be accessible
+            app_dir = os.path.join(apps_dir, app_name)
+            metadata_path = os.path.join(app_dir, "app.json")
             
-            web_apps_list.append({
-                "app_name": app_name,
-                "url": serve_url
-            })
+            # Load metadata for this app
+            metadata = await load_app_metadata(metadata_path)
+            
+            if metadata:
+                serve_url = f"{DOMAIN}/user_data/{user_id_safe}/web_apps/{app_name}/current.html"
+                
+                # Get latest version info
+                latest_version = None
+                if metadata.get("versions"):
+                    latest_version = metadata["versions"][-1]
+                
+                web_app_info = {
+                    "app_name": app_name,
+                    "url": serve_url,
+                    "current_version": metadata.get("current_version", 1),
+                    "created_at": metadata.get("created_at"),
+                    "last_updated": metadata.get("last_updated"),
+                    "description": metadata.get("description", ""),
+                    "total_versions": len(metadata.get("versions", []))
+                }
+                
+                if latest_version:
+                    web_app_info["latest_commit_summary"] = latest_version.get("commit_summary", "")
+                
+                web_apps_list.append(web_app_info)
+            else:
+                # Fallback for apps without metadata (legacy apps)
+                current_html_path = os.path.join(app_dir, "current.html")
+                if os.path.exists(current_html_path):
+                    serve_url = f"{DOMAIN}/user_data/{user_id_safe}/web_apps/{app_name}/current.html"
+                    web_apps_list.append({
+                        "app_name": app_name,
+                                "url": serve_url,
+                                "current_version": 1,
+                                "description": "Legacy web app (no version history)",
+                                "total_versions": 1
+                    })
         
         return {"web_apps": web_apps_list}
 
@@ -1908,142 +1564,2574 @@ async def list_web_apps(
         print(f"Error listing web apps for user {user_id_safe}: {e}")
         return {"status": "error", "message": f"Failed to list web apps: {str(e)}"}
 
-@mcp.tool(
-    annotations={
-        "outputSchema": {
-            "type": "object",
-            "properties": {
-                "error": {
-                    "type": ["string", "null"],
-                    "description": "Error message from MCP call, or null/None if successful"
-                },
-                "result": {
-                    "type": "string",
-                    "description": "Stringified JSON containing the ai_sample tool response with format: {\"status\": \"success|error\", \"result\": <generated_content>, \"error\": <error_message|null>}. Parse this JSON to access the actual AI-generated content."
-                }
-            },
-            "required": ["error", "result"],
-            "description": "MCP response containing stringified ai_sample tool output. Parse result field as JSON to access the actual AI-generated content."
-        }
-    }
-)
-async def ai_sample(
-    ctx: Context,
-    messages: Annotated[str, Field(
-        description="The prompt/messages to send to the AI for sampling. This should be a clear, specific prompt describing what you want the AI to generate."
-    )],
-    json_schema: Annotated[Optional[Dict[str, Any]], Field(
-        description="Optional JSON schema to enforce structured output format. The AI will be forced to respond in this exact structure.",
-        default=None
+@mcp.tool()
+async def get_app_versions(
+    user_number: Annotated[str, Field(
+        description="The user's unique identifier, used to locate their web app data."
+    )] = "+17145986105",
+    app_name: Annotated[str, Field(
+        description="The name of the web application to get version history for."
     )] = None,
-    system_prompt: Annotated[Optional[str], Field(
-        description="Optional system prompt to guide the AI's behavior and response style.",
-        default=None
-    )] = None,
-    model: Annotated[MODELS_LITERAL, Field(
-        description="The LLM model to use for sampling."
-    )] = "gemini-2.5-flash-preview-05-20"
 ) -> dict:
     """
-    Enables web applications to leverage AI for generating structured content using ctx.sample().
-    This tool acts as a bridge between browser-side JavaScript and the server-side MCP sampling capabilities.
+    Get complete version history for a specific web application.
     
-    The tool can generate arbitrary content in specific formats when provided with a JSON schema,
-    making it perfect for creating dynamic, AI-generated content in web applications.
-    
-    Returns:
-        dict: A dictionary containing:
-        {
-            "status": str,           # "success" or "error"  
-            "result": Any,           # The generated content (structured if json_schema provided)
-            "error": str             # Error message if status is "error"
-        }
+    Returns detailed information about all versions including commit summaries.
     """
+    if not user_number or user_number == "--user_number_not_needed--":
+        user_number = "+17145986105"
+
+    user_id_safe = sanitize_for_path(user_number)
+    app_name_safe = sanitize_for_path(app_name)
+
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
+    app_dir = os.path.join(base_dir, user_id_safe, "web_apps", app_name_safe)
+    metadata_path = os.path.join(app_dir, "app.json")
+
+    if not await asyncio.to_thread(os.path.exists, metadata_path):
+        return {"status": "error", "message": f"App '{app_name}' not found or has no version history."}
+
     try:
-        # Prepare model preferences with smuggled json_schema if provided
-        if json_schema:
-            # Serialize the JSON schema to a string for smuggling
-            model_preferences = [model, json.dumps(json_schema)]
-        else:
-            model_preferences = [model]
+        metadata = await load_app_metadata(metadata_path)
         
-        # Call ctx.sample with the provided parameters
-        sample_result = await ctx.sample(
-            messages=messages,
-            system_prompt=system_prompt,
-            model_preferences=model_preferences
-        )
-        
-        # Extract the actual content from the sample result
-        if hasattr(sample_result, 'text'):
-            result_text = sample_result.text
-        elif isinstance(sample_result, str):
-            result_text = sample_result
-        else:
-            result_text = str(sample_result)
-        
-        # If json_schema was provided, try to parse the result as JSON
-        if json_schema:
-            # First check if the LLM adapter already parsed the response (Gemini native structured output)
-            if hasattr(sample_result, 'parsed') and sample_result.parsed is not None:
-                # Gemini's structured output provides parsed content directly
-                return {
+        return {
                     "status": "success",
-                    "result": sample_result.parsed,
-                    "error": None
-                }
-            
-            # Fallback to text parsing if parsed content not available
-            try:
-                # First try to parse directly as JSON
-                parsed_result = json.loads(result_text)
-                return {
-                    "status": "success",
-                    "result": parsed_result,
-                    "error": None
-                }
-            except json.JSONDecodeError:
-                # If direct parsing fails, try to extract from markdown code fences
-                import re
-                json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', result_text, re.DOTALL)
-                if json_match:
-                    json_content = json_match.group(1).strip()
-                    try:
-                        parsed_result = json.loads(json_content)
-                        return {
-                            "status": "success",
-                            "result": parsed_result,
-                            "error": None
-                        }
-                    except json.JSONDecodeError as je:
-                        return {
-                            "status": "error",
-                            "result": None,
-                            "error": f"AI generated invalid JSON in markdown block: {str(je)}"
-                        }
-                else:
-                    return {
-                        "status": "error", 
-                        "result": None,
-                        "error": f"AI did not return valid JSON despite schema constraint. Response: {result_text[:200]}..."
-                    }
-        else:
-            # Return as text if no schema was specified
-            return {
-                "status": "success",
-                "result": result_text,
-                "error": None
-            }
-            
+            "app_name": app_name,
+            "current_version": metadata.get("current_version", 1),
+            "total_versions": len(metadata.get("versions", [])),
+            "created_at": metadata.get("created_at"),
+            "last_updated": metadata.get("last_updated"),
+            "description": metadata.get("description", ""),
+            "versions": metadata.get("versions", [])
+        }
+        
     except Exception as e:
-        print(f"Error in ai_sample tool: {str(e)}")
+        return {"status": "error", "message": f"Failed to load version history: {str(e)}"}
+
+@mcp.tool()
+async def edit_web_app(
+    ctx: Context,
+    app_name: Annotated[str, Field(description="The name of the web application to edit.")],
+    project_spec: Annotated[str, Field(
+        description="A detailed description of the changes to make to the web application. Describe what functionality to add, modify, or remove. The AI will generate appropriate search/replace blocks to implement these changes."
+    )],
+    user_number: Annotated[str, Field(description="The user's unique identifier, used to locate their web app data.")] = "+17145986105",
+    model: Annotated[MODELS_LITERAL, Field(description="The LLM model to use for generating the edit. If user does not specify, use gemini-2.5-pro-preview-05-06.")] = "gemini-2.5-pro-preview-05-06",
+    attachments: Annotated[Optional[List[str]], Field(
+        description="A list of attachment URLs that may be relevant for the changes."
+    )] = None,
+    mcp_tool_names: Annotated[Optional[List[str]], Field(
+        description="Pass a list of relevant MCP tool names that the web application should use.",
+        default=None
+    )] = None,
+    additional_context: Annotated[Optional[str], Field(
+        description="Optional additional context for the edit.",
+        default=None
+    )] = None
+) -> dict:
+    """
+    Edits an existing web application using AI-generated search/replace blocks based on a project specification.
+
+    This tool:
+    - Takes a description of the changes needed (project_spec)
+    - Analyzes the current web application content
+    - Uses AI to generate appropriate search/replace blocks
+    - Applies the changes to create an updated version
+    
+    The AI analyzes the existing code and generates precise search/replace blocks that:
+    - Preserve existing functionality unless explicitly changed
+    - Make minimal necessary changes to implement the request
+    - Maintain code structure, styling, and architecture
+    - Keep responsive design and accessibility features intact
+    - Preserve any localStorage, API calls, or MCP tool integrations
+    - Follow web development best practices
+    
+    The tool handles:
+    - Loading the current web app content
+    - Processing attachments for context
+    - Generating search/replace blocks using AI
+    - Applying changes with robust search/replace logic
+    - Creating new versions with proper metadata
+    - Updating symlinks and commit summaries
+    
+    USAGE:
+    Simply describe what changes you want to make in natural language.
+    Examples:
+    - "Add a dark mode toggle button to the header"
+    - "Create a contact form with name, email, and message fields"
+    - "Add a sidebar with navigation links"
+    - "Implement local storage for user preferences"
+    - "Add animation effects to the buttons"
+    """
+    if not user_number or user_number == "--user_number_not_needed--":
+        user_number = "+17145986105"
+
+    # Validate input parameters
+    if not project_spec:
         return {
             "status": "error",
-            "result": None, 
-            "error": f"AI sampling failed: {str(e)}"
+            "message": "The 'project_spec' parameter is required and must describe the changes to make."
         }
 
-# --- End of new edit tools ---
+    user_id_safe = sanitize_for_path(user_number)
+    app_name_safe = sanitize_for_path(app_name)
+
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
+    app_dir = os.path.join(base_dir, user_id_safe, "web_apps", app_name_safe)
+    current_path = os.path.join(app_dir, "current.html")
+
+    # Check if app exists
+    if not await asyncio.to_thread(os.path.exists, current_path):
+        return {
+            "status": "error", 
+            "message": f"Web app '{app_name}' not found. Use 'create_web_app' to create a new application, or check the app name and try again.",
+            "suggestion": "create_web_app"
+        }
+
+    try:
+        # Load current HTML content
+        with open(current_path, 'r', encoding='utf-8') as f:
+            current_html = await asyncio.to_thread(f.read)
+
+        # Load existing metadata for commit history context
+        metadata_path = os.path.join(app_dir, "app.json")
+        metadata = await load_app_metadata(metadata_path)
+        
+        # --- Attachment Handling ---
+        attachment_info_for_prompt = []
+        attachment_parts = []
+        if attachments and isinstance(attachments, list):
+            for url in attachments:
+                if isinstance(url, str) and url.startswith(('http://', 'https://')):
+                    if url.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg')):
+                        mime_type = 'image/*'
+                    elif url.lower().endswith('.pdf'):
+                        mime_type = 'application/pdf'
+                    else:
+                        mime_type = 'unknown'
+                    attachment_info_for_prompt.append({"url": url, "mime_type": mime_type})
+                    
+                    # Download attachment for AI processing
+                    attachment_part = await download_and_create_attachment_part(url)
+                    if attachment_part:
+                        attachment_parts.append(attachment_part)
+                else:
+                    print(f"Skipping invalid URL in attachments: {url}")
+
+        # --- Tool Schema Context ---
+        tool_schemas_context = ""
+        if mcp_tool_names:
+            tool_schemas_context = await fetch_tool_schemas_for_tools(mcp_tool_names)
+        
+        # Extract existing tool names from current HTML
+        existing_tool_names = extract_mcp_tool_names_from_html(current_html)
+        if existing_tool_names:
+            print(f"Found existing MCP tool usage: {existing_tool_names}")
+            if not mcp_tool_names:
+                mcp_tool_names = existing_tool_names
+            else:
+                # Combine requested tools with existing tools
+                mcp_tool_names = list(set(mcp_tool_names + existing_tool_names))
+                tool_schemas_context = await fetch_tool_schemas_for_tools(mcp_tool_names)
+
+        # --- AI Generation of Search/Replace Blocks ---
+        try:
+            # Build comprehensive prompt for AI to generate search/replace blocks
+            prompt_parts = []
+            
+            # Add the current HTML content for context
+            prompt_parts.append(f"Current web application content:\n\n```html\n{current_html}\n```")
+            
+            # Add the edit specification
+            prompt_parts.append(f"\nEdit Request: {project_spec}")
+            
+            # Add attachment context if available
+            if attachment_info_for_prompt:
+                attachment_context = "\n\nAttachments provided:\n"
+                for att in attachment_info_for_prompt:
+                    attachment_context += f"- {att['url']} (type: {att['mime_type']})\n"
+                prompt_parts.append(attachment_context)
+            
+            # Add tool integration context if available
+            if tool_schemas_context:
+                prompt_parts.append(tool_schemas_context)
+            
+            # Add additional context if provided
+            if additional_context:
+                prompt_parts.append(f"\nAdditional Context:\n{additional_context}")
+            
+            final_prompt = "\n".join(prompt_parts)
+            
+            print(f"Generating search/replace blocks with model: {model}")
+            print(f"Prompt length: {len(final_prompt)} characters")
+            
+            # Use ctx.sample to generate search/replace blocks
+            response = await ctx.sample(
+                messages=final_prompt,
+                system_prompt=WEB_APP_PROMPT + EDIT_WEB_APP_SYSTEM_PROMPT,
+                model_preferences=[model]
+            )
+            
+            # Extract search/replace blocks from response
+            search_replace_output = ""
+            if hasattr(response, 'text') and response.text:
+                search_replace_output = response.text
+            elif hasattr(response, 'content') and response.content:
+                search_replace_output = response.content
+            else:
+                response_str = str(response)
+                if 'text=' in response_str:
+                    import re
+                    text_match = re.search(r'text=[\'"](.*?)[\'"]', response_str, re.DOTALL)
+                    if text_match:
+                        search_replace_output = text_match.group(1)
+                        search_replace_output = search_replace_output.replace('\\\\n', '\n').replace('\\"', '"').replace("\\'", "'")
+            
+            if not search_replace_output:
+                return {"status": "error", "message": "Failed to generate search/replace blocks from AI response"}
+            
+            # Ensure filename is prepended
+            if not search_replace_output.startswith("current.html"):
+                search_replace_output = "current.html\n" + search_replace_output
+            
+            edit_description = project_spec  # Use the project spec as the edit description
+            
+            print(f"Generated search/replace blocks for '{app_name_safe}'. Length: {len(search_replace_output)} characters")
+            
+        except Exception as e:
+            print(f"Error generating search/replace blocks with AI: {str(e)}")
+            return {"status": "error", "message": f"Failed to generate edit instructions: {str(e)}"}
+
+        # STEP 3: Use SearchReplaceBlockParser and apply directly to string (no temp files needed)
+        
+        # Parse search/replace blocks using the robust parser
+        parser = SearchReplaceBlockParser()
+        blocks = parser.parse_blocks(search_replace_output) # search_replace_output now always has current.html prepended
+        
+        if not blocks:
+            return {
+                "status": "error",
+                "message": "No valid search/replace blocks found in input. Please check the format of your search/replace blocks."
+            }
+        
+        # Apply search/replace blocks directly to the HTML string
+        modified_html = current_html
+        successful_blocks = 0
+        failed_blocks = 0
+        failed_details = []
+        
+        for i, (file_path, search_text, replace_text) in enumerate(blocks):
+            # Ensure proper newline handling for search/replace processing
+            if not search_text.endswith('\n'):
+                search_text += '\n'
+            if not replace_text.endswith('\n'):
+                replace_text += '\n'
+            if not modified_html.endswith('\n'):
+                modified_html += '\n'
+            
+            # Apply using the robust flexible search and replace strategies
+            texts = (search_text, replace_text, modified_html)
+            result = flexible_search_and_replace(texts, editblock_strategies)
+            
+            if result is not None:
+                modified_html = result
+                successful_blocks += 1
+                print(f"✓ Successfully applied block {i+1}/{len(blocks)}")
+            else:
+                failed_blocks += 1
+                failed_details.append(f"Block {i+1}: Search text not found or couldn't be applied")
+                print(f"✗ Failed to apply block {i+1}/{len(blocks)}")
+        
+        # Create results summary
+        sr_results = {
+            'total_blocks': len(blocks),
+            'successful': successful_blocks,
+            'failed': failed_blocks,
+            'failed_details': failed_details
+        }
+        
+        # Check if any edits were successful
+        if sr_results['successful'] == 0:
+            return {
+                "status": "error", 
+                "message": f"All {sr_results['total_blocks']} search/replace blocks failed to apply. The search text may not match the current content exactly.",
+                "search_replace_results": sr_results
+            }
+
+        # STEP 4: Save as new version with updated metadata
+        # Load existing metadata
+        metadata_path = os.path.join(app_dir, "app.json")
+        metadata = await load_app_metadata(metadata_path)
+        
+        # Determine new version number based on total existing versions
+        # This ensures we never overwrite existing versions when branching from old versions
+        existing_versions = metadata.get("versions", [])
+        current_version = metadata.get("current_version", 0)
+        new_version = len(existing_versions) + 1  # Always increment from total versions
+        
+        # Load previous version content for commit summary generation
+        previous_version_content = current_html
+        
+        # Save new version file
+        versions_dir = os.path.join(app_dir, "versions")
+        os.makedirs(versions_dir, exist_ok=True)
+        version_filename = f"v{new_version}.html"
+        version_path = os.path.join(versions_dir, version_filename)
+        
+        try:
+            with open(version_path, 'w', encoding='utf-8') as f:
+                await asyncio.to_thread(f.write, modified_html)
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to save web app version: {str(e)}"}
+
+        # Generate AI-powered commit summary
+        try:
+            # Determine if we're branching from an older version
+            is_branching = current_version < len(existing_versions)
+            branch_context = f" (branched from v{current_version})" if is_branching else ""
+            
+            # Use edit_description (derived from user_request or a default) for the commit summary generation
+            commit_summary = await generate_commit_summary(
+                edit_description + branch_context, modified_html, previous_version_content, metadata.get("versions", [])
+            )
+        except Exception as e:
+            print(f"Warning: Failed to generate commit summary: {e}")
+            commit_summary = f"🔄 Edited web application: {edit_description[:80]}..."
+
+        # Update current.html symlink
+        try:
+            if os.path.exists(current_path) or os.path.islink(current_path):
+                os.remove(current_path)
+            # Create relative symlink for portability
+            os.symlink(f"versions/{version_filename}", current_path)
+        except Exception as e:
+            print(f"Warning: Could not create/update current.html symlink: {e}")
+            # Fallback: copy file instead of symlink
+            try:
+                import shutil
+                shutil.copy2(version_path, current_path)
+            except Exception as e2:
+                return {"status": "error", "message": f"Failed to create current app file: {str(e2)}"}
+
+        # Update metadata
+        now = datetime.datetime.now().isoformat()
+        if not metadata:
+            # Shouldn't happen for edits, but handle gracefully
+            metadata = {
+                "app_name": app_name,
+                "created_at": now,
+                "last_updated": now,
+                "description": f"Edited from: {edit_description[:100]}",
+                "current_version": new_version,
+                "versions": []
+            }
+        else:
+            metadata["last_updated"] = now
+            metadata["current_version"] = new_version
+
+        # Add version entry
+        version_entry = {
+            "version": new_version,
+            "timestamp": now,
+            "file": f"versions/{version_filename}",
+            "user_request": edit_description,
+            "commit_summary": commit_summary,
+            "size": len(modified_html),
+            "line_count": len(modified_html.splitlines()),  # NEW: Add line count
+            "edit_type": "direct_search_replace",
+            "search_replace_results": sr_results
+        }
+        
+        # Add branching information if this is a branch from an older version
+        if is_branching:
+            version_entry["branched_from"] = current_version
+            version_entry["is_branch"] = True
+        
+        metadata["versions"].append(version_entry)
+
+        # Save updated metadata
+        try:
+            await save_app_metadata(metadata_path, metadata)
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to save app metadata: {str(e)}"}
+
+        # Generate response
+        serve_url = f"{DOMAIN}/user_data/{user_id_safe}/web_apps/{app_name_safe}/current.html"
+
+        edit_mode = "direct_search_replace" # Only mode now
+        return {
+            "status": "success",
+            "message": f"Web app '{app_name}' edited successfully using {sr_results['successful']} {edit_mode} changes. Access it at {serve_url}",
+            "url": serve_url,
+            "app_name": app_name,
+            "commit_summary": commit_summary,
+            "search_replace_results": sr_results,
+            "edit_mode": edit_mode
+        }
+        
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to edit web app: {str(e)}"}
+
+@mcp.tool()
+async def delete_web_app(
+    app_name: Annotated[str, Field(description="The name of the web application to delete.")],
+    user_number: Annotated[str, Field(description="The user's unique identifier, used to locate their web app data.")] = "+17145986105",
+    confirm: Annotated[bool, Field(description="Confirmation flag - must be True to actually delete the app.")] = False
+) -> dict:
+    """
+    Delete a web application and all its associated files (versions, metadata, design docs).
+    
+    IMPORTANT: This action is irreversible. All versions and history will be permanently lost.
+    
+    Args:
+        app_name: Name of the web application to delete
+        user_number: User's unique identifier
+        confirm: Must be set to True to actually perform the deletion
+        
+    Returns:
+        dict: Status and details of the deletion operation
+    """
+    if not user_number or user_number == "--user_number_not_needed--":
+        user_number = "+17145986105"
+
+    user_id_safe = sanitize_for_path(user_number)
+    app_name_safe = sanitize_for_path(app_name)
+
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
+    app_dir = os.path.join(base_dir, user_id_safe, "web_apps", app_name_safe)
+
+    # Check if app exists
+    if not await asyncio.to_thread(os.path.exists, app_dir):
+        return {
+            "status": "error",
+            "message": f"Web app '{app_name}' not found."
+        }
+
+    # Safety check - require explicit confirmation
+    if not confirm:
+        return {
+            "status": "confirmation_required",
+            "message": f"Web app '{app_name}' exists and can be deleted. Set 'confirm=True' to proceed with deletion.",
+            "app_directory": app_dir,
+            "warning": "This action is irreversible. All versions and history will be permanently lost."
+        }
+
+    try:
+        # Get app info before deletion for the response
+        metadata_path = os.path.join(app_dir, "app.json")
+        metadata = await load_app_metadata(metadata_path)
+        
+        app_info = {
+            "app_name": app_name,
+            "versions_count": len(metadata.get("versions", [])),
+            "created_at": metadata.get("created_at"),
+            "last_updated": metadata.get("last_updated")
+        }
+
+        # Delete the entire app directory and all contents
+        import shutil
+        await asyncio.to_thread(shutil.rmtree, app_dir)
+
+        return {
+            "status": "success",
+            "message": f"Web app '{app_name}' has been permanently deleted.",
+            "deleted_app_info": app_info
+        }
+
+    except Exception as e:
+        return {
+            "status": "error", 
+            "message": f"Failed to delete web app '{app_name}': {str(e)}"
+        }
+
+@mcp.tool()
+async def switch_web_app_version(
+    app_name: Annotated[str, Field(description="The name of the web application to switch versions for.")],
+    target_version: Annotated[int, Field(description="The version number to switch to (e.g., 1, 2, 3).")],
+    user_number: Annotated[str, Field(description="The user's unique identifier, used to locate their web app data.")] = "+17145986105"
+) -> dict:
+    """
+    Switch the current version of a web application to a specific existing version.
+    
+    This allows you to revert to a previous version or switch between different versions
+    without creating a new version. The selected version becomes the "current" version
+    that is served at the main URL.
+    
+    Args:
+        app_name: Name of the web application
+        target_version: Version number to switch to
+        user_number: User's unique identifier
+        
+    Returns:
+        dict: Status and details of the version switch operation
+    """
+    if not user_number or user_number == "--user_number_not_needed--":
+        user_number = "+17145986105"
+
+    user_id_safe = sanitize_for_path(user_number)
+    app_name_safe = sanitize_for_path(app_name)
+
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
+    app_dir = os.path.join(base_dir, user_id_safe, "web_apps", app_name_safe)
+    current_path = os.path.join(app_dir, "current.html")
+    metadata_path = os.path.join(app_dir, "app.json")
+
+    # Check if app exists
+    if not await asyncio.to_thread(os.path.exists, app_dir):
+        return {
+            "status": "error",
+            "message": f"Web app '{app_name}' not found."
+        }
+
+    try:
+        # Load metadata to get version information
+        metadata = await load_app_metadata(metadata_path)
+        
+        if not metadata:
+            return {
+                "status": "error",
+                "message": f"No version metadata found for web app '{app_name}'."
+            }
+
+        versions = metadata.get("versions", [])
+        current_version = metadata.get("current_version", 1)
+        
+        # Validate target version exists
+        if target_version < 1 or target_version > len(versions):
+            return {
+                "status": "error",
+                "message": f"Version {target_version} does not exist. Available versions: 1-{len(versions)}."
+            }
+        
+        # Check if we're already on the target version
+        if target_version == current_version:
+            return {
+                "status": "success",
+                "message": f"Web app '{app_name}' is already on version {target_version}.",
+                "current_version": current_version,
+                "no_change_needed": True
+            }
+
+        # Find the target version info
+        target_version_info = None
+        for version_data in versions:
+            if version_data.get("version") == target_version:
+                target_version_info = version_data
+                break
+        
+        if not target_version_info:
+            return {
+                "status": "error", 
+                "message": f"Version {target_version} metadata not found in version history."
+            }
+
+        # Get the target version file path
+        versions_dir = os.path.join(app_dir, "versions")
+        target_version_filename = f"v{target_version}.html"
+        target_version_path = os.path.join(versions_dir, target_version_filename)
+        
+        # Check if the target version file exists
+        if not await asyncio.to_thread(os.path.exists, target_version_path):
+            return {
+                "status": "error",
+                "message": f"Version {target_version} file not found at {target_version_path}."
+            }
+
+        # Update the current.html symlink to point to the target version
+        try:
+            if os.path.exists(current_path) or os.path.islink(current_path):
+                os.remove(current_path)
+            # Create relative symlink for portability
+            os.symlink(f"versions/{target_version_filename}", current_path)
+        except Exception as e:
+            print(f"Warning: Could not create/update current.html symlink: {e}")
+            # Fallback: copy file instead of symlink
+            try:
+                import shutil
+                shutil.copy2(target_version_path, current_path)
+            except Exception as e2:
+                return {"status": "error", "message": f"Failed to update current app file: {str(e2)}"}
+
+        # Update metadata to reflect the new current version
+        now = datetime.datetime.now().isoformat()
+        metadata["current_version"] = target_version
+        metadata["last_updated"] = now
+        
+        # Add a note about the version switch (without creating a new version)
+        if "version_switches" not in metadata:
+            metadata["version_switches"] = []
+        
+        metadata["version_switches"].append({
+            "timestamp": now,
+            "from_version": current_version,
+            "to_version": target_version,
+            "reason": "Manual version switch"
+        })
+
+        # Save updated metadata
+        await save_app_metadata(metadata_path, metadata)
+
+        # Generate response
+        serve_url = f"{DOMAIN}/user_data/{user_id_safe}/web_apps/{app_name_safe}/current.html"
+        
+        return {
+            "status": "success",
+            "message": f"Successfully switched web app '{app_name}' from version {current_version} to version {target_version}.",
+            "url": serve_url,
+            "app_name": app_name,
+            "previous_version": current_version,
+            "new_current_version": target_version,
+            "target_version_info": {
+                "version": target_version,
+                "timestamp": target_version_info.get("timestamp"),
+                "commit_summary": target_version_info.get("commit_summary"),
+                "user_request": target_version_info.get("user_request"),
+                "size": target_version_info.get("size")
+            }
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to switch web app version: {str(e)}"
+        }
+
+@mcp.tool()
+async def view_web_app_version(
+    app_name: Annotated[str, Field(description="The name of the web application to view.")],
+    version_number: Annotated[Optional[int], Field(description="The version number to view (e.g., 1, 2, 3). If not provided, returns the current/latest version.")] = None,
+    user_number: Annotated[str, Field(description="The user's unique identifier, used to locate their web app data.")] = "+17145986105",
+    include_content: Annotated[bool, Field(description="Whether to include the full HTML content in the response. Set to False for just metadata.")] = True
+) -> dict:
+    """
+    View the content and metadata of a specific version without switching to it.
+    
+    This allows you to inspect past versions, compare content, or examine version history
+    without changing the current active version. Think of it as 'git show' for web apps.
+    
+    Args:
+        app_name: Name of the web application
+        version_number: Version number to view (if None, returns current version)
+        user_number: User's unique identifier  
+        include_content: Whether to include full HTML content (can be large)
+        
+    Returns:
+        dict: Version information including metadata and optionally full content
+    """
+    if not user_number or user_number == "--user_number_not_needed--":
+        user_number = "+17145986105"
+
+    user_id_safe = sanitize_for_path(user_number)
+    app_name_safe = sanitize_for_path(app_name)
+
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
+    app_dir = os.path.join(base_dir, user_id_safe, "web_apps", app_name_safe)
+    metadata_path = os.path.join(app_dir, "app.json")
+
+    # Check if app exists
+    if not await asyncio.to_thread(os.path.exists, app_dir):
+        return {
+            "status": "error",
+            "message": f"Web app '{app_name}' not found."
+        }
+
+    try:
+        # Load metadata to get version information
+        metadata = await load_app_metadata(metadata_path)
+        
+        if not metadata:
+            return {
+                "status": "error",
+                "message": f"No version metadata found for web app '{app_name}'."
+            }
+
+        versions = metadata.get("versions", [])
+        current_version = metadata.get("current_version", 1)
+        
+        # If no version specified, use current version
+        if version_number is None:
+            version_number = current_version
+        
+        # Validate version exists
+        if version_number < 1 or version_number > len(versions):
+            return {
+                "status": "error",
+                "message": f"Version {version_number} does not exist. Available versions: 1-{len(versions)}."
+            }
+
+        # Find the version info
+        version_info = None
+        for version_data in versions:
+            if version_data.get("version") == version_number:
+                version_info = version_data
+                break
+        
+        if not version_info:
+            return {
+                "status": "error", 
+                "message": f"Version {version_number} metadata not found in version history."
+            }
+
+        # Get the version file path
+        versions_dir = os.path.join(app_dir, "versions")
+        version_filename = f"v{version_number}.html"
+        version_path = os.path.join(versions_dir, version_filename)
+        
+        # Check if the version file exists
+        if not await asyncio.to_thread(os.path.exists, version_path):
+            return {
+                "status": "error",
+                "message": f"Version {version_number} file not found at {version_path}."
+            }
+
+        # Prepare the response
+        response = {
+            "status": "success",
+            "app_name": app_name,
+            "version_number": version_number,
+            "is_current_version": version_number == current_version,
+            "current_version": current_version,
+            "total_versions": len(versions),
+            "version_info": {
+                "version": version_info.get("version"),
+                "timestamp": version_info.get("timestamp"),
+                "commit_summary": version_info.get("commit_summary"),
+                "user_request": version_info.get("user_request"),
+                "size": version_info.get("size"),
+                "edit_type": version_info.get("edit_type"),
+                "branched_from": version_info.get("branched_from"),
+                "is_branch": version_info.get("is_branch", False)
+            }
+        }
+
+        # Include content if requested
+        if include_content:
+            try:
+                with open(version_path, 'r', encoding='utf-8') as f:
+                    html_content = await asyncio.to_thread(f.read)
+                response["html_content"] = html_content
+                response["content_length"] = len(html_content)
+                
+                # Add content preview (first 200 chars)
+                response["content_preview"] = html_content[:200] + ("..." if len(html_content) > 200 else "")
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "message": f"Failed to read version {version_number} content: {str(e)}"
+                }
+        else:
+            response["content_included"] = False
+            response["note"] = "Set include_content=True to get full HTML content"
+
+        # Add preview URL (even though it's not the current version)
+        serve_url = f"{DOMAIN}/user_data/{user_id_safe}/web_apps/{app_name_safe}/versions/{version_filename}"
+        response["version_direct_url"] = serve_url
+        response["current_app_url"] = f"{DOMAIN}/user_data/{user_id_safe}/web_apps/{app_name_safe}/current.html"
+
+        return response
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to view web app version: {str(e)}"
+        }
+
+@mcp.tool()
+async def compare_web_app_versions(
+    app_name: Annotated[str, Field(description="The name of the web application to compare versions for.")],
+    version_a: Annotated[int, Field(description="First version number to compare (e.g., 1, 2, 3).")],
+    version_b: Annotated[int, Field(description="Second version number to compare (e.g., 1, 2, 3).")],
+    user_number: Annotated[str, Field(description="The user's unique identifier, used to locate their web app data.")] = "+17145986105",
+    diff_type: Annotated[str, Field(description="Type of diff to generate: 'summary' (changes overview), 'lines' (line-by-line), or 'both'.")] = "summary"
+) -> dict:
+    """
+    Compare two versions of a web application to see what changed between them.
+    
+    This tool helps you understand the evolution of your web app by showing differences
+    between any two versions. Useful for code review, debugging, or understanding changes.
+    
+    Args:
+        app_name: Name of the web application
+        version_a: First version to compare (will be shown as "from")
+        version_b: Second version to compare (will be shown as "to") 
+        user_number: User's unique identifier
+        diff_type: Type of comparison to perform
+        
+    Returns:
+        dict: Comparison results with differences, metadata, and statistics
+    """
+    if not user_number or user_number == "--user_number_not_needed--":
+        user_number = "+17145986105"
+
+    user_id_safe = sanitize_for_path(user_number)
+    app_name_safe = sanitize_for_path(app_name)
+
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
+    app_dir = os.path.join(base_dir, user_id_safe, "web_apps", app_name_safe)
+    metadata_path = os.path.join(app_dir, "app.json")
+
+    # Check if app exists
+    if not await asyncio.to_thread(os.path.exists, app_dir):
+        return {
+            "status": "error",
+            "message": f"Web app '{app_name}' not found."
+        }
+
+    try:
+        # Load metadata
+        metadata = await load_app_metadata(metadata_path)
+        
+        if not metadata:
+            return {
+                "status": "error",
+                "message": f"No version metadata found for web app '{app_name}'."
+            }
+
+        versions = metadata.get("versions", [])
+        
+        # Validate both versions exist
+        if version_a < 1 or version_a > len(versions):
+            return {
+                "status": "error",
+                "message": f"Version {version_a} does not exist. Available versions: 1-{len(versions)}."
+            }
+        
+        if version_b < 1 or version_b > len(versions):
+            return {
+                "status": "error",
+                "message": f"Version {version_b} does not exist. Available versions: 1-{len(versions)}."
+            }
+
+        # Get version file paths
+        versions_dir = os.path.join(app_dir, "versions")
+        version_a_path = os.path.join(versions_dir, f"v{version_a}.html")
+        version_b_path = os.path.join(versions_dir, f"v{version_b}.html")
+        
+        # Check if version files exist
+        if not await asyncio.to_thread(os.path.exists, version_a_path):
+            return {
+                "status": "error",
+                "message": f"Version {version_a} file not found."
+            }
+        
+        if not await asyncio.to_thread(os.path.exists, version_b_path):
+            return {
+                "status": "error",
+                "message": f"Version {version_b} file not found."
+            }
+
+        # Read both versions
+        with open(version_a_path, 'r', encoding='utf-8') as f:
+            content_a = await asyncio.to_thread(f.read)
+        
+        with open(version_b_path, 'r', encoding='utf-8') as f:
+            content_b = await asyncio.to_thread(f.read)
+
+        # Get version metadata
+        version_a_info = next((v for v in versions if v.get("version") == version_a), {})
+        version_b_info = next((v for v in versions if v.get("version") == version_b), {})
+
+        # Prepare basic comparison data
+        comparison = {
+            "status": "success",
+            "app_name": app_name,
+            "comparison": {
+                "from_version": version_a,
+                "to_version": version_b,
+                "from_info": {
+                    "timestamp": version_a_info.get("timestamp"),
+                    "commit_summary": version_a_info.get("commit_summary"),
+                    "size": len(content_a)
+                },
+                "to_info": {
+                    "timestamp": version_b_info.get("timestamp"),
+                    "commit_summary": version_b_info.get("commit_summary"),
+                    "size": len(content_b)
+                }
+            },
+            "statistics": {
+                "size_change": len(content_b) - len(content_a),
+                "identical": content_a == content_b
+            }
+        }
+
+        # If versions are identical, return early
+        if content_a == content_b:
+            comparison["message"] = f"Versions {version_a} and {version_b} are identical."
+            return comparison
+
+        # Generate diff based on requested type
+        if diff_type in ["summary", "both"]:
+            # Simple summary of changes
+            lines_a = content_a.splitlines()
+            lines_b = content_b.splitlines()
+            
+            comparison["summary"] = {
+                "lines_added": len(lines_b) - len(lines_a),
+                "total_lines_a": len(lines_a),
+                "total_lines_b": len(lines_b),
+                "has_differences": True
+            }
+
+        if diff_type in ["lines", "both"]:
+            # Line-by-line diff using Python's difflib
+            import difflib
+            
+            lines_a = content_a.splitlines(keepends=True)
+            lines_b = content_b.splitlines(keepends=True)
+            
+            # Generate unified diff
+            diff_lines = list(difflib.unified_diff(
+                lines_a, 
+                lines_b, 
+                fromfile=f"v{version_a}.html",
+                tofile=f"v{version_b}.html",
+                n=3  # 3 lines of context
+            ))
+            
+            comparison["diff"] = {
+                "format": "unified",
+                "lines": diff_lines[:100],  # Limit to first 100 lines to avoid huge responses
+                "truncated": len(diff_lines) > 100,
+                "total_diff_lines": len(diff_lines)
+            }
+
+        # Add direct URLs for viewing both versions
+        comparison["urls"] = {
+            "version_a_url": f"{DOMAIN}/user_data/{user_id_safe}/web_apps/{app_name_safe}/versions/v{version_a}.html",
+            "version_b_url": f"{DOMAIN}/user_data/{user_id_safe}/web_apps/{app_name_safe}/versions/v{version_b}.html",
+            "current_app_url": f"{DOMAIN}/user_data/{user_id_safe}/web_apps/{app_name_safe}/current.html"
+        }
+
+        return comparison
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Failed to compare web app versions: {str(e)}"
+        }
+
+
+# --- Helper functions for versioned web app storage ---
+async def load_app_metadata(metadata_path: str) -> dict:
+    """Load app metadata from JSON file, return empty dict if file doesn't exist"""
+    try:
+        if os.path.exists(metadata_path):
+            with open(metadata_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Error loading app metadata from {metadata_path}: {e}")
+    return {}
+
+async def save_app_metadata(metadata_path: str, metadata: dict) -> None:
+    """Save app metadata to JSON file"""
+    try:
+        with open(metadata_path, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"Error saving app metadata to {metadata_path}: {e}")
+        raise
+
+# --- Helper functions for PDF document storage ---
+async def load_pdf_metadata(metadata_path: str) -> dict:
+    """Load PDF document metadata from JSON file, return empty dict if file doesn't exist"""
+    try:
+        if os.path.exists(metadata_path):
+            with open(metadata_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Error loading PDF metadata from {metadata_path}: {e}")
+    return {}
+
+async def save_pdf_metadata(metadata_path: str, metadata: dict) -> None:
+    """Save PDF document metadata to JSON file"""
+    try:
+        with open(metadata_path, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print(f"Error saving PDF metadata to {metadata_path}: {e}")
+        raise
+
+async def update_pdf_commit_summary_background(
+    metadata_path: str, 
+    version_number: int, 
+    request_for_summary: str,
+    html_content_for_summary: str,
+    previous_version_content_for_summary: str,
+    commit_history_for_summary: List[Dict]
+):
+    """Update the commit summary for PDF documents in the background after the tool has already returned."""
+    try:
+        # Generate the real commit summary
+        real_commit_summary = await generate_commit_summary(
+            request_for_summary, html_content_for_summary, previous_version_content_for_summary, commit_history_for_summary
+        )
+        
+        # Load current metadata
+        metadata = await load_pdf_metadata(metadata_path)
+        if not metadata:
+            return
+        
+        # Find and update the version entry
+        for version_entry in metadata.get("versions", []):
+            if version_entry.get("version") == version_number:
+                version_entry["commit_summary"] = real_commit_summary
+                version_entry.pop("generating_summary", None)  # Remove the flag
+                break
+        
+        # Save updated metadata
+        await save_pdf_metadata(metadata_path, metadata)
+        print(f"Background commit summary updated for PDF version {version_number}: {real_commit_summary}")
+        
+    except Exception as e:
+        print(f"Warning: Failed to update PDF commit summary in background: {e}")
+        # If background generation fails, we could update with a fallback message
+        try:
+            metadata = await load_pdf_metadata(metadata_path)
+            if metadata:
+                for version_entry in metadata.get("versions", []):
+                    if version_entry.get("version") == version_number and version_entry.get("generating_summary"):
+                        version_entry["commit_summary"] = f"📄 {'Initial version' if version_number == 1 else 'Updated version'}: {request_for_summary[:80]}..."
+                        version_entry.pop("generating_summary", None)
+                        break
+                await save_pdf_metadata(metadata_path, metadata)
+        except:
+            pass  # If even the fallback fails, just leave the placeholder
+
+async def generate_commit_summary(request_for_summary: str, html_content_for_summary: str, previous_version_content_for_summary: str = None, commit_history_for_summary: List[Dict] = None) -> str:
+    """Generate AI-powered commit summary for this version using fast model and commit history context"""
+    # Always use Flash 2.5 for commit summaries - fast and good enough
+    model = "gemini-2.5-flash-preview-05-20"
+    
+    try:
+        # Build context from commit history
+        history_context = ""
+        if commit_history_for_summary and len(commit_history_for_summary) > 0:
+            history_context = "\n\nPrevious Commits:\n"
+            # Show last 5 commits for context (most recent first)
+            recent_commits = commit_history_for_summary[-5:] if len(commit_history_for_summary) > 5 else commit_history_for_summary
+            for i, commit in enumerate(reversed(recent_commits), 1):
+                history_context += f"{i}. {commit.get('commit_summary', 'No summary')}\n"
+            history_context += "\n"
+
+        if previous_version_content_for_summary:
+            prompt = f"""Analyze the changes made to this web application and generate a concise commit summary.
+
+User Request/Edit Description: {request_for_summary}
+
+Previous Version Length: {len(previous_version_content_for_summary)} characters
+New Version Length: {len(html_content_for_summary)} characters{history_context}
+Please generate a commit summary that:
+1. Starts with an appropriate emoji
+2. Summarizes the key changes made
+3. Mentions any new features, UI changes, or functionality added
+4. Is concise but informative (1-2 sentences)
+5. Uses active voice and present tense
+6. Considers the context of previous commits to avoid repetition
+
+Examples:
+- "🎯 Initial Release: Created responsive todo application with core CRUD operations..."
+- "🏷️ Category System: Added comprehensive category management with color-coded labels..."
+- "🎨 UI Refresh: Redesigned interface with improved mobile responsiveness and new color scheme..."
+- "🔧 Bug Fixes: Resolved localStorage issues and improved form validation..."
+
+Generate only the commit summary, no additional text."""
+        else:
+            prompt = f"""Generate a commit summary for the initial version of this web application.
+
+User Request/App Description: {request_for_summary}
+App Content Length: {len(html_content_for_summary)} characters
+
+Please generate a commit summary that:
+1. Starts with 🎯 emoji for initial release
+2. Summarizes the main features and capabilities
+3. Mentions key technical aspects (responsive design, dark mode, etc.)
+4. Is concise but comprehensive (1-2 sentences)
+
+Generate only the commit summary, no additional text."""
+
+        # Use LLM adapter directly for faster processing without thinking
+        from llm_adapters import get_llm_adapter, StandardizedMessage, StandardizedLLMConfig
+        
+        adapter = get_llm_adapter(model)
+        
+        # Configure for fast, no-thinking generation
+        config = StandardizedLLMConfig(
+            include_thoughts=False,  # Explicitly disable thinking for speed
+        )
+        
+        # Structure the prompt as a standardized message
+        messages = [StandardizedMessage.from_text("user", prompt)]
+        
+        # Generate directly using the adapter
+        response = await adapter.generate_content(
+            model_name=model,
+            history=messages,
+            tools=None,
+            config=config
+        )
+        
+        if response.error:
+            print(f"Error generating commit summary with adapter: {response.error}")
+            return f"🔄 {'Initial version' if not previous_version_content_for_summary else 'Updated version'}: {request_for_summary[:80]}..."
+        
+        return response.text_content.strip() if response.text_content else f"🔄 {'Initial version' if not previous_version_content_for_summary else 'Updated version'}: {request_for_summary[:80]}..."
+            
+    except Exception as e:
+        print(f"Error generating commit summary: {e}")
+        return f"🔄 {'Initial version' if not previous_version_content_for_summary else 'Updated version'}: {request_for_summary[:80]}..."
+
+@mcp.tool()
+async def ai_chat(
+    ctx: Context,
+    messages: Annotated[str, Field(
+        description="The user's message or conversation to send to the AI"
+    )],
+    system_prompt: Annotated[Optional[str], Field(
+        description="Optional system prompt to guide the AI's behavior"
+    )] = None,
+    model: Annotated[MODELS_LITERAL, Field(
+        description="The AI model to use for the response"
+    )] = "gemini-2.5-flash-preview-05-20",
+    include_thoughts: Annotated[bool, Field(
+        description="Whether to include the AI's thinking process in the response"
+    )] = False,
+    user_number: Annotated[str, Field(
+        description="The user's unique identifier, used for consistency with other tools. Not used by ai_chat but required by the system."
+    )] = "+17145986105",
+    json_schema: Annotated[Optional[dict], Field(
+        description="Optional JSON schema that the AI response must follow. When provided, the AI will return structured data instead of free text."
+    )] = None
+) -> dict:
+    """
+    Send a message to an AI model and get a response.
+    
+    This allows web applications to have conversational AI capabilities
+    by sending user messages to various AI models and receiving responses.
+    Enables chatbots, content generation, code assistance, and other AI-powered features.
+    
+    ## JSON Schema Usage
+    
+    When json_schema is provided, the AI will return structured data matching the schema
+    instead of free-form text. This is useful for data extraction, form processing, 
+    content generation with specific structure, and API-like responses.
+    
+    ### JSON Schema Examples:
+    
+    **Example 1: Extract user information**
+    ```python
+    json_schema = {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "age": {"type": "number"},
+            "location": {"type": "string"},
+            "interests": {
+                "type": "array", 
+                "items": {"type": "string"}
+            }
+        },
+        "required": ["name", "age"]
+    }
+    
+    # Call: ai_chat(messages="Hi, I'm John, 25 years old from NYC. I love coding and music.", json_schema=json_schema)
+    # Returns: {"name": "John", "age": 25, "location": "NYC", "interests": ["coding", "music"]}
+    ```
+    
+    **Example 2: Generate structured content**
+    ```python
+    json_schema = {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "summary": {"type": "string"},
+            "content": {"type": "string"},
+            "tags": {
+                "type": "array",
+                "items": {"type": "string"}
+            },
+            "readTime": {"type": "number"}
+        },
+        "required": ["title", "content"]
+    }
+    
+    # Call: ai_chat(messages="Write a blog post about AI", json_schema=json_schema)
+    # Returns: {"title": "...", "summary": "...", "content": "...", "tags": [...], "readTime": 5}
+    ```
+    
+    **Example 3: Form validation**
+    ```python
+    json_schema = {
+        "type": "object",
+        "properties": {
+            "isValid": {"type": "boolean"},
+            "errors": {
+                "type": "array",
+                "items": {"type": "string"}
+            },
+            "suggestions": {"type": "string"}
+        },
+        "required": ["isValid"]
+    }
+    
+    # Call: ai_chat(messages="Validate email: invalid-email", json_schema=json_schema)
+    # Returns: {"isValid": false, "errors": ["Invalid format"], "suggestions": "Use format: user@domain.com"}
+    ```
+    
+    **Example 4: Data analysis**
+    ```python
+    json_schema = {
+        "type": "object",
+        "properties": {
+            "total": {"type": "number"},
+            "average": {"type": "number"},
+            "trend": {
+                "type": "string",
+                "enum": ["increasing", "decreasing", "stable"]
+            },
+            "insights": {
+                "type": "array",
+                "items": {"type": "string"}
+            }
+        },
+        "required": ["total", "average", "trend"]
+    }
+    
+    # Call: ai_chat(messages="Analyze sales: [100, 200, 150, 300]", json_schema=json_schema)
+    # Returns: {"total": 750, "average": 187.5, "trend": "increasing", "insights": ["Strong finish", "Volatile middle period"]}
+    ```
+    
+    ### Response Format:
+    
+    **Without json_schema:**
+    ```python
+    {
+        "status": "success",
+        "response": "AI's text response here...",  # String
+        "response_type": "text"
+    }
+    ```
+    
+    **With json_schema:**
+    ```python
+    {
+        "status": "success", 
+        "response": {"structured": "data", "matching": "schema"},  # Parsed JSON object
+        "response_type": "json",
+        "schema_provided": True
+    }
+    ```
+    
+    ### JavaScript Usage in Web Apps:
+    
+    ```javascript
+    // Simple text chat
+    const textResponse = await chatWithAI("Hello, how are you?");
+    console.log(textResponse); // "I'm doing well, thank you! How can I help you today?"
+    
+    // Structured data extraction
+    const userInfo = await chatWithAI("My name is Alice, I'm 30, from London", {
+        jsonSchema: {
+            type: "object",
+            properties: {
+                name: {type: "string"},
+                age: {type: "number"}, 
+                location: {type: "string"}
+            },
+            required: ["name", "age", "location"]
+        }
+    });
+    console.log(userInfo); // {name: "Alice", age: 30, location: "London"}
+    ```
+    
+    ### Error Handling:
+    
+    If the AI fails to generate valid JSON matching the schema, the response will be:
+    ```python
+    {
+        "status": "error",
+        "message": "AI response is not valid JSON: ...",
+        "raw_response": "The actual AI response text",
+        "json_error_detail": "Specific parsing error"
+    }
+    ```
+    """
+    try:
+        # Prepare the system prompt based on whether JSON schema is requested
+        final_system_prompt = system_prompt or ""
+        
+        if json_schema:
+            # Add JSON formatting instructions to the system prompt
+            json_instructions = f"""
+You must respond with valid JSON that follows this exact schema:
+
+{json.dumps(json_schema, indent=2)}
+
+IMPORTANT:
+- Format your response as a JSON code block using triple backticks
+- Start with ```json
+- Put the JSON data on the lines between the backticks
+- End with ```
+- Do not include any text before or after the code block
+- Follow the schema structure exactly
+- All required fields must be present
+
+Example format:
+```json
+{{"key": "value", "number": 123}}
+```
+"""
+            if final_system_prompt:
+                final_system_prompt += "\n\n" + json_instructions
+            else:
+                final_system_prompt = json_instructions
+        
+        # Use ctx.sample to get AI response
+        response = await ctx.sample(
+            messages=messages,
+            system_prompt=final_system_prompt,
+            model_preferences=[model]
+        )
+        
+        # Extract the response content properly
+        ai_response = ""
+        if hasattr(response, 'text') and response.text:
+            ai_response = response.text
+        elif hasattr(response, 'content') and response.content:
+            ai_response = response.content
+        else:
+            # Try to extract from string representation if it contains actual content
+            response_str = str(response)
+            if 'text=' in response_str:
+                # Extract text between quotes after 'text='
+                import re
+                text_match = re.search(r'text=[\'"](.*?)[\'"]', response_str, re.DOTALL)
+                if text_match:
+                    ai_response = text_match.group(1)
+                    # Clean up escaped newlines and quotes
+                    ai_response = ai_response.replace('\\\\n', '\n').replace('\\"', '"').replace("\\'", "'")
+                else:
+                    return {
+                        "status": "error",
+                        "message": "Could not extract text content from AI response"
+                    }
+            else:
+                return {
+                    "status": "error",
+                    "message": "AI response format error - no text content found"
+                }
+        
+        # Process the response based on whether JSON schema was requested
+        if json_schema:
+            json_match = None
+            try:
+                # Extract JSON from code blocks (more reliable)
+                import re
+                json_match = re.search(r'```json\s*(.*?)\s*```', ai_response, re.DOTALL)
+                
+                if json_match:
+                    json_text = json_match.group(1).strip()
+                    parsed_response = json.loads(json_text)
+                else:
+                    # Fallback: try to parse the entire response as JSON (without code blocks)
+                    # This handles cases where AI doesn't use code blocks despite instructions
+                    parsed_response = json.loads(ai_response.strip())
+                
+                # Basic schema validation (check if required fields exist)
+                if "properties" in json_schema and "required" in json_schema:
+                    required_fields = json_schema.get("required", [])
+                    missing_fields = [field for field in required_fields if field not in parsed_response]
+                    if missing_fields:
+                        return {
+                            "status": "error",
+                            "message": f"JSON response missing required fields: {missing_fields}",
+                            "raw_response": ai_response,
+                            "expected_fields": required_fields
+                        }
+                
+                result = {
+                    "status": "success",
+                    "response": parsed_response,  # Structured JSON response
+                    "response_type": "json",
+                    "model_used": model,
+                    "message_length": len(messages),
+                    "response_length": len(ai_response),
+                    "schema_provided": True,
+                    "parsed_from": "code_block" if json_match else "direct"
+                }
+                
+            except json.JSONDecodeError as e:
+                return {
+                    "status": "error",
+                    "message": f"AI response is not valid JSON: {str(e)}",
+                    "raw_response": ai_response,
+                    "parsing_method": "code_block" if json_match else "direct",
+                    "json_error_detail": str(e)
+                }
+        else:
+            # Return text response as before
+            result = {
+                "status": "success",
+                "response": ai_response,  # Text response
+                "response_type": "text",
+                "model_used": model,
+                "message_length": len(messages),
+                "response_length": len(ai_response),
+                "schema_provided": False
+            }
+        
+        # Include thinking if requested and available
+        if include_thoughts and hasattr(response, 'thinking'):
+            result["thinking"] = response.thinking
+            
+        return result
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"AI chat failed: {str(e)}"
+        }
+
+@mcp.tool()
+async def create_pdf_document(
+    ctx: Context,
+    project_spec: Annotated[str, Field(
+        description="A detailed description/specification of the PDF document to create. This should describe the content, structure, design requirements, and any specific needs. The AI will use this to generate the complete HTML content optimized for PDF conversion."
+    )],
+    user_number: Annotated[str, Field(
+        description="The user's unique identifier (e.g., phone number), used for directory structuring."
+    )] = "+17145986105",
+    doc_name: Annotated[Optional[str], Field(
+        description="The desired name for the PDF document. If not provided, a relevant name will be automatically generated."
+    )] = None, 
+    attachments: Annotated[Optional[List[str]], Field(
+        description="A list of attachment URLs for reference."
+    )] = None,
+    model: Annotated[MODELS_LITERAL, Field(
+        description="The LLM model to use for HTML generation. If user does not specify, use gemini-2.5-pro-preview-05-06."
+    )] = "gemini-2.5-pro-preview-05-06",
+    additional_context: Annotated[Optional[str], Field(
+        description="Optional additional context for document generation."
+    )] = None
+) -> dict:
+    """
+    Creates a PDF document from a project specification using AI generation.
+    
+    This tool:
+    - Takes a project specification describing the desired PDF document
+    - Uses AI to generate complete HTML content optimized for PDF conversion
+    - Converts HTML to PDF using weasyprint
+    - Sets up directory structure and versioning
+    - Creates metadata and commit summaries
+    - Handles attachments for context
+    
+    The AI generation follows best practices for PDF documents including:
+    - Print-optimized layouts and styling
+    - Proper page breaks and margins
+    - Professional typography
+    - Clean, readable design
+    - Structured content organization
+    """
+    print("DEBUG: INSIDE OF CREATE_PDF_DOCUMENT - Generating PDF from project specification")
+    
+    # Use default user number if empty
+    if not user_number or user_number == "--user_number_not_needed--":
+        user_number = "+17145986105"
+
+    # Sanitize inputs
+    user_id_safe = sanitize_for_path(user_number)
+    doc_name = doc_name or f"pdf-doc-{str(uuid.uuid4())[:8]}"
+    doc_name_safe = sanitize_for_path(doc_name)
+
+    main_request = project_spec  # Use the project specification directly
+
+    print(f"Creating PDF document '{doc_name_safe}' from project specification.")
+
+    # --- Attachment Handling ---
+    attachment_info_for_prompt = []
+    attachment_parts = []
+    if attachments and isinstance(attachments, list):
+        for url in attachments:
+            if isinstance(url, str) and url.startswith(('http://', 'https://')):
+                if url.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg')):
+                    mime_type = 'image/*'
+                elif url.lower().endswith('.pdf'):
+                    mime_type = 'application/pdf'
+                else:
+                    mime_type = 'unknown'
+                attachment_info_for_prompt.append({"url": url, "mime_type": mime_type})
+                
+                # Download attachment for AI processing
+                attachment_part = await download_and_create_attachment_part(url)
+                if attachment_part:
+                    attachment_parts.append(attachment_part)
+            else:
+                print(f"Skipping invalid URL in attachments: {url}")
+
+    # --- AI Generation using ctx.sample ---
+    try:
+        # Build comprehensive prompt for PDF document generation
+        prompt_parts = []
+        
+        # Add the main project specification
+        prompt_parts.append(f"Create a PDF document based on this specification:\n{project_spec}")
+        
+        # Add attachment context if available
+        if attachment_info_for_prompt:
+            attachment_context = "\n\nAttachments provided:\n"
+            for att in attachment_info_for_prompt:
+                attachment_context += f"- {att['url']} (type: {att['mime_type']})\n"
+            prompt_parts.append(attachment_context)
+        
+        # Add additional context if provided
+        if additional_context:
+            prompt_parts.append(f"\nAdditional Context:\n{additional_context}")
+        
+        # Add PDF-specific output format instruction
+        prompt_parts.append("\nProvide the complete HTML document optimized for PDF conversion, wrapped in ```html code blocks.")
+        
+        final_prompt = "\n".join(prompt_parts)
+        
+        print(f"Generating PDF document with model: {model}")
+        print(f"Prompt length: {len(final_prompt)} characters")
+        
+        # Use ctx.sample to generate the PDF document HTML
+        response = await ctx.sample(
+            messages=final_prompt,
+            system_prompt=PDF_HTML_SYSTEM_PROMPT,
+            model_preferences=[model]
+        )
+        
+        # Extract HTML content from response
+        html_content = ""
+        if hasattr(response, 'text') and response.text:
+            html_content = response.text
+        elif hasattr(response, 'content') and response.content:
+            html_content = response.content
+        else:
+            response_str = str(response)
+            if 'text=' in response_str:
+                import re
+                text_match = re.search(r'text=[\'"](.*?)[\'"]', response_str, re.DOTALL)
+                if text_match:
+                    html_content = text_match.group(1)
+                    html_content = html_content.replace('\\\\n', '\n').replace('\\"', '"').replace("\\'", "'")
+        
+        if not html_content:
+            return {"status": "error", "message": "Failed to generate HTML content from AI response"}
+        
+        # Extract HTML from code blocks if present
+        import re
+        html_match = re.search(r'```html\s*(.*?)\s*```', html_content, re.DOTALL)
+        if html_match:
+            html_content = html_match.group(1).strip()
+        
+        print(f"Generated HTML content for '{doc_name_safe}'. Length: {len(html_content)} characters")
+        
+    except Exception as e:
+        print(f"Error generating PDF document with AI: {str(e)}")
+        return {"status": "error", "message": f"Failed to generate PDF document: {str(e)}"}
+
+    # Validate that html_content was generated
+    if not html_content:
+        print(f"Error for '{doc_name_safe}': No HTML content was generated.")
+        return {"status": "error", "message": "Failed to generate HTML content from project specification."}
+            
+    # Set up directory structure
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
+    user_specific_data_dir = os.path.join(base_dir, user_id_safe)
+    doc_dir = os.path.join(user_specific_data_dir, "pdf_documents", doc_name_safe)
+    versions_dir = os.path.join(doc_dir, "versions")
+    os.makedirs(versions_dir, exist_ok=True)
+
+    # Load existing metadata
+    metadata_path = os.path.join(doc_dir, "doc.json")
+    metadata = await load_pdf_metadata(metadata_path)
+    
+    # Determine new version number
+    current_version = metadata.get("current_version", 0)
+    new_version = current_version + 1
+    
+    # Generate PDF from HTML
+    try:
+        # Save HTML version
+        html_filename = f"v{new_version}.html"
+        html_path = os.path.join(versions_dir, html_filename)
+        
+        with open(html_path, 'w', encoding='utf-8') as f:
+            await asyncio.to_thread(f.write, html_content)
+        
+        # Convert HTML to PDF
+        pdf_filename = f"v{new_version}.pdf"
+        pdf_path = os.path.join(versions_dir, pdf_filename)
+        
+        # Use weasyprint to convert HTML to PDF
+        import weasyprint
+        pdf_document = await asyncio.to_thread(weasyprint.HTML, string=html_content)
+        await asyncio.to_thread(pdf_document.write_pdf, pdf_path)
+        
+        print(f"Successfully generated PDF: {pdf_path}")
+        
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to generate PDF: {str(e)}"}
+
+    # Create placeholder commit summary
+    placeholder_commit_summary = f"📄 {'Created' if new_version == 1 else 'Updated'} PDF document: {main_request[:80]}..."
+    
+    # Update metadata
+    now = datetime.datetime.now().isoformat()
+    if not metadata:
+        metadata = {
+            "doc_name": doc_name,
+            "created_at": now,
+            "last_updated": now,
+            "description": f"{main_request[:250]}",
+            "current_version": new_version,
+            "versions": []
+        }
+    else:
+        metadata["last_updated"] = now
+        metadata["current_version"] = new_version
+
+    # Add version entry
+    pdf_size = os.path.getsize(pdf_path) if os.path.exists(pdf_path) else 0
+    version_entry = {
+        "version": new_version,
+        "timestamp": now,
+        "html_file": f"versions/{html_filename}",
+        "pdf_file": f"versions/{pdf_filename}",
+        "user_request": main_request,
+        "commit_summary": placeholder_commit_summary,
+        "html_size": len(html_content),
+        "pdf_size": pdf_size,
+        "line_count": len(html_content.splitlines()),
+        "generating_summary": True
+    }
+    metadata["versions"].append(version_entry)
+
+    # Save metadata
+    try:
+        await save_pdf_metadata(metadata_path, metadata)
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to save document metadata: {str(e)}"}
+
+    # Create current symlinks
+    current_html_path = os.path.join(doc_dir, "current.html")
+    current_pdf_path = os.path.join(doc_dir, "current.pdf")
+    
+    try:
+        # Remove existing symlinks
+        for current_path, target_filename in [(current_html_path, html_filename), (current_pdf_path, pdf_filename)]:
+            if os.path.exists(current_path) or os.path.islink(current_path):
+                os.remove(current_path)
+            os.symlink(f"versions/{target_filename}", current_path)
+    except Exception as e:
+        print(f"Warning: Could not create current symlinks: {e}")
+        # Fallback: copy files
+        try:
+            import shutil
+            shutil.copy2(html_path, current_html_path)
+            shutil.copy2(pdf_path, current_pdf_path)
+        except Exception as e2:
+            return {"status": "error", "message": f"Failed to create current document files: {str(e2)}"}
+
+    # Generate URLs
+    pdf_url = f"{DOMAIN}/user_data/{user_id_safe}/pdf_documents/{doc_name_safe}/current.pdf"
+    html_url = f"{DOMAIN}/user_data/{user_id_safe}/pdf_documents/{doc_name_safe}/current.html"
+
+    # Start background task to generate real commit summary
+    asyncio.create_task(update_pdf_commit_summary_background(
+        metadata_path, new_version, main_request, html_content, 
+        None, metadata.get("versions", [])
+    ))
+
+    return {
+        "status": "success",
+        "message": f"PDF document '{doc_name}' created successfully. Access PDF at {pdf_url}",
+        "pdf_url": pdf_url,
+        "html_url": html_url,
+        "doc_name": doc_name,
+        "commit_summary": placeholder_commit_summary,
+        "pdf_size": pdf_size
+    }
+
+@mcp.tool()
+async def edit_pdf_document(
+    ctx: Context,
+    doc_name: Annotated[str, Field(description="The name of the PDF document to edit.")],
+    project_spec: Annotated[str, Field(
+        description="A detailed description of the changes to make to the PDF document. Describe what content to add, modify, or remove. The AI will generate appropriate search/replace blocks to implement these changes on the HTML content, then regenerate the PDF."
+    )],
+    user_number: Annotated[str, Field(description="The user's unique identifier.")] = "+17145986105",
+    model: Annotated[MODELS_LITERAL, Field(description="The LLM model to use for generating the edit.")] = "gemini-2.5-pro-preview-05-06",
+    attachments: Annotated[Optional[List[str]], Field(description="A list of attachment URLs that may be relevant for the changes.")] = None,
+    additional_context: Annotated[Optional[str], Field(description="Optional additional context for the edit.")] = None
+) -> dict:
+    """
+    Edits an existing PDF document using AI-generated search/replace blocks based on a project specification.
+    
+    This tool:
+    - Takes a description of the changes needed (project_spec)
+    - Analyzes the current PDF document's HTML content
+    - Uses AI to generate appropriate search/replace blocks
+    - Applies the changes to the HTML content
+    - Regenerates the PDF from the updated HTML
+    
+    The AI analyzes the existing content and generates precise search/replace blocks that:
+    - Preserve existing content unless explicitly changed
+    - Make minimal necessary changes to implement the request
+    - Maintain document structure and formatting
+    - Keep PDF-optimized styling and layout
+    - Follow document design best practices
+    """
+    if not user_number or user_number == "--user_number_not_needed--":
+        user_number = "+17145986105"
+
+    # Validate input
+    if not project_spec:
+        return {
+            "status": "error",
+            "message": "The 'project_spec' parameter is required and must describe the changes to make."
+        }
+    
+    user_id_safe = sanitize_for_path(user_number)
+    doc_name_safe = sanitize_for_path(doc_name)
+
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
+    doc_dir = os.path.join(base_dir, user_id_safe, "pdf_documents", doc_name_safe)
+    current_html_path = os.path.join(doc_dir, "current.html")
+
+    # Check if document exists
+    if not await asyncio.to_thread(os.path.exists, current_html_path):
+        return {
+            "status": "error", 
+            "message": f"PDF document '{doc_name}' not found. Use 'create_pdf_document' to create a new document.",
+            "suggestion": "create_pdf_document"
+        }
+
+    try:
+        # Load current HTML content
+        with open(current_html_path, 'r', encoding='utf-8') as f:
+            current_html = await asyncio.to_thread(f.read)
+
+        # Load existing metadata
+        metadata_path = os.path.join(doc_dir, "doc.json")
+        metadata = await load_pdf_metadata(metadata_path)
+        
+        # --- Attachment Handling ---
+        attachment_info_for_prompt = []
+        attachment_parts = []
+        if attachments and isinstance(attachments, list):
+            for url in attachments:
+                if isinstance(url, str) and url.startswith(('http://', 'https://')):
+                    if url.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg')):
+                        mime_type = 'image/*'
+                    elif url.lower().endswith('.pdf'):
+                        mime_type = 'application/pdf'
+                    else:
+                        mime_type = 'unknown'
+                    attachment_info_for_prompt.append({"url": url, "mime_type": mime_type})
+                    
+                    # Download attachment for AI processing
+                    attachment_part = await download_and_create_attachment_part(url)
+                    if attachment_part:
+                        attachment_parts.append(attachment_part)
+                else:
+                    print(f"Skipping invalid URL in attachments: {url}")
+
+        # --- AI Generation of Search/Replace Blocks ---
+        try:
+            # Build comprehensive prompt for AI to generate search/replace blocks
+            prompt_parts = []
+            
+            # Add the current HTML content for context
+            prompt_parts.append(f"Current PDF document HTML content:\n\n```html\n{current_html}\n```")
+            
+            # Add the edit specification
+            prompt_parts.append(f"\nEdit Request: {project_spec}")
+            
+            # Add attachment context if available
+            if attachment_info_for_prompt:
+                attachment_context = "\n\nAttachments provided:\n"
+                for att in attachment_info_for_prompt:
+                    attachment_context += f"- {att['url']} (type: {att['mime_type']})\n"
+                prompt_parts.append(attachment_context)
+            
+            # Add additional context if provided
+            if additional_context:
+                prompt_parts.append(f"\nAdditional Context:\n{additional_context}")
+            
+            final_prompt = "\n".join(prompt_parts)
+            
+            print(f"Generating search/replace blocks for PDF document with model: {model}")
+            print(f"Prompt length: {len(final_prompt)} characters")
+            
+            # Use ctx.sample to generate search/replace blocks
+            response = await ctx.sample(
+                messages=final_prompt,
+                system_prompt=EDIT_WEB_APP_SYSTEM_PROMPT,  # Reuse the same edit system prompt
+                model_preferences=[model]
+            )
+            
+            # Extract search/replace blocks from response
+            search_replace_output = ""
+            if hasattr(response, 'text') and response.text:
+                search_replace_output = response.text
+            elif hasattr(response, 'content') and response.content:
+                search_replace_output = response.content
+            else:
+                response_str = str(response)
+                if 'text=' in response_str:
+                    import re
+                    text_match = re.search(r'text=[\'"](.*?)[\'"]', response_str, re.DOTALL)
+                    if text_match:
+                        search_replace_output = text_match.group(1)
+                        search_replace_output = search_replace_output.replace('\\\\n', '\n').replace('\\"', '"').replace("\\'", "'")
+            
+            if not search_replace_output:
+                return {"status": "error", "message": "Failed to generate search/replace blocks from AI response"}
+            
+            # Ensure filename is prepended
+            if not search_replace_output.startswith("current.html"):
+                search_replace_output = "current.html\n" + search_replace_output
+            
+            edit_description = project_spec  # Use the project spec as the edit description
+            
+            print(f"Generated search/replace blocks for PDF '{doc_name_safe}'. Length: {len(search_replace_output)} characters")
+            
+        except Exception as e:
+            print(f"Error generating search/replace blocks with AI: {str(e)}")
+            return {"status": "error", "message": f"Failed to generate edit instructions: {str(e)}"}
+        
+        # Parse and apply search/replace blocks
+        parser = SearchReplaceBlockParser()
+        blocks = parser.parse_blocks(search_replace_output)
+        
+        if not blocks:
+            return {
+                "status": "error",
+                "message": "No valid search/replace blocks found in input."
+            }
+        
+        # Apply changes to HTML
+        modified_html = current_html
+        successful_blocks = 0
+        failed_blocks = 0
+        failed_details = []
+        
+        for i, (file_path, search_text, replace_text) in enumerate(blocks):
+            if not search_text.endswith('\n'):
+                search_text += '\n'
+            if not replace_text.endswith('\n'):
+                replace_text += '\n'
+            if not modified_html.endswith('\n'):
+                modified_html += '\n'
+            
+            texts = (search_text, replace_text, modified_html)
+            result = flexible_search_and_replace(texts, editblock_strategies)
+            
+            if result is not None:
+                modified_html = result
+                successful_blocks += 1
+                print(f"✓ Successfully applied block {i+1}/{len(blocks)}")
+            else:
+                failed_blocks += 1
+                failed_details.append(f"Block {i+1}: Search text not found")
+                print(f"✗ Failed to apply block {i+1}/{len(blocks)}")
+        
+        sr_results = {
+            'total_blocks': len(blocks),
+            'successful': successful_blocks,
+            'failed': failed_blocks,
+            'failed_details': failed_details
+        }
+        
+        if sr_results['successful'] == 0:
+            return {
+                "status": "error", 
+                "message": f"All {sr_results['total_blocks']} search/replace blocks failed to apply.",
+                "search_replace_results": sr_results
+            }
+
+        # Save new version
+        existing_versions = metadata.get("versions", [])
+        new_version = len(existing_versions) + 1
+        
+        versions_dir = os.path.join(doc_dir, "versions")
+        os.makedirs(versions_dir, exist_ok=True)
+        
+        html_filename = f"v{new_version}.html"
+        pdf_filename = f"v{new_version}.pdf"
+        html_path = os.path.join(versions_dir, html_filename)
+        pdf_path = os.path.join(versions_dir, pdf_filename)
+        
+        # Save HTML
+        with open(html_path, 'w', encoding='utf-8') as f:
+            await asyncio.to_thread(f.write, modified_html)
+        
+        # Generate new PDF
+        import weasyprint
+        pdf_document = await asyncio.to_thread(weasyprint.HTML, string=modified_html)
+        await asyncio.to_thread(pdf_document.write_pdf, pdf_path)
+        
+        # Generate commit summary
+        try:
+            commit_summary = await generate_commit_summary(
+                edit_description, modified_html, current_html, metadata.get("versions", [])
+            )
+        except Exception as e:
+            print(f"Warning: Failed to generate commit summary: {e}")
+            commit_summary = f"📄 Edited PDF document: {edit_description[:80]}..."
+
+        # Update current symlinks
+        current_html_path = os.path.join(doc_dir, "current.html")
+        current_pdf_path = os.path.join(doc_dir, "current.pdf")
+        
+        try:
+            for current_path, target_filename in [(current_html_path, html_filename), (current_pdf_path, pdf_filename)]:
+                if os.path.exists(current_path) or os.path.islink(current_path):
+                    os.remove(current_path)
+                os.symlink(f"versions/{target_filename}", current_path)
+        except Exception as e:
+            print(f"Warning: Could not update symlinks: {e}")
+            import shutil
+            shutil.copy2(html_path, current_html_path)
+            shutil.copy2(pdf_path, current_pdf_path)
+
+        # Update metadata
+        now = datetime.datetime.now().isoformat()
+        if not metadata:
+            metadata = {
+                "doc_name": doc_name,
+                "created_at": now,
+                "last_updated": now,
+                "description": f"Edited: {edit_description[:100]}",
+                "current_version": new_version,
+                "versions": []
+            }
+        else:
+            metadata["last_updated"] = now
+            metadata["current_version"] = new_version
+
+        # Add version entry
+        pdf_size = os.path.getsize(pdf_path) if os.path.exists(pdf_path) else 0
+        version_entry = {
+            "version": new_version,
+            "timestamp": now,
+            "html_file": f"versions/{html_filename}",
+            "pdf_file": f"versions/{pdf_filename}",
+            "user_request": edit_description,
+            "commit_summary": commit_summary,
+            "html_size": len(modified_html),
+            "pdf_size": pdf_size,
+            "line_count": len(modified_html.splitlines()),
+            "edit_type": "direct_search_replace",
+            "search_replace_results": sr_results
+        }
+        metadata["versions"].append(version_entry)
+
+        # Save updated metadata
+        try:
+            await save_pdf_metadata(metadata_path, metadata)
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to save document metadata: {str(e)}"}
+
+        # Generate response URLs
+        pdf_url = f"{DOMAIN}/user_data/{user_id_safe}/pdf_documents/{doc_name_safe}/current.pdf"
+        html_url = f"{DOMAIN}/user_data/{user_id_safe}/pdf_documents/{doc_name_safe}/current.html"
+
+        return {
+            "status": "success",
+            "message": f"PDF document '{doc_name}' edited successfully using {sr_results['successful']} changes. Access PDF at {pdf_url}",
+            "pdf_url": pdf_url,
+            "html_url": html_url,
+            "doc_name": doc_name,
+            "commit_summary": commit_summary,
+            "search_replace_results": sr_results,
+            "edit_mode": "direct_search_replace",
+            "pdf_size": pdf_size
+        }
+        
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to edit PDF document: {str(e)}"}
+
+@mcp.tool()
+async def list_pdf_documents(
+    user_number: Annotated[str, Field(
+        description="The user's unique identifier, used to locate their PDF documents."
+    )] = "+17145986105",
+    limit: Annotated[int, Field(
+        description="Maximum number of PDF documents to return in the list.",
+        ge=1 
+    )] = 10
+) -> dict:
+    """
+    Lists PDF documents previously created by the specified user.
+    """
+    if not user_number or user_number == "--user_number_not_needed--":
+        user_number = "+17145986105"
+
+    user_id_safe = sanitize_for_path(user_number)
+
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
+    docs_dir = os.path.join(base_dir, user_id_safe, "pdf_documents")
+
+    if not await asyncio.to_thread(os.path.exists, docs_dir) or not await asyncio.to_thread(os.path.isdir, docs_dir):
+        print(f"PDF documents directory not found for user {user_id_safe} at {docs_dir}. Returning empty list.")
+        return {"pdf_documents": []}
+
+    pdf_docs_list = []
+    try:
+        doc_names = await asyncio.to_thread(os.listdir, docs_dir)
+        doc_dirs = [name for name in doc_names if os.path.isdir(os.path.join(docs_dir, name))]
+        doc_dirs = sorted(doc_dirs, reverse=True)  # Sort by name
+
+        for doc_name in doc_dirs:
+            if len(pdf_docs_list) >= limit:
+                break
+            
+            doc_dir = os.path.join(docs_dir, doc_name)
+            metadata_path = os.path.join(doc_dir, "doc.json")
+            
+            # Load metadata for this document
+            metadata = await load_pdf_metadata(metadata_path)
+            
+            if metadata:
+                pdf_url = f"{DOMAIN}/user_data/{user_id_safe}/pdf_documents/{doc_name}/current.pdf"
+                html_url = f"{DOMAIN}/user_data/{user_id_safe}/pdf_documents/{doc_name}/current.html"
+                
+                # Get latest version info
+                latest_version = None
+                if metadata.get("versions"):
+                    latest_version = metadata["versions"][-1]
+                
+                pdf_doc_info = {
+                    "doc_name": doc_name,
+                    "pdf_url": pdf_url,
+                    "html_url": html_url,
+                    "current_version": metadata.get("current_version", 1),
+                    "created_at": metadata.get("created_at"),
+                    "last_updated": metadata.get("last_updated"),
+                    "description": metadata.get("description", ""),
+                    "total_versions": len(metadata.get("versions", []))
+                }
+                
+                if latest_version:
+                    pdf_doc_info["latest_commit_summary"] = latest_version.get("commit_summary", "")
+                    pdf_doc_info["pdf_size"] = latest_version.get("pdf_size", 0)
+                
+                pdf_docs_list.append(pdf_doc_info)
+            else:
+                # Fallback for documents without metadata
+                current_pdf_path = os.path.join(doc_dir, "current.pdf")
+                if os.path.exists(current_pdf_path):
+                    pdf_url = f"{DOMAIN}/user_data/{user_id_safe}/pdf_documents/{doc_name}/current.pdf"
+                    pdf_docs_list.append({
+                        "doc_name": doc_name,
+                        "pdf_url": pdf_url,
+                        "current_version": 1,
+                        "description": "Legacy PDF document (no version history)",
+                        "total_versions": 1
+                    })
+        
+        return {"pdf_documents": pdf_docs_list}
+
+    except Exception as e:
+        print(f"Error listing PDF documents for user {user_id_safe}: {e}")
+        return {"status": "error", "message": f"Failed to list PDF documents: {str(e)}"}
+
+@mcp.tool()
+async def get_pdf_versions(
+    user_number: Annotated[str, Field(
+        description="The user's unique identifier, used to locate their PDF documents."
+    )] = "+17145986105",
+    doc_name: Annotated[str, Field(
+        description="The name of the PDF document to get version history for."
+    )] = None,
+) -> dict:
+    """
+    Get complete version history for a specific PDF document.
+    """
+    if not user_number or user_number == "--user_number_not_needed--":
+        user_number = "+17145986105"
+
+    user_id_safe = sanitize_for_path(user_number)
+    doc_name_safe = sanitize_for_path(doc_name)
+
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
+    doc_dir = os.path.join(base_dir, user_id_safe, "pdf_documents", doc_name_safe)
+    metadata_path = os.path.join(doc_dir, "doc.json")
+
+    if not await asyncio.to_thread(os.path.exists, metadata_path):
+        return {"status": "error", "message": f"PDF document '{doc_name}' not found or has no version history."}
+
+    try:
+        metadata = await load_pdf_metadata(metadata_path)
+        
+        return {
+            "status": "success",
+            "doc_name": doc_name,
+            "current_version": metadata.get("current_version", 1),
+            "total_versions": len(metadata.get("versions", [])),
+            "created_at": metadata.get("created_at"),
+            "last_updated": metadata.get("last_updated"),
+            "description": metadata.get("description", ""),
+            "versions": metadata.get("versions", [])
+        }
+        
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to load version history: {str(e)}"}
+
+@mcp.tool()
+async def clone_web_app(
+    source_app_name: Annotated[str, Field(description="The name of the source web application to clone.")],
+    new_app_name: Annotated[str, Field(description="The name for the new cloned web application.")],
+    user_number: Annotated[str, Field(description="The user's unique identifier, used to locate their web app data.")] = "+17145986105",
+    source_version: Annotated[Optional[int], Field(description="Specific version to clone. If not provided, clones the current version.")] = None,
+    description_override: Annotated[Optional[str], Field(description="Custom description for the cloned app. If not provided, generates a clone description.")] = None
+) -> dict:
+    """
+    Clone an existing web application to create an exact copy without AI regeneration.
+    
+    This directly copies the HTML content from the source app, preserving exact functionality
+    and styling. Much faster and more reliable than regenerating with AI.
+    
+    Args:
+        source_app_name: Name of the app to clone from
+        new_app_name: Name for the new cloned app
+        user_number: User's unique identifier
+        source_version: Specific version to clone (defaults to current version)
+        description_override: Custom description for clone
+        
+    Returns:
+        dict: Clone operation results with new app URL and metadata
+    """
+    if not user_number or user_number == "--user_number_not_needed--":
+        user_number = "+17145986105"
+
+    user_id_safe = sanitize_for_path(user_number)
+    source_app_name_safe = sanitize_for_path(source_app_name)
+    new_app_name_safe = sanitize_for_path(new_app_name)
+
+    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
+    source_app_dir = os.path.join(base_dir, user_id_safe, "web_apps", source_app_name_safe)
+    new_app_dir = os.path.join(base_dir, user_id_safe, "web_apps", new_app_name_safe)
+
+    # Check if source app exists
+    source_metadata_path = os.path.join(source_app_dir, "app.json")
+    if not await asyncio.to_thread(os.path.exists, source_metadata_path):
+        return {
+            "status": "error",
+            "message": f"Source web app '{source_app_name}' not found."
+        }
+
+    # Check if new app name already exists
+    if await asyncio.to_thread(os.path.exists, new_app_dir):
+        return {
+            "status": "error",
+            "message": f"App with name '{new_app_name}' already exists. Choose a different name."
+        }
+
+    try:
+        # Load source app metadata
+        source_metadata = await load_app_metadata(source_metadata_path)
+        
+        if not source_metadata:
+            return {
+                "status": "error",
+                "message": f"Source app '{source_app_name}' has no metadata. Cannot clone."
+            }
+
+        # Determine which version to clone
+        if source_version is None:
+            clone_version = source_metadata.get("current_version", 1)
+        else:
+            clone_version = source_version
+            # Validate the specified version exists
+            versions = source_metadata.get("versions", [])
+            if clone_version < 1 or clone_version > len(versions):
+                return {
+                    "status": "error",
+                    "message": f"Version {clone_version} does not exist in source app. Available versions: 1-{len(versions)}."
+                }
+
+        # Get the source content
+        source_versions_dir = os.path.join(source_app_dir, "versions")
+        source_version_path = os.path.join(source_versions_dir, f"v{clone_version}.html")
+        
+        if not await asyncio.to_thread(os.path.exists, source_version_path):
+            return {
+                "status": "error",
+                "message": f"Source version {clone_version} file not found."
+            }
+
+        # Read the source HTML content
+        with open(source_version_path, 'r', encoding='utf-8') as f:
+            html_content = await asyncio.to_thread(f.read)
+
+        # Create new app directory structure
+        new_versions_dir = os.path.join(new_app_dir, "versions")
+        os.makedirs(new_versions_dir, exist_ok=True)
+
+        # Save cloned content as v1 of new app
+        new_version_filename = "v1.html"
+        new_version_path = os.path.join(new_versions_dir, new_version_filename)
+        
+        with open(new_version_path, 'w', encoding='utf-8') as f:
+            await asyncio.to_thread(f.write, html_content)
+
+        # Create current.html symlink
+        new_current_path = os.path.join(new_app_dir, "current.html")
+        try:
+            os.symlink(f"versions/{new_version_filename}", new_current_path)
+        except Exception as e:
+            print(f"Warning: Could not create current.html symlink: {e}")
+            # Fallback: copy file instead of symlink
+            import shutil
+            shutil.copy2(new_version_path, new_current_path)
+
+        # Create new app metadata
+        now = datetime.datetime.now().isoformat()
+        
+        # Get source version info for clone description
+        source_version_info = None
+        for version_data in source_metadata.get("versions", []):
+            if version_data.get("version") == clone_version:
+                source_version_info = version_data
+                break
+
+        # Generate description
+        if description_override:
+            description = description_override
+        elif source_version_info:
+            description = f"Clone of '{source_app_name}' v{clone_version}: {source_version_info.get('commit_summary', 'No summary')}"
+        else:
+            description = f"Clone of '{source_app_name}' v{clone_version}"
+
+        new_metadata = {
+            "app_name": new_app_name,
+            "created_at": now,
+            "last_updated": now,
+            "description": description,
+            "current_version": 1,
+            "cloned_from": {
+                "source_app": source_app_name,
+                "source_version": clone_version,
+                "clone_timestamp": now,
+                "source_commit_summary": source_version_info.get("commit_summary") if source_version_info else None
+            },
+            "versions": [
+                {
+                    "version": 1,
+                    "timestamp": now,
+                    "file": f"versions/{new_version_filename}",
+                    "user_request": f"Clone from {source_app_name} v{clone_version}",
+                    "commit_summary": f"🔄 Cloned from '{source_app_name}' v{clone_version}",
+                    "size": len(html_content),
+                    "edit_type": "clone"
+                }
+            ]
+        }
+
+        # Save new app metadata
+        new_metadata_path = os.path.join(new_app_dir, "app.json")
+        await save_app_metadata(new_metadata_path, new_metadata)
+
+        # Generate serve URL
+        serve_url = f"{DOMAIN}/user_data/{user_id_safe}/web_apps/{new_app_name_safe}/current.html"
+
+        return {
+            "status": "success",
+            "message": f"Web app '{new_app_name}' cloned successfully from '{source_app_name}' v{clone_version}. Access it at {serve_url}",
+            "url": serve_url,
+            "app_name": new_app_name,
+            "cloned_from": {
+                "source_app": source_app_name,
+                "source_version": clone_version
+            },
+            "clone_info": {
+                "content_size": len(html_content),
+                "clone_timestamp": now
+            }
+        }
+
+    except Exception as e:
+        # Clean up if there was an error and directories were created
+        try:
+            if await asyncio.to_thread(os.path.exists, new_app_dir):
+                import shutil
+                await asyncio.to_thread(shutil.rmtree, new_app_dir)
+        except:
+            pass
+        
+        return {
+            "status": "error",
+            "message": f"Failed to clone web app: {str(e)}"
+        }
+
+
+# --- Helper functions for versioned web app storage ---
+
+async def fetch_tool_schemas_for_tools(mcp_tool_names: List[str]) -> str:
+    """
+    Fetch and format tool schemas for the specified MCP tool names.
+    Returns formatted context string for system prompt.
+    """
+    if not mcp_tool_names:
+        return ""
+    
+    print(f"DEBUG: mcp_tool_names provided: {mcp_tool_names}")
+    tool_schemas_context = ""
+    
+    try:
+        mcp_service_tools_url = f"http://localhost:5001/tools/all"
+        print(f"DEBUG: Fetching tool schemas from {mcp_service_tools_url}")
+        response = await asyncio.to_thread(requests.get, mcp_service_tools_url, timeout=10)
+        response.raise_for_status()
+        print(f"DEBUG: Tool schemas fetch response status: {response.status_code}")
+        all_tools_data = response.json()
+        print(f"DEBUG: Total tools received: {len(all_tools_data.get('tools', []))}")
+        
+        available_tools_details = all_tools_data.get("tools", [])
+        
+        if available_tools_details:
+            tool_schemas_context += "\n\n# Available MCP System Tools\n"
+            tool_schemas_context += "The broader system has access to the following tools. You can design the web application to leverage these capabilities by making HTTP POST requests to `/internal/call_mcp_tool` as described in the system prompt. Each tool below includes its complete input and output schemas:\n"
+            
+            matched_tools_count = 0
+            for tool_detail in available_tools_details:
+                if tool_detail.get("name") in mcp_tool_names:
+                    print(f"DEBUG: Found matching tool: {tool_detail.get('name')}")
+                    print(f"DEBUG: Tool has output_schema: {tool_detail.get('output_schema') is not None}")
+                    if tool_detail.get('output_schema'):
+                        print(f"DEBUG: Output schema keys: {list(tool_detail.get('output_schema', {}).keys())}")
+                    
+                    tool_schemas_context += f"\n## Tool: {tool_detail.get('name')}\n"
+                    tool_schemas_context += f"   Description: {tool_detail.get('description')}\n"
+                    tool_schemas_context += f"   Input Schema: {json.dumps(tool_detail.get('input_schema', {}), indent=2)}\n"
+                    
+                    output_schema = tool_detail.get('output_schema')
+                    if output_schema:
+                        tool_schemas_context += f"   Output Schema: {json.dumps(output_schema, indent=2)}\n"
+                        tool_schemas_context += f"   Note: This tool returns structured data matching the output schema above.\n"
+                    else:
+                        tool_schemas_context += f"   Output Schema: Not defined (tool may return plain text or unstructured data)\n"
+                    
+                    tool_schemas_context += f"   JavaScript Usage Example:\n"
+                    tool_schemas_context += f"   ```javascript\n"
+                    tool_schemas_context += f"   const result = await callTool('{tool_detail.get('name')}', {{ /* arguments */ }});\n"
+                    tool_schemas_context += f"   ```\n"
+                    
+                    matched_tools_count += 1
+            
+            print(f"DEBUG: Matched {matched_tools_count} tools out of {len(mcp_tool_names)} requested")
+                    
+    except Exception as e:
+        print(f"DEBUG: Exception during tool schema fetch: {str(e)}")
+        print(f"DEBUG: Exception type: {type(e).__name__}")
+        tool_schemas_context += f"\n\n# Available MCP System Tools\nError fetching tool schemas: {str(e)}. Proceeding without specific tool context.\n"
+
+    print(f"DEBUG: Tool schemas context length: {len(tool_schemas_context)} characters")
+    return tool_schemas_context
+
+def extract_mcp_tool_names_from_html(html_content: str) -> List[str]:
+    """
+    Extract MCP tool names that are already being used in the web app.
+    This helps preserve existing tool integrations during edits.
+    """
+    import re
+    tool_names = []
+    
+    # Look for callTool function calls
+    call_tool_pattern = r"callTool\s*\(\s*['\"]([^'\"]+)['\"]"
+    matches = re.findall(call_tool_pattern, html_content)
+    tool_names.extend(matches)
+    
+    # Look for tool_name in fetch requests
+    tool_name_pattern = r"tool_name['\"]?\s*:\s*['\"]([^'\"]+)['\"]"
+    matches = re.findall(tool_name_pattern, html_content)
+    tool_names.extend(matches)
+    
+    # Remove duplicates and return
+    return list(set(tool_names))
+
+@mcp.tool()
+async def get_tool_schemas(
+    tool_names: Annotated[List[str], Field(
+        description="List of MCP tool names to get schemas for. Use this before writing JavaScript that calls /internal/call_mcp_tool to ensure accurate tool integration."
+    )],
+    user_number: Annotated[str, Field(
+        description="The user's unique identifier (typically provided by the system)."
+    )] = "+17145986105"
+) -> dict:
+    """
+    Get complete input and output schemas for specified MCP tools.
+    
+    This tool is essential for web app development when you need to write JavaScript 
+    that calls backend MCP tools via /internal/call_mcp_tool. It provides:
+    
+    - Complete input schema (parameter structure)
+    - Complete output schema (return value structure) 
+    - Tool descriptions and usage notes
+    - JavaScript integration examples
+    
+    USAGE WORKFLOW:
+    1. Call this tool first with the names of tools you plan to use
+    2. Study the returned schemas carefully
+    3. Write JavaScript code that matches the exact input schema
+    4. Handle responses according to the output schema
+    
+    Returns:
+        dict: Complete schema information for the requested tools including:
+        - input_schema: Parameter structure for tool calls
+        - output_schema: Expected return value structure  
+        - description: Tool functionality description
+        - javascript_example: Ready-to-use JavaScript code snippet
+    """
+    print(f"DEBUG: get_tool_schemas called with tools: {tool_names}")
+    
+    if not tool_names:
+        return {
+            "status": "error",
+            "message": "No tool names provided. Please specify which tools you need schemas for."
+        }
+    
+    try:
+        # Fetch all available tools from the MCP service
+        mcp_service_tools_url = "http://localhost:5001/tools/all"
+        print(f"DEBUG: Fetching tool schemas from {mcp_service_tools_url}")
+        
+        response = await asyncio.to_thread(requests.get, mcp_service_tools_url, timeout=10)
+        response.raise_for_status()
+        
+        all_tools_data = response.json()
+        available_tools = all_tools_data.get("tools", [])
+        
+        print(f"DEBUG: Found {len(available_tools)} total tools available")
+        
+        # Find matching tools and build schema response
+        tool_schemas = {}
+        found_tools = []
+        missing_tools = []
+        
+        for tool_name in tool_names:
+            tool_found = False
+            for tool_detail in available_tools:
+                if tool_detail.get("name") == tool_name:
+                    tool_found = True
+                    found_tools.append(tool_name)
+                    
+                    # Build comprehensive schema information
+                    input_schema = tool_detail.get("input_schema", {})
+                    output_schema = tool_detail.get("output_schema")
+                    description = tool_detail.get("description", "")
+                    
+                    # Generate JavaScript example
+                    js_example = f"""// Example usage for {tool_name}
+const result = await callTool('{tool_name}', {{
+    // Add required parameters based on input_schema:
+    // {', '.join([f"{prop}: 'value'" for prop in input_schema.get('properties', {}).keys()][:3])}
+}});
+
+// Handle result based on output_schema:
+if (result.status === 'success') {{
+    // Process successful result
+    console.log('Tool result:', result);
+}} else {{
+    // Handle error
+    console.error('Tool error:', result.message || result.error);
+}}"""
+                    
+                    # Build detailed parameter info
+                    param_info = {}
+                    if input_schema.get("properties"):
+                        for param_name, param_def in input_schema["properties"].items():
+                            param_info[param_name] = {
+                                "type": param_def.get("type", "unknown"),
+                                "description": param_def.get("description", ""),
+                                "required": param_name in input_schema.get("required", []),
+                                "default": param_def.get("default"),
+                                "enum": param_def.get("enum"),
+                                "format": param_def.get("format")
+                            }
+                    
+                    tool_schemas[tool_name] = {
+                        "description": description,
+                        "input_schema": input_schema,
+                        "output_schema": output_schema,
+                        "parameter_details": param_info,
+                        "javascript_example": js_example,
+                        "required_parameters": input_schema.get("required", []),
+                        "optional_parameters": [
+                            prop for prop in input_schema.get("properties", {}).keys() 
+                            if prop not in input_schema.get("required", [])
+                        ]
+                    }
+                    break
+            
+            if not tool_found:
+                missing_tools.append(tool_name)
+        
+        print(f"DEBUG: Found schemas for {len(found_tools)} tools, missing {len(missing_tools)} tools")
+        
+        result = {
+            "status": "success" if found_tools else "partial_success" if tool_schemas else "error",
+            "message": f"Retrieved schemas for {len(found_tools)} tools" + (f", {len(missing_tools)} not found" if missing_tools else ""),
+            "tool_schemas": tool_schemas,
+            "found_tools": found_tools,
+            "missing_tools": missing_tools,
+            "usage_notes": {
+                "javascript_integration": "Use the provided javascript_example as a starting point. Modify the parameters based on parameter_details.",
+                "error_handling": "Always check result.status or result.error before processing the response",
+                "parameter_types": "Ensure JavaScript values match the expected types in input_schema",
+                "endpoint": "All tool calls should be made to /internal/call_mcp_tool with POST method"
+            }
+        }
+        
+        # Add general JavaScript helper if any tools were found
+        if tool_schemas:
+            result["general_helper_function"] = """// General MCP tool calling helper function
+async function callTool(toolName, args = {}) {
+    try {
+        const response = await fetch('/internal/call_mcp_tool', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tool_name: toolName,
+                arguments: args,
+            })
+        });
+        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const data = await response.json();
+        if (data.error && data.error !== "None" && data.error !== null) throw new Error(data.error);
+        
+        // Parse result if it's JSON, otherwise return as string
+        try {
+            return JSON.parse(data.result);
+        } catch {
+            return data.result;
+        }
+    } catch (error) {
+        console.error(`Tool ${toolName} failed:`, error);
+        throw error;
+    }
+}"""
+        
+        return result
+        
+    except Exception as e:
+        print(f"ERROR in get_tool_schemas: {str(e)}")
+        return {
+            "status": "error",
+            "message": f"Failed to fetch tool schemas: {str(e)}",
+            "tool_schemas": {},
+            "found_tools": [],
+            "missing_tools": tool_names
+        }
+
+# --- Helper functions for versioned web app storage ---
 
 if __name__ == "__main__":
     # Check if we should use HTTP transport
@@ -2056,4 +4144,5 @@ if __name__ == "__main__":
         mcp.run(transport="streamable-http", host=host, port=port)
     else:
         print("Starting server with stdio transport")
-        mcp.run() 
+        mcp.run()         
+        

@@ -14,14 +14,17 @@ import asyncio
 import hashlib
 from typing import List, Optional, Dict, Tuple, Any
 from utils.constants import DOMAIN
-import vertexai
-from vertexai.preview.vision_models import ImageGenerationModel
-from PIL import Image as PILImage
 import time
+# Added for gpt-image-1 support
+from openai import OpenAI
+# Google GenAI client for Imagen
+from google import genai
+from google.genai import types
+# import base64 # Already imported globally
 
-mcp = FastMCP("Image and Video Services Server")
+mcp = FastMCP("Image, Video, Music, and Speech Services Server")
 
-print("Image and Video Services Server ready - Vertex AI projects will be initialized on first use")
+print("Image, Video, Music, and Speech Services Server ready - Google GenAI clients will be initialized on first use")
 
 @mcp.tool(
     annotations={
@@ -159,192 +162,456 @@ def sanitize_for_path(name_part: str) -> str:
         return f"sanitized_{uuid.uuid4().hex[:8]}"
     return name_part
 
-async def _generate_images_with_prompts_concurrent(user_number, prompts):
+async def _generate_images_with_prompts_concurrent(user_number, prompts, model_version="imagen-4.0-generate-preview-06-06", input_images=None, aspect_ratio="16:9"):
     import re
     import hashlib
+    import time
+    # Ensure base64 is available for OpenAI path; it's already globally imported but good to note.
+    # import base64 
+    from PIL import Image # Ensure PIL.Image is available
+    from io import BytesIO # Ensure BytesIO is available
+    import uuid # Ensure uuid is available
+    import os # Ensure os is available
+    from utils.constants import DOMAIN # Ensure DOMAIN is available
     
     # Use default user number if empty
     if not user_number or user_number == "--user_number_not_needed--":
         user_number = "+17145986105"
     
-    def sanitize(s):
-        s = str(s).replace('+', '')
-        # Always hash group IDs for shortness
+    def sanitize_for_path_local(s_input): # Renamed to avoid conflict with global sanitize_for_path
+        s = str(s_input).replace('+', '')
         if s.startswith('group_'):
             group_id = s[len('group_'):]
             hash_val = hashlib.md5(group_id.encode()).hexdigest()[:8]
             s = f"group_{hash_val}"
         s = re.sub(r'[^a-zA-Z0-9]', '_', s)
         s = re.sub(r'_+', '_', s)
-        return s.strip('_')
+        s = s.strip('_')
+        if not s: # Handle empty string after sanitization
+            return f"sanitized_{uuid.uuid4().hex[:8]}"
+        return s
 
-    user_number_safe = sanitize(user_number)
+    user_number_safe = sanitize_for_path_local(user_number)
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
     image_dir = os.path.join(base_dir, user_number_safe, "images")
     os.makedirs(image_dir, exist_ok=True)
 
-    # --- Multiple Vertex AI Project Configuration ---
-    vertex_projects = [
-        "gen-lang-client-0761146080",
-        "maximal-totem-456502-h3",
-        "imagen-api-3", 
-        "imagen-api-4",
-        "imagen-api-5"
-    ]
-    location = "us-central1"
-    
-    # Initialize models for each project
-    generation_models = []
-    for i, project_id in enumerate(vertex_projects):
+    if model_version == "gpt-image-1":
+        # OpenAI GPT Image Logic - NOW USING RESPONSES API
+        openai_api_key = os.environ.get("OPENAI_API_KEY")
+        if not openai_api_key:
+            print("Error: OPENAI_API_KEY environment variable not set.")
+            return {"status": "error", "message": "OPENAI_API_KEY environment variable not set for gpt-image-1 model."}
+        
         try:
-            # Re-initialize Vertex AI for each project
-            vertexai.init(project=project_id, location=location)
-            model = ImageGenerationModel.from_pretrained("imagen-4.0-ultra-generate-exp-05-20")
-            generation_models.append((project_id, model))
-            print(f"Initialized Vertex AI project {i+1}/{len(vertex_projects)}: {project_id}")
+            client = OpenAI() 
         except Exception as e:
-            print(f"Failed to initialize Vertex AI project {project_id}: {e}")
-            continue
-    
-    if not generation_models:
-        print("Error: No Vertex AI projects could be initialized.")
-        return {"status": "error", "message": "No Vertex AI projects configured successfully."}
+            print(f"Error initializing OpenAI client: {str(e)}")
+            return {"status": "error", "message": f"Failed to initialize OpenAI client: {str(e)}"}
 
-    num_projects = len(generation_models)
-    print(f"Initialized image generation with {num_projects} Vertex AI projects.")
-
-    # --- Helper Functions ---
-    async def process_image_response(response, prompt, prompt_idx):
-        """Processes images from a prompt response concurrently."""
-        os.makedirs(image_dir, exist_ok=True)
-
-        async def _save_and_process_single_image(generated_image, index):
-            """Handles saving the PNG image and returning its URL."""
+        all_prompt_results = []
+        any_errors_openai = False
+        
+        async def generate_for_single_prompt_openai_responses_api(prompt_text, prompt_idx_openai):
             try:
-                # For Vertex AI ImageGenerationModel, use the _pil_image attribute
-                if hasattr(generated_image, '_pil_image'):
-                    image = generated_image._pil_image
-                else:
-                    print(f"Could not extract PIL image from generated_image object: {type(generated_image)}, dir: {dir(generated_image)}")
-                    return None
+                print(f"🎯 OpenAI (Responses API) Prompt #{prompt_idx_openai}: '{prompt_text[:50]}...'")
+                start_time_openai = time.time()
                 
-                # Filename now uses only a prefix and a portion of UUID.
-                # Using 8 hex characters from UUID for good collision resistance.
-                filename = f"img_{uuid.uuid4().hex[:8]}.png"
-                local_path = os.path.join(image_dir, filename)
+                gpt_size = "1024x1024"
+                if aspect_ratio == "16:9": gpt_size = "1536x1024"
+                elif aspect_ratio == "9:16": gpt_size = "1024x1536"
+                elif aspect_ratio == "4:3": gpt_size = "1536x1024" 
+                elif aspect_ratio == "3:4": gpt_size = "1024x1536" 
+                elif aspect_ratio == "3:2": gpt_size = "1536x1024" 
+                elif aspect_ratio == "2:3": gpt_size = "1024x1536"
+                elif aspect_ratio == "1:1": gpt_size = "1024x1024"
 
-                # Save the original PNG image to disk non-blockingly
-                await asyncio.to_thread(image.save, local_path)
+                input_content_for_api = [{"type": "input_text", "text": prompt_text}]
+                
+                if input_images and prompt_idx_openai < len(input_images):
+                    current_input_image_sources = input_images[prompt_idx_openai]
+                    if not isinstance(current_input_image_sources, list):
+                         current_input_image_sources = [current_input_image_sources]
 
-                # Construct the URL using the original PNG filename saved to disk
-                image_url = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename}"
-                return image_url
-            except Exception as e:
-                print(f"Error processing image {index} for prompt {prompt_idx} ('{prompt[:30]}...'): {e}")
-                return None # Return None on error for this specific image
+                    for source_index, image_source_url_or_b64 in enumerate(current_input_image_sources):
+                        print(f"🖼️ Processing input_image #{source_index} for OpenAI Responses API: {str(image_source_url_or_b64)[:70]}...")
+                        img_bytes = None
+                        mime_type = "image/png" # Default, will be refined
+                        
+                        try:
+                            if str(image_source_url_or_b64).startswith("data:image"):
+                                # Already a data URL, pass it directly
+                                input_content_for_api.append({"type": "input_image", "image_url": image_source_url_or_b64})
+                                print(f"✅ Added pre-formatted data URL for input_image #{source_index}")
+                                continue # Skip further processing for this image
+                            elif str(image_source_url_or_b64).startswith("http://") or str(image_source_url_or_b64).startswith("https://"):
+                                resp = await asyncio.to_thread(requests.get, image_source_url_or_b64, timeout=20)
+                                resp.raise_for_status()
+                                img_bytes = resp.content
+                                header_content_type = resp.headers.get('Content-Type', '')
+                                if header_content_type.startswith('image/'):
+                                    mime_type = header_content_type
+                            elif len(str(image_source_url_or_b64)) > 100: # Assume raw base64
+                                img_bytes = base64.b64decode(image_source_url_or_b64)
+                            else:
+                                print(f"⚠️ Invalid input_image format for prompt #{prompt_idx_openai}, source #{source_index}. Skipping.")
+                                continue
 
-        # Create and run tasks concurrently for all images from this single prompt response
-        # For Vertex AI, response.images contains the list of GeneratedImage objects
-        if hasattr(response, 'images'):
-            images_list = response.images
-        else:
-            print(f"Unexpected response format from Vertex AI: {type(response)}, expected ImageGenerationResponse with 'images' attribute")
-            return []
+                            if img_bytes:
+                                pil_image = await asyncio.to_thread(Image.open, BytesIO(img_bytes))
+                                original_format = pil_image.format # PNG, JPEG, GIF, WEBP etc.
+                                
+                                # Refine MIME type based on Pillow's detection
+                                if original_format:
+                                    if original_format.upper() == "JPEG": mime_type = "image/jpeg"
+                                    elif original_format.upper() == "PNG": mime_type = "image/png"
+                                    elif original_format.upper() == "GIF": mime_type = "image/gif"
+                                    elif original_format.upper() == "WEBP": mime_type = "image/webp"
+                                    # Keep default 'image/png' if Pillow format is None or not one of the above common ones
+                                
+                                # Convert to PNG if not a directly supported format by OpenAI or for consistency
+                                if original_format not in ['PNG', 'JPEG', 'GIF', 'WEBP']:
+                                    print(f"Unsupported format {original_format}, converting to PNG for OpenAI input.")
+                                    output_buffer = BytesIO()
+                                    # Handle transparency correctly during conversion
+                                    if pil_image.mode == 'RGBA' or pil_image.mode == 'LA' or (pil_image.mode == 'P' and 'transparency' in pil_image.info):
+                                        await asyncio.to_thread(pil_image.save, output_buffer, format='PNG')
+                                    else: # Convert to RGB first if no alpha, then save as PNG
+                                        rgb_pil_image = pil_image.convert('RGB')
+                                        await asyncio.to_thread(rgb_pil_image.save, output_buffer, format='PNG')
+                                    img_bytes = output_buffer.getvalue()
+                                    mime_type = 'image/png' # Mime type is now PNG
 
-        save_tasks = [
-            _save_and_process_single_image(img, i)
-            for i, img in enumerate(images_list)
-        ]
+                                b64_encoded_img = base64.b64encode(img_bytes).decode('utf-8')
+                                data_url = f"data:{mime_type};base64,{b64_encoded_img}"
+                                input_content_for_api.append({"type": "input_image", "image_url": data_url})
+                                print(f"✅ Added data URL for input_image #{source_index} (final mime: {mime_type}, size: {len(img_bytes)})")
+
+                        except Exception as e_proc_img:
+                            print(f"⚠️ Failed to process input_image source #{source_index} for prompt #{prompt_idx_openai}: {e_proc_img}")
+                
+                print(f"Calling OpenAI client.responses.create with model gpt-4o-mini, tool image_generation, size: {gpt_size}")
+                input_summary = []
+                for item in input_content_for_api:
+                    if item["type"] == "input_text":
+                        input_summary.append({"type": "input_text", "text_length": len(item["text"])})
+                    elif item["type"] == "input_image":
+                        input_summary.append({"type": "input_image", "image_url_preview": item["image_url"][:100] + "..." if item.get("image_url") else "No URL"})
+                print(f"Input content summary: {json.dumps(input_summary, indent=2)}")
+
+                response_openai = await asyncio.to_thread(
+                    client.responses.create,
+                    model="gpt-4o-mini", 
+                    input=[{"role": "user", "content": input_content_for_api}],
+                    tools=[{
+                        "type": "image_generation",
+                        "size": gpt_size,
+                        "quality": "high", 
+                        "moderation": "low",
+                    }],
+                )
+
+                end_time_openai = time.time()
+                duration_openai = end_time_openai - start_time_openai
+                print(f"✅ OpenAI Responses API CALL COMPLETE - Prompt #{prompt_idx_openai} (took {duration_openai:.2f}s)")
+
+                generated_image_b64 = None
+                revised_prompt_for_image = None
+
+                if response_openai.output:
+                    for output_item in response_openai.output:
+                        if output_item.type == "image_generation_call":
+                            if output_item.status == "completed" and output_item.result:
+                                generated_image_b64 = output_item.result
+                                revised_prompt_for_image = output_item.revised_prompt
+                                print(f"🖼️ Image generated. Revised prompt by gpt-4o-mini: {revised_prompt_for_image}")
+                                break
+                            else:
+                                print(f"⚠️ Image generation tool call not completed or no result: Status {output_item.status}. Message: {getattr(output_item, 'message', 'N/A')}")
+                                return {"error": f"OpenAI image generation tool call status: {output_item.status}. Message: {getattr(output_item, 'message', 'N/A')}"}
+                
+                if not generated_image_b64:
+                    print(f"Error: OpenAI Responses API did not return image data for prompt: {prompt_text}")
+                    full_output_log = "No output attribute or empty."
+                    if hasattr(response_openai, 'output') and response_openai.output:
+                        try:
+                            full_output_log = response_openai.output.model_dump_json(indent=2)
+                        except Exception: # Fallback if model_dump_json fails or not available
+                            full_output_log = str(response_openai.output)
+                    print(f"Full OpenAI Response Output: {full_output_log}")
+                    return {"error": f"OpenAI Responses API did not return image data for prompt: {prompt_text}"}
+
+                image_bytes_data = base64.b64decode(generated_image_b64)
+                pil_image_obj = Image.open(BytesIO(image_bytes_data))
+                
+                filename_openai = f"gpt_responses_img_{uuid.uuid4().hex[:8]}.png" # Always save as PNG from this API
+                local_path_openai = os.path.join(image_dir, filename_openai)
+                await asyncio.to_thread(pil_image_obj.save, local_path_openai, format="PNG")
+                
+                image_url_openai = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename_openai}"
+                print(f"✅ OpenAI (Responses API) Success: Prompt #{prompt_idx_openai}. Generated image: {image_url_openai}")
+                return [image_url_openai]
+
+            except Exception as e_openai:
+                error_str_openai = str(e_openai)
+                print(f"❌ OpenAI (Responses API) Error Type: {type(e_openai).__name__}")
+                print(f"❌ OpenAI (Responses API) Error: Prompt #{prompt_idx_openai} ('{prompt_text[:30]}...'): {error_str_openai}")
+                import traceback
+                print(traceback.format_exc())
+                return {"error": f"OpenAI image generation via Responses API failed for prompt '{prompt_text}': {error_str_openai}"}
+
+        openai_tasks = [generate_for_single_prompt_openai_responses_api(p, i) for i, p in enumerate(prompts)]
         
-        image_url_results = await asyncio.gather(*save_tasks)
+        # Debug: Show batch start time for OpenAI
+        batch_start_time_openai = time.time()
+        batch_start_str_openai = time.strftime("%H:%M:%S", time.localtime(batch_start_time_openai))
+        print(f"\n⏱️ OpenAI BATCH START [{batch_start_str_openai}] - Launching {len(prompts)} concurrent API calls...")
 
-        # Filter out None results (errors during saving/processing)
-        successful_urls = [url for url in image_url_results if url is not None]
-        
-        # Return only the successfully processed URLs
-        return successful_urls
+        results_from_openai_api = await asyncio.gather(*openai_tasks, return_exceptions=False) # Errors handled within helper
 
-    async def generate_for_prompt(prompt, idx, project_model_tuple):
-        project_id, generation_model = project_model_tuple
-        project_index = generation_models.index(project_model_tuple)
+        # Debug: Show batch completion time for OpenAI
+        batch_end_time_openai = time.time()
+        batch_duration_openai = batch_end_time_openai - batch_start_time_openai
+        batch_end_str_openai = time.strftime("%H:%M:%S", time.localtime(batch_end_time_openai))
+        print(f"\n🏁 OpenAI BATCH COMPLETE [{batch_end_str_openai}] - All {len(prompts)} requests finished (total time: {batch_duration_openai:.2f}s)")
 
-        try:
-            print(f"Attempting prompt '{prompt}' (idx: {idx}) with Vertex AI project {project_id} (index: {project_index}).")
-            
-            # Re-initialize Vertex AI for this specific project before generating
-            vertexai.init(project=project_id, location=location)
-            
-            response = await asyncio.to_thread(
-                generation_model.generate_images,
-                prompt=prompt,
-                number_of_images=1,
-                aspect_ratio="1:1",
-                negative_prompt="",
-                person_generation="",
-                safety_filter_level="",
-                add_watermark=True
-            )
-            urls = await process_image_response(response, prompt, idx)
-            
-            if not urls:
-                print(f"Warning: Vertex AI project {project_id} generated response for prompt '{prompt}' (idx: {idx}), but processing/saving failed for all images.")
-                return {"error": f"Image generation API succeeded for prompt '{prompt}' with project {project_id}, but processing/saving failed for all images."}
-            
-            print(f"Success for prompt '{prompt}' (idx: {idx}) with project {project_id}. Generated {len(urls)} URLs.")
-            return urls
 
-        except Exception as e:
-            error_str = str(e)
-            print(f"Error on prompt '{prompt}' (idx: {idx}) with project {project_id}: {error_str}")
-            
-            # Check if it's a rate limit/quota error for logging purposes
-            is_rate_limit = False
-            try:
-                from google.api_core import exceptions as google_exceptions
-                if isinstance(e, google_exceptions.ResourceExhausted): is_rate_limit = True
-                elif isinstance(e, google_exceptions.GoogleAPIError) and e.code == 429: is_rate_limit = True
-            except ImportError: pass
-            if not is_rate_limit and hasattr(e, 'code') and e.code == 429: is_rate_limit = True
-            elif not is_rate_limit and ("rate limit" in error_str.lower() or "quota" in error_str.lower() or "429" in error_str): is_rate_limit = True
-
-            if is_rate_limit:
-                error_message = f"Rate limit hit on project {project_id} for prompt '{prompt}'."
+        for i_openai, r_openai in enumerate(results_from_openai_api):
+            if isinstance(r_openai, dict) and "error" in r_openai:
+                any_errors_openai = True
+                all_prompt_results.append(r_openai) 
+            elif isinstance(r_openai, list):
+                all_prompt_results.append(r_openai)
             else:
-                error_message = f"Image generation failed on project {project_id} for prompt '{prompt}': {error_str}"
+                any_errors_openai = True
+                error_msg_detail = f"Unexpected result type for OpenAI prompt index {i_openai}: {type(r_openai)}"
+                print(error_msg_detail)
+                all_prompt_results.append({"error": error_msg_detail})
+        
+        if any_errors_openai:
+            # Check if all failed
+            if all(isinstance(res, dict) and "error" in res for res in all_prompt_results):
+                 return {"status": "error", "message": "All image generations failed with OpenAI. Check results for details.", "results": all_prompt_results}
+            return {"status": "partial_error", "message": "Some images failed to generate with OpenAI. Check results for details.", "results": all_prompt_results}
+        
+        return {"status": "success", "results": all_prompt_results}
 
-            print(f"DEBUG: Failing prompt '{prompt}' due to error: {error_message}")
-            return {"error": error_message}
+    else:
+        # --- Google GenAI Client Logic ---
+        # --- Multiple Google Cloud Project Configuration ---
+        google_projects = [
+            "gen-lang-client-0761146080",
+            "maximal-totem-456502-h3",
+            "imagen-api-3", 
+            "imagen-api-4",
+            "imagen-api-5",
+            "imagen-api-6-461900",
+            "imagen-api-5-461900",
+            "imagen-api-8",
+            "imagen-api-9",
+            "imagen-api-10",
+            "imagen-api-11",
+            "imagen-api-12",
+        ]
+        location = os.environ.get("GOOGLE_CLOUD_REGION", "us-central1")
+        
+        # Create a lock for client initialization to prevent race conditions
+        client_init_lock = asyncio.Lock()
+        
+        # Initialize GenAI clients for each project
+        generation_clients = []
+        for i, project_id in enumerate(google_projects):
+            try:
+                # Initialize Google GenAI client for each project
+                client = genai.Client(vertexai=True, project=project_id, location=location)
+                generation_clients.append((project_id, client))
+                print(f"✅ Initialized Google GenAI client {i+1}/{len(google_projects)}: {project_id}")
+            except Exception as e:
+                print(f"❌ Failed to initialize Google GenAI client {project_id}: {e}")
+                continue
+        
+        if not generation_clients:
+            print("Error: No Google GenAI clients could be initialized.")
+            return {"status": "error", "message": "No Google GenAI clients configured successfully."}
 
-    # --- Run Concurrent Tasks ---
-    tasks = [generate_for_prompt(prompt, idx, generation_models[idx % num_projects]) for idx, prompt in enumerate(prompts)]
-    results = await asyncio.gather(*tasks, return_exceptions=False) # Errors handled within generate_for_prompt
+        num_projects = len(generation_clients)
+        print(f"🚀 Initialized image generation with {num_projects} Google GenAI clients for rate limit distribution.")
 
-    # --- Process Results ---
-    final_results = []
-    any_errors = False
-    error_message = "Multiple errors occurred during image generation."
+        # --- Helper Functions ---
+        async def process_image_response(response, prompt, prompt_idx):
+            """Processes images from a prompt response concurrently."""
+            os.makedirs(image_dir, exist_ok=True)
 
-    for i, r in enumerate(results):
-        if isinstance(r, dict) and "error" in r:
-            any_errors = True
-            # Use the specific error message from the result
-            error_message = r["error"]
-            print(f"Error reported for prompt index {i}: {r['error']}")
-            final_results.append({"error": r["error"]}) # Keep error info per prompt
-        elif isinstance(r, list):
-             final_results.append(r)
-        else:
-            any_errors = True
-            error_message = f"Unexpected result type for prompt index {i}: {type(r)}"
-            print(error_message)
-            final_results.append({"error": "Unexpected result type."})
+            async def _save_and_process_single_image(generated_image, index):
+                """Handles saving the PNG image and returning its URL."""
+                try:
+                    # For Google GenAI client, use the .image attribute
+                    if hasattr(generated_image, 'image'):
+                        image = generated_image.image
+                    else:
+                        print(f"Could not extract PIL image from generated_image object: {type(generated_image)}, dir: {dir(generated_image)}")
+                        return None
+                    
+                    # Filename now uses only a prefix and a portion of UUID.
+                    # Using 8 hex characters from UUID for good collision resistance.
+                    filename = f"img_{uuid.uuid4().hex[:8]}.png"
+                    local_path = os.path.join(image_dir, filename)
 
-    if any_errors:
-         # Return partial success with errors marked per prompt
-         return {"status": "partial_error", "message": "Some images failed to generate. Check results for details.", "results": final_results}
+                    # Save the original PNG image to disk non-blockingly
+                    await asyncio.to_thread(image.save, local_path)
 
-    # If no errors found in results
-    return {"status": "success", "results": final_results}
+                    # Construct the URL using the original PNG filename saved to disk
+                    image_url = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename}"
+                    return image_url
+                except Exception as e:
+                    print(f"Error processing image {index} for prompt {prompt_idx} ('{prompt[:30]}...'): {e}")
+                    return None # Return None on error for this specific image
+
+            # Create and run tasks concurrently for all images from this single prompt response
+            # For Google GenAI client, response.generated_images contains the list of GeneratedImage objects
+            if hasattr(response, 'generated_images'):
+                images_list = response.generated_images
+            else:
+                print(f"Unexpected response format from Google GenAI: {type(response)}, expected response with 'generated_images' attribute")
+                return []
+
+            save_tasks = [
+                _save_and_process_single_image(img, i)
+                for i, img in enumerate(images_list)
+            ]
+            
+            image_url_results = await asyncio.gather(*save_tasks)
+
+            # Filter out None results (errors during saving/processing)
+            successful_urls = [url for url in image_url_results if url is not None]
+            
+            # Return only the successfully processed URLs
+            return successful_urls
+
+        async def generate_for_prompt(prompt, idx, project_client_tuple):
+            project_id, client = project_client_tuple
+            project_index = generation_clients.index(project_client_tuple)
+
+            try:
+                print(f"🎯 Prompt #{idx}: '{prompt[:50]}...' → Project: {project_id} (#{project_index + 1}/{num_projects})")
+                
+                # Debug: Show API call start time
+                start_time = time.time()
+                current_time = time.strftime("%H:%M:%S", time.localtime(start_time))
+                print(f"🚀 API CALL START [{current_time}] - Prompt #{idx} → {project_id}")
+                
+                # Map aspect ratio to Google GenAI format
+                genai_aspect_ratio = aspect_ratio
+                if aspect_ratio == "16:9":
+                    genai_aspect_ratio = "16:9"
+                elif aspect_ratio == "9:16":
+                    genai_aspect_ratio = "9:16"
+                elif aspect_ratio == "1:1":
+                    genai_aspect_ratio = "1:1"
+                elif aspect_ratio == "4:3":
+                    genai_aspect_ratio = "4:3"
+                elif aspect_ratio == "3:4":
+                    genai_aspect_ratio = "3:4"
+                else:
+                    genai_aspect_ratio = "16:9"  # Default fallback
+                
+                response = await asyncio.to_thread(
+                    client.models.generate_images,
+                    model=model_version,
+                    prompt=prompt,
+                    config=types.GenerateImagesConfig(
+                        aspect_ratio=genai_aspect_ratio,
+                        number_of_images=1,
+                        safety_filter_level="BLOCK_MEDIUM_AND_ABOVE",
+                        person_generation="ALLOW_ADULT",
+                    )
+                )
+                
+                # Debug: Show API call completion time
+                end_time = time.time()
+                duration = end_time - start_time
+                completion_time = time.strftime("%H:%M:%S", time.localtime(end_time))
+                print(f"✅ API CALL COMPLETE [{completion_time}] - Prompt #{idx} → {project_id} (took {duration:.2f}s)")
+                
+                urls = await process_image_response(response, prompt, idx)
+                
+                if not urls:
+                    print(f"⚠️ Warning: Google GenAI client {project_id} generated response for prompt '{prompt}' (idx: {idx}), but processing/saving failed for all images.")
+                    return {"error": f"Image generation API succeeded for prompt '{prompt}' with project {project_id}, but processing/saving failed for all images."}
+                
+                print(f"✅ Success: Prompt #{idx} with {project_id}. Generated {len(urls)} URLs.")
+                return urls
+
+            except Exception as e:
+                error_str = str(e)
+                print(f"❌ Error: Prompt #{idx} with {project_id}: {error_str}")
+                
+                # Check if it's a rate limit/quota error for logging purposes
+                is_rate_limit = False
+                try:
+                    from google.api_core import exceptions as google_exceptions
+                    if isinstance(e, google_exceptions.ResourceExhausted): is_rate_limit = True
+                    elif isinstance(e, google_exceptions.GoogleAPIError) and e.code == 429: is_rate_limit = True
+                except ImportError: pass
+                if not is_rate_limit and hasattr(e, 'code') and e.code == 429: is_rate_limit = True
+                elif not is_rate_limit and ("rate limit" in error_str.lower() or "quota" in error_str.lower() or "429" in error_str): is_rate_limit = True
+
+                if is_rate_limit:
+                    error_message = f"⏰ Rate limit hit on project {project_id} for prompt '{prompt}' - this is why we cycle projects!"
+                    print(f"📊 Rate limit status: Project {project_id} ({project_index + 1}/{num_projects}) hit rate limit")
+                else:
+                    error_message = f"Image generation failed on project {project_id} for prompt '{prompt}': {error_str}"
+
+                print(f"DEBUG: Failing prompt '{prompt}' due to error: {error_message}")
+                return {"error": error_message}
+
+        # --- Run Concurrent Tasks with Project Distribution ---
+        print(f"📝 Distributing {len(prompts)} prompts across {num_projects} projects:")
+        for i, prompt in enumerate(prompts):
+            project_idx = i % num_projects
+            project_id = generation_clients[project_idx][0]
+            print(f"   Prompt #{i}: {prompt[:30]}... → {project_id}")
+        
+        # Debug: Show batch start time
+        batch_start_time = time.time()
+        batch_start_str = time.strftime("%H:%M:%S", time.localtime(batch_start_time))
+        print(f"\n⏱️ BATCH START [{batch_start_str}] - Launching {len(prompts)} concurrent API calls...")
+        
+        tasks = [generate_for_prompt(prompt, idx, generation_clients[idx % num_projects]) for idx, prompt in enumerate(prompts)]
+        results = await asyncio.gather(*tasks, return_exceptions=False) # Errors handled within generate_for_prompt
+
+        # Debug: Show batch completion time
+        batch_end_time = time.time()
+        batch_duration = batch_end_time - batch_start_time
+        batch_end_str = time.strftime("%H:%M:%S", time.localtime(batch_end_time))
+        print(f"\n🏁 BATCH COMPLETE [{batch_end_str}] - All {len(prompts)} requests finished (total time: {batch_duration:.2f}s)")
+
+        # --- Process Results ---
+        final_results = []
+        any_errors = False
+        error_message = "Multiple errors occurred during image generation."
+
+        for i, r in enumerate(results):
+            if isinstance(r, dict) and "error" in r:
+                any_errors = True
+                # Use the specific error message from the result
+                error_message = r["error"]
+                print(f"Error reported for prompt index {i}: {r['error']}")
+                final_results.append({"error": r["error"]}) # Keep error info per prompt
+            elif isinstance(r, list):
+                 final_results.append(r)
+            else:
+                any_errors = True
+                error_message = f"Unexpected result type for prompt index {i}: {type(r)}"
+                print(error_message)
+                final_results.append({"error": "Unexpected result type."})
+
+        if any_errors:
+             # Return partial success with errors marked per prompt
+             return {"status": "partial_error", "message": "Some images failed to generate. Check results for details.", "results": final_results}
+
+        # If no errors found in results
+        return {"status": "success", "results": final_results}
 
 @mcp.tool(
     annotations={
@@ -388,23 +655,104 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts):
 )
 async def generate_images_with_prompts(
     user_number: str = "+17145986105",
-    prompts: list = None
+    prompts: list = None,
+    model_version: str = "imagen-4.0-generate-preview-06-06",
+    input_images: list = None,
+    aspect_ratio: str = "16:9" # Add aspect_ratio parameter
 ) -> dict:
     """
-    Generate one image for each prompt using Google's Imagen 4.0 model (`imagen-4.0-generate-preview-05-20`).
-    Images will be sent directly to the user, so you don't need to return them.
+    Generate one image for each prompt using Google's Imagen 4.0 model or OpenAI's GPT-1.
+    All images will be generated with the specified aspect ratio (defaults to 16:9).
+    
+    **NEW: Image Input Support for GPT-1**
+    When using GPT-1 with input_images, the model can analyze reference images and use them as context
+    for generating new images. This is perfect for style transfer, handwriting replication, and 
+    reference-based generation.
+
     Args:
         user_number (str): The user's unique identifier (used for directory structure).
         prompts (list): List of text prompts. Each prompt will generate one image.
+        model_version (str): Model version to use. Options:
+                           - "imagen-4.0-generate-preview-06-06" (default, Google GenAI client, balanced)
+                           - "imagen-4.0-fast-generate-preview-06-06" (Google GenAI client, faster generation)
+                           - "imagen-4.0-ultra-generate-preview-06-06" (Google GenAI client, highest quality)
+                           - "gpt-image-1" (OpenAI, supports image inputs as context)
+        input_images (list, optional): List of image URLs or base64 strings to use as context/reference.
+                                     Only supported by gpt-image-1. If provided, should match the length 
+                                     of prompts list, or provide one image to use for all prompts.
+                                     Images are used as visual context for generation.
+        aspect_ratio (str): Aspect ratio for generated images. Supported ratios:
+                            - "1:1" (square) - 1024x1024 for GPT-1
+                            - "16:9" (landscape) - 1536x1024 for GPT-1 (closest available)
+                            - "9:16" (portrait) - 1024x1536 for GPT-1 (closest available)
+                            - "4:3" (landscape) - 1536x1024 for GPT-1
+                            - "3:4" (portrait) - 1024x1536 for GPT-1
+                            - "3:2" (landscape) - 1536x1024 for GPT-1
+                            - "2:3" (portrait) - 1024x1536 for GPT-1
+                            Defaults to "16:9". GPT-1 uses closest supported size, Imagen supports exact ratios.
+                            Note: GPT-1 only supports '1024x1024', '1024x1536', '1536x1024', 'auto'.
 
     Returns:
         dict: {"status": "success", "results": [ [url], ... ]} or {"status": "error", "message": ...}
+
+    **GPT-1 with Image Context Examples:**
+    ```python
+    # Use handwriting sample as reference for generating new message
+    result = await generate_images_with_prompts(
+        prompts=["Write 'Happy Birthday!' in the same handwriting style as this sample"],
+        model_version="gpt-image-1",
+        input_images=["https://example.com/handwriting_sample.jpg"]
+    )
+
+    # Style transfer from reference image
+    result = await generate_images_with_prompts(
+        prompts=["Create a landscape painting in the same artistic style as this reference"],
+        model_version="gpt-image-1", 
+        input_images=["https://example.com/art_reference.jpg"]
+    )
+
+    # Multiple prompts with same reference
+    result = await generate_images_with_prompts(
+        prompts=["Write 'Hello'", "Write 'Goodbye'"],
+        model_version="gpt-image-1",
+        input_images=["https://example.com/handwriting.jpg"]  # Same reference for both
+    )
+    ```
+
+    **Image Input Requirements (GPT-1 only):**
+    - Supported formats: PNG, JPEG, WebP, non-animated GIF
+    - Maximum size: 50MB per image
+    - Maximum: 500 images per request
+    - Images are processed as visual context alongside text prompts
+    - Can provide one image for all prompts, or one image per prompt
     """
     # Use default user number if empty
     if not user_number or user_number == "--user_number_not_needed--":
         user_number = "+17145986105"
     
-    return await _generate_images_with_prompts_concurrent(user_number, prompts)
+    # Validate model version
+    valid_models = [
+        "imagen-4.0-generate-preview-06-06",
+        "imagen-4.0-fast-generate-preview-06-06", 
+        "imagen-4.0-ultra-generate-preview-06-06",
+        "gpt-image-1"  # Added gpt-image-1
+    ]
+    
+    if model_version not in valid_models:
+        return {
+            "status": "error",
+            "message": f"Invalid model_version '{model_version}'. Must be one of: {', '.join(valid_models)}"
+        }
+    
+    # Validate aspect_ratio for Google GenAI models
+    valid_aspect_ratios = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]
+    if aspect_ratio not in valid_aspect_ratios:
+        return {
+            "status": "error",
+            "message": f"Invalid aspect_ratio '{aspect_ratio}'. Must be one of: {', '.join(valid_aspect_ratios)}"
+        }
+    
+    return await _generate_images_with_prompts_concurrent(user_number, prompts, model_version, input_images, aspect_ratio)
 
 @mcp.tool(
     annotations={
@@ -454,43 +802,197 @@ async def generate_images_with_prompts(
         }
     }
 )
-async def edit_image_with_gemini(
-    images: List[str],  # Changed from image: str
+async def edit_images(
+    images: List[str],
     edit_prompt: str,
-    user_number: str = "+17145986105"
+    user_number: str = "+17145986105",
+    model: str = "gpt-image-1",
+    background: str = "auto",
+    mask: str = None,
+    output_format: str = "png",
+    quality: str = "auto",
+    output_compression: int = 100,
+    size: str = "1024x1536",
+    n: int = 1
 ) -> dict:
     """
-    Edits a list of images concurrently using `gemini-2.0-flash-preview-image-generation` based on a common text prompt.
-    This model is good for conversational image editing, leveraging context, and blending text with images.
-    All generated images include a SynthID watermark.
+    Edits images using either OpenAI's GPT-1 (default) or Google's Gemini image generation models.
+    GPT-1 is now the default and recommended model for image editing.
+
+    **🎨 PERFECT FOR STYLE TRANSFER & REFERENCE-BASED EDITING:**
+    This tool excels at using input images as references to apply styling, context, or transformations.
+    You can take any image and transform it to match a desired style, mood, or aesthetic.
 
     Args:
-        images (List[str]): A list of URLs or base64-encoded images to be edited.
+        images (List[str]): List of URLs or base64-encoded images to be edited.
                             **IMPORTANT**: If the user provided an image directly with their request (e.g., as an attachment in a chat),
                             its URL might be mentioned in the prompt context (e.g., "[Context: The following files were attached... Attachment 0 (Name: user_img.jpg, URL: https://...)]").
-                            If so, you SHOULD use that specific URL for this 'image' argument when the edit request pertains to that user-provided image.
+                           If so, you SHOULD use that specific URL for this 'images' argument when the edit request pertains to that user-provided image.
         edit_prompt (str): Text describing the desired edit (applied to all images).
+                          Max length: 32,000 characters for gpt-image-1, 1,000 for dall-e-2.
+                          **TIP**: Be specific about styles, moods, and transformations you want applied.
         user_number (str): User identifier for saving the results.
+        model (str): Model to use for editing. Options:
+                    - "gpt-image-1" (default, OpenAI, highest quality, supports up to 16 images)
+                    - "gemini" (Google Gemini image generation model)
+        background (str): Background transparency for gpt-image-1. Options: "transparent", "opaque", "auto" (default).
+                         Only works with png/webp output formats. Ignored for other models.
+        mask (str): Optional mask image URL for gpt-image-1. PNG with transparent areas indicating where to edit.
+                   Must have same dimensions as input image. Ignored for other models.
+        output_format (str): Output format for gpt-image-1. Options: "png" (default), "jpeg", "webp".
+                            Ignored for other models.
+        quality (str): Image quality for gpt-image-1. Options: "auto" (default), "high", "medium", "low".
+                      Ignored for other models.
+        output_compression (int): Compression level 0-100% for gpt-image-1 with webp/jpeg formats.
+                                 Default: 100. Ignored for other models.
+        size (str): Output size for gpt-image-1. Options: "auto" (default), "1024x1024", "1536x1024", "1024x1536", "1536x1536".
+                   Ignored for other models.
+        n (int): Number of edited images to generate per input image (1-10). Default: 1.
+                Only supported by gpt-image-1.
 
+    Returns:
+        dict: {"status": "success", "results": [{"edited_url": "...", "original_image": "...", ...}]}
+
+    **🎯 STYLE TRANSFER & REFERENCE EXAMPLES:**
+    ```python
+    # Transform photo to match artistic styles
+    result = await edit_images(
+        images=["https://example.com/portrait.jpg"],
+        edit_prompt="Transform this into a Van Gogh painting with swirling brushstrokes and vibrant colors"
+    )
+
+    # Apply mood and atmosphere from reference descriptions
+    result = await edit_images(
+        images=["https://example.com/landscape.jpg"],
+        edit_prompt="Make this look like a moody cyberpunk scene with neon lighting and rain"
+    )
+
+    # Style transfer with specific artistic movements
+    result = await edit_images(
+        images=["https://example.com/photo.jpg"],
+        edit_prompt="Convert to Art Deco style with geometric patterns, gold accents, and 1920s aesthetic"
+    )
+
+    # Transform to match specific visual references
+    result = await edit_images(
+        images=["https://example.com/building.jpg"],
+        edit_prompt="Make this look like it's from a Studio Ghibli film - soft colors, whimsical details, hand-drawn animation style"
+    )
+
+    # Apply contextual transformations
+    result = await edit_images(
+        images=["https://example.com/person.jpg"],
+        edit_prompt="Transform this person into a medieval knight in shining armor in a castle setting"
+    )
+
+    # Multiple style variations from one reference
+    result = await edit_images(
+        images=["https://example.com/image.jpg"],
+        edit_prompt="Create variations: watercolor, oil painting, and digital art styles",
+        n=3
+    )
+    ```
+
+    **🛠️ TECHNICAL EDITING EXAMPLES:**
+    ```python
+    # Precise background removal
+    result = await edit_images(
+        images=["https://example.com/image.jpg"],
+        edit_prompt="Remove the background completely",
+        background="transparent",
+        output_format="png"
+    )
+
+    # Mask-based selective editing
+    result = await edit_images(
+        images=["https://example.com/image.jpg"],
+        edit_prompt="Change only the sky to a sunset",
+        mask="https://example.com/sky-mask.png"
+    )
+
+    # High-quality professional editing
+    result = await edit_images(
+        images=["https://example.com/image.jpg"],
+        edit_prompt="Professional photo retouching - enhance lighting and colors",
+        quality="high",
+        output_format="jpeg"
+    )
+    ```
+
+    **💡 CREATIVE USE CASES:**
+    - **Style Matching**: "Make this photo look like [specific artist/style]"
+    - **Mood Transfer**: "Apply the atmosphere of a [genre] movie"
+    - **Era Transformation**: "Make this look like it's from the [time period]"
+    - **Genre Conversion**: "Transform to [art style/medium]"
+    - **Context Switching**: "Place this subject in a [different environment]"
+    - **Artistic Interpretation**: "Reimagine this as [artistic movement]"
+
+    **GPT-1 Features (Default Model):**
+    - Supports up to 16 images simultaneously
+    - Advanced transparency control with background parameter
+    - Multiple output formats (PNG, JPEG, WebP)
+    - Quality and compression control
+    - Mask-based editing for precise control
+    - Multiple size options including landscape/portrait
+    - Can generate multiple variations per input (n parameter)
+    - 32,000 character prompt limit
+
+    **Gemini Features:**
+    - Excellent for conversational and contextual editing
+    - Natural language understanding for complex transformations
+    - Includes SynthID watermark
+    - Great for artistic and creative interpretations
+
+    **Technical Specifications:**
+    - GPT-1: PNG/WebP/JPG files < 50MB each, up to 16 images
+    - Gemini: URLs or base64 images, unlimited size
+    - All models: Concurrent processing for multiple images
+    - Output: High-resolution edited images saved to user directory
     """
-    # Imports are scoped to the function to keep them specific to this tool
-    from google import genai
-    from google.genai import types
-    from PIL import Image
-    from io import BytesIO
-    import base64
-    import requests
     import os
     import hashlib
     import re
-    import uuid # Added for unique filenames
-    import asyncio # For concurrent processing
+    import uuid
+    import asyncio
+    import base64
+    import requests
+    from PIL import Image
+    from io import BytesIO
+    from typing import Dict, Any
 
     # Use default user number if empty or placeholder
     if not user_number or user_number == "--user_number_not_needed--":
         user_number = "+17145986105"
 
-    # --- Sanitize function for user number (kept local for now) ---
+    # Validate inputs
+    if not isinstance(images, list):
+        return {"status": "error", "message": "'images' argument must be a list.", "results": []}
+    if not images:
+        return {"status": "success", "message": "No images provided to edit.", "results": []}
+    
+    if model not in ["gpt-image-1", "gemini"]:
+        return {"status": "error", "message": f"Unsupported model '{model}'. Use 'gpt-image-1' or 'gemini'.", "results": []}
+
+    # Validate GPT-1 specific parameters
+    if model == "gpt-image-1":
+        if len(images) > 16:
+            return {"status": "error", "message": "GPT-1 supports maximum 16 images per request.", "results": []}
+        if len(edit_prompt) > 32000:
+            return {"status": "error", "message": "GPT-1 prompt must be 32,000 characters or less.", "results": []}
+        if background not in ["transparent", "opaque", "auto"]:
+            return {"status": "error", "message": "Background must be 'transparent', 'opaque', or 'auto'.", "results": []}
+        if output_format not in ["png", "jpeg", "webp"]:
+            return {"status": "error", "message": "Output format must be 'png', 'jpeg', or 'webp'.", "results": []}
+        if quality not in ["auto", "high", "medium", "low"]:
+            return {"status": "error", "message": "Quality must be 'auto', 'high', 'medium', or 'low'.", "results": []}
+        if not (0 <= output_compression <= 100):
+            return {"status": "error", "message": "Output compression must be between 0 and 100.", "results": []}
+        if size not in ["auto", "1024x1024", "1536x1024", "1024x1536", "1536x1536"]:
+            return {"status": "error", "message": "Size must be 'auto', '1024x1024', '1536x1024', '1024x1536', or '1536x1536'.", "results": []}
+        if not (1 <= n <= 10):
+            return {"status": "error", "message": "n must be between 1 and 10.", "results": []}
+
+    # --- Sanitize function for user number ---
     def sanitize(s):
         s = str(s).replace('+', '')
         if s.startswith('group_'):
@@ -506,96 +1008,292 @@ async def edit_image_with_gemini(
     image_dir = os.path.join(base_dir, user_number_safe, "edited_images")
     os.makedirs(image_dir, exist_ok=True)
 
-    # --- Prepare Gemini client (single client for all concurrent requests) ---
-    # If rate limits become an issue, a multi-client strategy like in 
-    # generate_images_with_prompts could be considered.
-    try:
-        client = genai.Client()
-    except Exception as e:
-        print(f"Failed to initialize Gemini client: {e}")
-        return {"status": "error", "message": f"Failed to initialize Gemini client: {e}", "results": []}
-
-    # --- Helper function to process a single image ---
-    async def _process_single_image_edit(image_input: str, current_edit_prompt: str) -> Dict[str, Any]:
-        try:
-            # --- Download or decode the image ---
-            if image_input.startswith("http://") or image_input.startswith("https://"):
-                resp = await asyncio.to_thread(requests.get, image_input, timeout=20) # Increased timeout slightly
-                resp.raise_for_status()
-                img_bytes = resp.content
-            elif len(image_input) > 100 and image_input.endswith(('=', '==')) : # Heuristic for base64
-                 img_bytes = base64.b64decode(image_input)
-            else: # Assuming it might be a malformed base64 or other identifier not a URL
-                return {"status": "error", "original_image": image_input, "message": "Invalid image input: not a valid URL or recognizable base64."}
-
-            img = await asyncio.to_thread(Image.open, BytesIO(img_bytes))
-
-        except requests.exceptions.RequestException as e:
-            print(f"Could not download image '{image_input}': {e}")
-            return {"status": "error", "original_image": image_input, "message": f"Could not download image: {e}"}
-        except Exception as e:
-            print(f"Could not load image '{image_input}': {e}")
-            return {"status": "error", "original_image": image_input, "message": f"Could not load image: {e}"}
-
-        # --- Call Gemini for image editing ---
-        try:
-            response = await asyncio.to_thread(
-                client.models.generate_content,
-                model="gemini-2.0-flash-preview-image-generation",
-                contents=[current_edit_prompt, img], # img must be a PIL Image object
-                config=types.GenerateContentConfig(
-                    response_modalities=['TEXT', 'IMAGE']
-                )
-            )
-        except Exception as e:
-            print(f"Gemini API error for image '{image_input}' with prompt '{current_edit_prompt[:50]}...': {e}")
-            return {"status": "error", "original_image": image_input, "message": f"Gemini API error: {e}"}
-
-        # --- Extract the edited image from the response ---
-        edited_image_pil = None
-        if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
-            for part in response.candidates[0].content.parts:
-                if part.inline_data and part.inline_data.data:
-                    try:
-                        edited_image_pil = await asyncio.to_thread(Image.open, BytesIO(part.inline_data.data))
-                        break
-                    except Exception as e:
-                        print(f"Failed to open image data from Gemini response for '{image_input}': {e}")
-                        # Continue, maybe another part has the image or it's a text-only response
+    if model == "gpt-image-1":
+        # --- OpenAI GPT-1 Image Editing Logic ---
+        openai_api_key = os.environ.get("OPENAI_API_KEY")
+        if not openai_api_key:
+            return {"status": "error", "message": "OPENAI_API_KEY environment variable not set for gpt-image-1 model.", "results": []}
         
-        if edited_image_pil is None:
-            text_response = response.text if hasattr(response, 'text') else "No text content."
-            print(f"No image returned by Gemini for '{image_input}'. Response text: {text_response}")
-            return {"status": "error", "original_image": image_input, "message": f"No image returned by Gemini. Model response: {text_response}"}
-
-        # --- Save the edited image ---
         try:
-            filename = f"gemini_edit_{uuid.uuid4().hex[:8]}.png"
-            file_path = os.path.join(image_dir, filename) # image_dir is from outer scope
-            await asyncio.to_thread(edited_image_pil.save, file_path, format="PNG")
-            
-            url = f"{DOMAIN}/user_data/{user_number_safe}/edited_images/{filename}" # user_number_safe from outer
-            return {
-                "status": "success",
-                "original_image": image_input,
-                "edited_url": url,
-                "message": "Image edited successfully."
-            }
+            client = OpenAI(api_key=openai_api_key)
         except Exception as e:
-            print(f"Failed to save edited image for '{image_input}': {e}")
-            return {"status": "error", "original_image": image_input, "message": f"Failed to save edited image: {e}"}
+            return {"status": "error", "message": f"Failed to initialize OpenAI client: {str(e)}", "results": []}
 
-    # --- Create and run concurrent tasks ---
-    if not isinstance(images, list):
-        return {"status": "error", "message": "'images' argument must be a list.", "results": []}
-    if not images:
-        return {"status": "success", "message": "No images provided to edit.", "results": []}
+        async def _process_single_image_edit_gpt1(image_input: str) -> Dict[str, Any]:
+            try:
+                # --- Download or decode the image ---
+                if image_input.startswith("http://") or image_input.startswith("https://"):
+                    resp = await asyncio.to_thread(requests.get, image_input, timeout=20)
+                    resp.raise_for_status()
+                    img_bytes = resp.content
+                    
+                    # Validate content type
+                    content_type = resp.headers.get('Content-Type', '')
+                    if not content_type.startswith('image/'):
+                        return {"status": "error", "original_image": image_input, "message": f"URL does not point to an image (content type: {content_type})"}
+                elif len(image_input) > 100 and image_input.endswith(('=', '==')):
+                    try:
+                        img_bytes = base64.b64decode(image_input)
+                    except Exception as e:
+                        return {"status": "error", "original_image": image_input, "message": f"Invalid base64 image data: {e}"}
+                else:
+                    return {"status": "error", "original_image": image_input, "message": "Invalid image input: not a valid URL or recognizable base64."}
 
+                # Validate image format and size
+                try:
+                    img = await asyncio.to_thread(Image.open, BytesIO(img_bytes))
+                    
+                    # Check file size (50MB limit for GPT-1)
+                    if len(img_bytes) > 50 * 1024 * 1024:
+                        return {"status": "error", "original_image": image_input, "message": "Image file size exceeds 50MB limit for GPT-1."}
+                    
+                    # Convert to supported format if needed (PNG, WebP, JPG)
+                    if img.format not in ['PNG', 'WEBP', 'JPEG']:
+                        # Convert to PNG
+                        img_buffer = BytesIO()
+                        img.save(img_buffer, format='PNG')
+                        img_bytes = img_buffer.getvalue()
+                        
+                except Exception as e:
+                    return {"status": "error", "original_image": image_input, "message": f"Could not process image: {e}"}
 
-    tasks = [_process_single_image_edit(img_input, edit_prompt) for img_input in images]
-    
-    # Errors are handled within _process_single_image_edit and returned as part of its dict
-    individual_results = await asyncio.gather(*tasks, return_exceptions=False)
+                # --- Prepare mask if provided ---
+                mask_bytes = None
+                if mask:
+                    try:
+                        if mask.startswith("http://") or mask.startswith("https://"):
+                            mask_resp = await asyncio.to_thread(requests.get, mask, timeout=20)
+                            mask_resp.raise_for_status()
+                            mask_bytes = mask_resp.content
+                        elif len(mask) > 100 and mask.endswith(('=', '==')):
+                            mask_bytes = base64.b64decode(mask)
+                        
+                        # Validate mask is PNG
+                        if mask_bytes:
+                            mask_img = await asyncio.to_thread(Image.open, BytesIO(mask_bytes))
+                            if mask_img.format != 'PNG':
+                                return {"status": "error", "original_image": image_input, "message": "Mask must be a PNG file."}
+                            
+                            # Check mask dimensions match image
+                            if mask_img.size != img.size:
+                                return {"status": "error", "original_image": image_input, "message": "Mask dimensions must match image dimensions."}
+                    except Exception as e:
+                        return {"status": "error", "original_image": image_input, "message": f"Could not process mask: {e}"}
+
+                # Detect the actual image format from the bytes
+                img_pil = await asyncio.to_thread(Image.open, BytesIO(img_bytes))
+                img_format = img_pil.format
+                
+                # Prepare image file with proper format
+                if img_format == 'JPEG':
+                    image_file = BytesIO(img_bytes)
+                    image_file.name = "image.jpg"
+                elif img_format == 'PNG':
+                    image_file = BytesIO(img_bytes)
+                    image_file.name = "image.png"
+                elif img_format == 'WEBP':
+                    image_file = BytesIO(img_bytes)
+                    image_file.name = "image.webp"
+                else:
+                    # Convert unsupported formats to JPEG
+                    print(f"Converting {img_format} to JPEG for GPT-1 compatibility")
+                    if img_pil.mode in ('RGBA', 'LA', 'P'):
+                        # Convert to RGB for JPEG
+                        rgb_img = Image.new('RGB', img_pil.size, (255, 255, 255))
+                        if img_pil.mode == 'P':
+                            img_pil = img_pil.convert('RGBA')
+                        rgb_img.paste(img_pil, mask=img_pil.split()[-1] if img_pil.mode == 'RGBA' else None)
+                        img_pil = rgb_img
+                    
+                    # Save as JPEG
+                    jpeg_buffer = BytesIO()
+                    await asyncio.to_thread(img_pil.save, jpeg_buffer, format='JPEG', quality=95)
+                    img_bytes = jpeg_buffer.getvalue()
+                    image_file = BytesIO(img_bytes)
+                    image_file.name = "image.jpg"
+                    img_format = 'JPEG'  # Update format after conversion
+
+                # --- Call OpenAI Image Edit API ---
+                try:
+                    print(f"🎨 GPT-1 editing image: '{image_input[:50]}...' with prompt: '{edit_prompt[:50]}...'")
+                    print(f"📋 Image details: format={img_format}, size={len(img_bytes)} bytes, filename={image_file.name}")
+                    
+                    # Prepare API call parameters
+                    api_params = {
+                        "model": "gpt-image-1",
+                        "prompt": edit_prompt,
+                        "n": n
+                        # Note: gpt-image-1 automatically returns b64_json format, no response_format parameter needed
+                    }
+                    
+                    # Add GPT-1 specific parameters
+                    if background != "auto":
+                        api_params["background"] = background
+                    if output_format != "png":
+                        api_params["output_format"] = output_format
+                    if quality != "auto":
+                        api_params["quality"] = quality
+                    if output_compression != 100 and output_format in ["webp", "jpeg"]:
+                        api_params["output_compression"] = output_compression
+                    if size != "auto":
+                        api_params["size"] = size
+
+                    # Add mask if provided
+                    if mask_bytes:
+                        mask_file = BytesIO(mask_bytes)
+                        mask_file.name = "mask.png"
+                        api_params["mask"] = mask_file
+
+                    # Make API call
+                    response = await asyncio.to_thread(
+                        client.images.edit,
+                        image=image_file,
+                        **api_params
+                    )
+                    
+                    if not response.data:
+                        return {"status": "error", "original_image": image_input, "message": "No edited images returned by GPT-1."}
+
+                    # --- Process and save edited images ---
+                    edited_urls = []
+                    for i, image_data in enumerate(response.data):
+                        if not image_data.b64_json:
+                            print(f"Warning: No base64 data for edited image {i}")
+                            continue
+                            
+                        try:
+                            # Decode base64 image
+                            edited_img_bytes = base64.b64decode(image_data.b64_json)
+                            edited_img = await asyncio.to_thread(Image.open, BytesIO(edited_img_bytes))
+                            
+                            # Save edited image
+                            filename = f"gpt1_edit_{uuid.uuid4().hex[:8]}_{i}.{output_format}"
+                            file_path = os.path.join(image_dir, filename)
+                            
+                            # Save with appropriate format
+                            save_format = output_format.upper()
+                            if save_format == "JPEG":
+                                save_format = "JPEG"
+                                # Convert RGBA to RGB for JPEG
+                                if edited_img.mode == "RGBA":
+                                    rgb_img = Image.new("RGB", edited_img.size, (255, 255, 255))
+                                    rgb_img.paste(edited_img, mask=edited_img.split()[-1])
+                                    edited_img = rgb_img
+                            
+                            await asyncio.to_thread(edited_img.save, file_path, format=save_format)
+                            
+                            url = f"{DOMAIN}/user_data/{user_number_safe}/edited_images/{filename}"
+                            edited_urls.append(url)
+                            
+                        except Exception as e:
+                            print(f"Error saving edited image {i}: {e}")
+                            continue
+                    
+                    if not edited_urls:
+                        return {"status": "error", "original_image": image_input, "message": "Failed to save any edited images."}
+                    
+                    print(f"✅ GPT-1 Success: Generated {len(edited_urls)} edited images")
+                    
+                    # Return first URL for single image, or all URLs for multiple
+                    primary_url = edited_urls[0] if edited_urls else None
+                    message = f"Successfully edited with GPT-1. Generated {len(edited_urls)} variation(s)."
+                    
+                    return {
+                        "status": "success",
+                        "original_image": image_input,
+                        "edited_url": primary_url,
+                        "all_edited_urls": edited_urls,  # Include all variations
+                        "message": message
+                    }
+                    
+                except Exception as e:
+                    error_str = str(e)
+                    print(f"❌ GPT-1 API error for image '{image_input}': {error_str}")
+                    return {"status": "error", "original_image": image_input, "message": f"GPT-1 API error: {error_str}"}
+
+            except Exception as e:
+                print(f"❌ Unexpected error processing image '{image_input}': {e}")
+                return {"status": "error", "original_image": image_input, "message": f"Unexpected error: {e}"}
+
+        # --- Process all images concurrently with GPT-1 ---
+        tasks = [_process_single_image_edit_gpt1(img_input) for img_input in images]
+        individual_results = await asyncio.gather(*tasks, return_exceptions=False)
+
+    else:
+        # --- Gemini Image Editing Logic (rewritten implementation) ---
+        try:
+            client = genai.Client() # Initialize client within the try block
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to initialize Gemini client: {e}", "results": []}
+
+        async def _process_single_image_edit_gemini(image_input: str) -> Dict[str, Any]:
+            try:
+                # --- Download or decode the image ---
+                if image_input.startswith("http://") or image_input.startswith("https://"):
+                    resp = await asyncio.to_thread(requests.get, image_input, timeout=20)
+                    resp.raise_for_status()
+                    img_bytes = resp.content
+                elif len(image_input) > 100 and image_input.endswith(('=', '==')):
+                    img_bytes = base64.b64decode(image_input)
+                else:
+                    return {"status": "error", "original_image": image_input, "message": "Invalid image input: not a valid URL or recognizable base64."}
+
+                img = await asyncio.to_thread(Image.open, BytesIO(img_bytes))
+
+            except requests.exceptions.RequestException as e:
+                return {"status": "error", "original_image": image_input, "message": f"Could not download image: {e}"}
+            except Exception as e:
+                return {"status": "error", "original_image": image_input, "message": f"Could not load/decode image: {e}"}
+
+            # Ensure img is not None before proceeding
+            if img is None:
+                return {"status": "error", "original_image": image_input, "message": "Image could not be loaded or decoded properly."}
+
+            # --- Call Gemini for image editing ---
+            try:
+                response = await asyncio.to_thread(
+                    client.models.generate_content,
+                    model="gemini-2.0-flash-preview-image-generation",
+                    contents=[edit_prompt, img]
+                )
+            except Exception as e:
+                return {"status": "error", "original_image": image_input, "message": f"Gemini API error: {e}"}
+
+            # --- Extract the edited image from the response ---
+            edited_image_pil = None
+            if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
+                for part in response.candidates[0].content.parts:
+                    if part.inline_data and part.inline_data.data:
+                        try:
+                            edited_image_pil = await asyncio.to_thread(Image.open, BytesIO(part.inline_data.data))
+                            break
+                        except Exception as e:
+                            print(f"Failed to open image data from Gemini response: {e}")
+                            continue
+            
+            if edited_image_pil is None:
+                text_response = response.text if hasattr(response, 'text') else "No text content."
+                return {"status": "error", "original_image": image_input, "message": f"No image returned by Gemini. Model response: {text_response}"}
+
+            # --- Save the edited image ---
+            try:
+                filename = f"gemini_edit_{uuid.uuid4().hex[:8]}.png"
+                file_path = os.path.join(image_dir, filename)
+                await asyncio.to_thread(edited_image_pil.save, file_path, format="PNG")
+                
+                url = f"{DOMAIN}/user_data/{user_number_safe}/edited_images/{filename}"
+                return {
+                    "status": "success",
+                    "original_image": image_input,
+                    "edited_url": url,
+                    "message": "Image edited successfully with Gemini."
+                }
+            except Exception as e:
+                return {"status": "error", "original_image": image_input, "message": f"Failed to save edited image: {e}"}
+
+        # --- Process all images concurrently with Gemini ---
+        tasks = [_process_single_image_edit_gemini(img_input) for img_input in images]
+        individual_results = await asyncio.gather(*tasks, return_exceptions=False)
 
     # --- Process overall results ---
     any_errors = any(res.get("status") == "error" for res in individual_results)
@@ -603,15 +1301,13 @@ async def edit_image_with_gemini(
 
     if all_successful:
         overall_status = "success"
-        overall_message = "All images edited successfully."
+        overall_message = f"All {len(images)} images edited successfully with {model}."
     elif any_errors and not all_successful:
         overall_status = "partial_error"
-        overall_message = "Some images failed to edit. Check results for details."
-    else: # Should cover all errors if not all successful and not partial
+        overall_message = f"Some images failed to edit with {model}. Check results for details."
+    else:
         overall_status = "error"
-        overall_message = "All image edits failed. Check results for details."
-        # If individual_results is empty due to an early exit or all tasks failing catastrophically
-        # before gather (unlikely with return_exceptions=False), this ensures a clear error state.
+        overall_message = f"All image edits failed with {model}. Check results for details."
 
     return {
         "status": overall_status,
@@ -619,440 +1315,6 @@ async def edit_image_with_gemini(
         "results": individual_results
     }
 
-async def _generate_videos_with_prompts_concurrent(user_number, prompts, input_images=None, duration_seconds=8, aspect_ratio="16:9", sample_count=1, negative_prompt="", enhance_prompt=True):
-    import re
-    import hashlib
-    import json
-    import uuid
-    import base64
-    import os
-    from utils.constants import DOMAIN
-    
-    # Use default user number if empty
-    if not user_number or user_number == "--user_number_not_needed--":
-        user_number = "+17145986105"
-    
-    def sanitize(s):
-        s = str(s).replace('+', '')
-        # Always hash group IDs for shortness
-        if s.startswith('group_'):
-            group_id = s[len('group_'):]
-            hash_val = hashlib.md5(group_id.encode()).hexdigest()[:8]
-            s = f"group_{hash_val}"
-        s = re.sub(r'[^a-zA-Z0-9]', '_', s)
-        s = re.sub(r'_+', '_', s)
-        return s.strip('_')
-
-    user_number_safe = sanitize(user_number)
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../user_data'))
-    video_dir = os.path.join(base_dir, user_number_safe, "videos")
-    os.makedirs(video_dir, exist_ok=True)
-
-    # --- Multiple Vertex AI Project Configuration ---
-    vertex_projects = [
-        "gen-lang-client-0761146080",
-        "maximal-totem-456502-h3",
-        "imagen-api-3", 
-        "imagen-api-4",
-        "imagen-api-5"
-    ]
-    location = "us-central1"
-    model_id = "veo-2.0-generate-001"  # Using Veo 2 for GA availability
-    
-    if not vertex_projects:
-        print("Error: No Vertex AI projects configured for video generation.")
-        return {"status": "error", "message": "No Vertex AI projects configured for video generation."}
-
-    num_projects = len(vertex_projects)
-    print(f"Initialized video generation with {num_projects} Vertex AI projects.")
-
-    # --- Helper Functions ---
-    async def get_access_token(project_id):
-        """Get access token for the specific project."""
-        try:
-            from google.auth import default
-            from google.auth.transport.requests import Request
-            import google.auth.transport.requests
-            
-            # Get default credentials
-            credentials, _ = default(scopes=['https://www.googleapis.com/auth/cloud-platform'])
-            
-            # Refresh the credentials to get a valid token
-            request = google.auth.transport.requests.Request()
-            credentials.refresh(request)
-            
-            return credentials.token
-        except Exception as e:
-            print(f"Failed to get access token for project {project_id}: {e}")
-            return None
-
-    async def start_video_generation(prompt, project_id, input_image=None):
-        """Start video generation and return operation ID."""
-        try:
-            token = await get_access_token(project_id)
-            if not token:
-                return None, f"Failed to get access token for project {project_id}"
-
-            url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/{model_id}:predictLongRunning"
-            
-            headers = {
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json"
-            }
-            
-            # Build request payload according to the documentation
-            instance = {"prompt": prompt}
-            
-            # Add input image if provided
-            if input_image:
-                if input_image.startswith("http://") or input_image.startswith("https://"):
-                    # Download and encode image
-                    resp = await asyncio.to_thread(requests.get, input_image, timeout=20)
-                    resp.raise_for_status()
-                    image_bytes = base64.b64encode(resp.content).decode('utf-8')
-                    mime_type = resp.headers.get('Content-Type', 'image/jpeg')
-                else:
-                    # Assume it's already base64 encoded
-                    image_bytes = input_image
-                    mime_type = "image/jpeg"
-                
-                instance["image"] = {
-                    "bytesBase64Encoded": image_bytes,
-                    "mimeType": mime_type
-                }
-            
-            payload = {
-                "instances": [instance],
-                "parameters": {
-                    "aspectRatio": aspect_ratio,
-                    "sampleCount": sample_count,
-                    "durationSeconds": duration_seconds,
-                    "personGeneration": "allow_adult",
-                    "enablePromptRewriting": enhance_prompt,
-                    "addWatermark": True,
-                    "includeRailReason": True
-                }
-            }
-            
-            # Add negative prompt if provided
-            if negative_prompt:
-                payload["parameters"]["negativePrompt"] = negative_prompt
-            
-            # Make the request
-            response = await asyncio.to_thread(
-                requests.post, url, headers=headers, json=payload, timeout=30
-            )
-            response.raise_for_status()
-            
-            result = response.json()
-            operation_name = result.get("name")
-            
-            if operation_name:
-                print(f"Started video generation for project {project_id}: {operation_name}")
-                return operation_name, None
-            else:
-                return None, f"No operation name returned from project {project_id}"
-                
-        except Exception as e:
-            print(f"Error starting video generation for project {project_id}: {e}")
-            return None, str(e)
-
-    async def poll_video_operation(operation_name, project_id, max_wait_time=300):
-        """Poll the video generation operation until completion."""
-        try:
-            token = await get_access_token(project_id)
-            if not token:
-                return None, f"Failed to get access token for polling project {project_id}"
-
-            # Use the correct fetchPredictOperation endpoint as per documentation
-            url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/{model_id}:fetchPredictOperation"
-            
-            headers = {
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json"
-            }
-            
-            # Send the operation name in the request body
-            payload = {"operationName": operation_name}
-            
-            start_time = time.time()
-            while time.time() - start_time < max_wait_time:
-                response = await asyncio.to_thread(
-                    requests.post, url, headers=headers, json=payload, timeout=30
-                )
-                response.raise_for_status()
-                
-                result = response.json()
-                
-                if result.get("done"):
-                    print(f"Operation {operation_name} completed successfully")
-                    
-                    if "response" in result:
-                        videos = []
-                        # Parse the response format for video generation
-                        response_data = result["response"]
-                        
-                        # Handle Veo 2 response format
-                        if "videos" in response_data:
-                            for idx, video_data in enumerate(response_data["videos"]):
-                                if "bytesBase64Encoded" in video_data:
-                                    print(f"Found video data in video {idx}")
-                                    
-                                    # Generate unique filename
-                                    video_id = str(uuid.uuid4())
-                                    filename = f"video_{video_id}.mp4"
-                                    file_path = os.path.join(video_dir, filename)
-                                    
-                                    # Ensure directory exists
-                                    os.makedirs(video_dir, exist_ok=True)
-                                    
-                                    # Decode and save video
-                                    video_bytes = base64.b64decode(video_data["bytesBase64Encoded"])
-                                    
-                                    with open(file_path, "wb") as f:
-                                        f.write(video_bytes)
-                                    
-                                    video_url = f"{DOMAIN}/user_data/{user_number_safe}/videos/{filename}"
-                                    videos.append(video_url)
-                                    print(f"Video saved to {file_path}, URL: {video_url}")
-                                else:
-                                    print(f"No bytesBase64Encoded in video {idx}: {video_data.keys()}")
-                        elif "predictions" in response_data:
-                            # Fallback to predictions format
-                            for idx, prediction in enumerate(response_data["predictions"]):
-                                if "bytesBase64Encoded" in prediction:
-                                    print(f"Found video data in prediction {idx}")
-                                    
-                                    # Generate unique filename
-                                    video_id = str(uuid.uuid4())
-                                    filename = f"video_{video_id}.mp4"
-                                    file_path = os.path.join(video_dir, filename)
-                                    
-                                    # Ensure directory exists
-                                    os.makedirs(video_dir, exist_ok=True)
-                                    
-                                    # Decode and save video
-                                    video_bytes = base64.b64decode(prediction["bytesBase64Encoded"])
-                                    
-                                    with open(file_path, "wb") as f:
-                                        f.write(video_bytes)
-                                    
-                                    video_url = f"{DOMAIN}/user_data/{user_number_safe}/videos/{filename}"
-                                    videos.append(video_url)
-                                    print(f"Video saved to {file_path}, URL: {video_url}")
-                                else:
-                                    print(f"No bytesBase64Encoded in prediction {idx}: {prediction.keys()}")
-                        else:
-                            print(f"No videos or predictions in response data: {response_data.keys()}")
-                        
-                        if videos:
-                            print(f"Successfully parsed {len(videos)} videos from response")
-                            return videos, None
-                        else:
-                            print("No videos found in completed operation response")
-                            return [], f"No videos generated on project {project_id}"
-                    else:
-                        error_info = result.get("error", {})
-                        error_msg = error_info.get("message", "Unknown error")
-                        print(f"Operation completed with error: {json.dumps(error_info, indent=2)}")
-                        return None, f"Video generation failed: {error_msg}"
-                
-                # Wait before polling again
-                await asyncio.sleep(10)
-            
-            return None, f"Video generation timed out after {max_wait_time} seconds"
-            
-        except Exception as e:
-            print(f"Error polling video operation for project {project_id}: {e}")
-            return None, str(e)
-
-    async def generate_video_for_prompt(prompt, idx, project_id, input_image=None):
-        """Generate video for a single prompt using specified project."""
-        try:
-            print(f"Attempting video generation for prompt '{prompt}' (idx: {idx}) with project {project_id}.")
-            
-            # Start video generation
-            operation_name, error = await start_video_generation(prompt, project_id, input_image)
-            if error:
-                return {"error": f"Failed to start video generation on project {project_id}: {error}"}
-            
-            # Poll for completion
-            video_uris, error = await poll_video_operation(operation_name, project_id)
-            if error:
-                return {"error": f"Video generation failed on project {project_id}: {error}"}
-            
-            if not video_uris:
-                return {"error": f"No videos generated on project {project_id} for prompt '{prompt}'"}
-            
-            print(f"Success for prompt '{prompt}' (idx: {idx}) with project {project_id}. Generated {len(video_uris)} videos.")
-            return video_uris
-            
-        except Exception as e:
-            error_str = str(e)
-            print(f"Error on video generation for prompt '{prompt}' (idx: {idx}) with project {project_id}: {error_str}")
-            
-            # Check if it's a rate limit/quota error
-            is_rate_limit = "quota" in error_str.lower() or "rate limit" in error_str.lower() or "429" in error_str
-            
-            if is_rate_limit:
-                error_message = f"Rate limit hit on project {project_id} for video prompt '{prompt}'."
-            else:
-                error_message = f"Video generation failed on project {project_id} for prompt '{prompt}': {error_str}"
-
-            return {"error": error_message}
-
-    # --- Run Concurrent Tasks ---
-    tasks = []
-    for idx, prompt in enumerate(prompts):
-        project_id = vertex_projects[idx % num_projects]
-        input_image = input_images[idx] if input_images and idx < len(input_images) else None
-        tasks.append(generate_video_for_prompt(prompt, idx, project_id, input_image))
-    
-    results = await asyncio.gather(*tasks, return_exceptions=False)
-
-    # --- Process Results ---
-    final_results = []
-    any_errors = False
-    error_message = "Multiple errors occurred during video generation."
-
-    for i, r in enumerate(results):
-        if isinstance(r, dict) and "error" in r:
-            any_errors = True
-            error_message = r["error"]
-            print(f"Error reported for video prompt index {i}: {r['error']}")
-            final_results.append({"error": r["error"]})
-        elif isinstance(r, list):
-             final_results.append(r)
-        else:
-            any_errors = True
-            error_message = f"Unexpected result type for video prompt index {i}: {type(r)}"
-            print(error_message)
-            final_results.append({"error": "Unexpected result type."})
-
-    if any_errors:
-         return {"status": "partial_error", "message": "Some videos failed to generate. Check results for details.", "results": final_results}
-
-    return {"status": "success", "results": final_results}
-
-@mcp.tool(
-    annotations={
-        "outputSchema": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "enum": ["success", "partial_error", "error"],
-                    "description": "Overall video generation status"
-                },
-                "message": {
-                    "type": "string",
-                    "description": "Human-readable status message"
-                },
-                "results": {
-                    "type": "array",
-                    "items": {
-                        "oneOf": [
-                            {
-                                "type": "array",
-                                "items": {"type": "string", "format": "uri"},
-                                "description": "Array of generated video URLs"
-                            },
-                            {
-                                "type": "object",
-                                "properties": {
-                                    "error": {"type": "string"}
-                                },
-                                "required": ["error"],
-                                "description": "Error object for failed generations"
-                            }
-                        ]
-                    },
-                    "description": "Array of results, one per prompt"
-                }
-            },
-            "required": ["status", "results"]
-        }
-    }
-)
-async def generate_videos_with_prompts(
-    user_number: str = "+17145986105",
-    prompts: list = None,
-    input_images: list = None,
-    duration_seconds: int = 8,
-    aspect_ratio: str = "16:9",
-    sample_count: int = 1,
-    negative_prompt: str = "",
-    enhance_prompt: bool = True
-) -> dict:
-    """
-    Generate videos using Google's Veo 2 model via Vertex AI (`veo-2.0-generate-001`).
-    This tool cycles between multiple Vertex AI projects for better reliability and rate limit handling.
-    Supports both text-to-video and image-to-video generation.
-
-    Args:
-        user_number (str): The user's unique identifier (used for directory structure).
-        prompts (list): List of text prompts. Each prompt will generate video(s).
-        input_images (list, optional): List of input image URLs or base64 strings for image-to-video generation.
-                                     If provided, should match the length of prompts list.
-        duration_seconds (int): Length of generated videos. Range: 5-8 seconds (default: 8).
-        aspect_ratio (str): Video aspect ratio. Options: "16:9" (landscape), "9:16" (portrait).
-        sample_count (int): Number of videos to generate per prompt (1-4).
-        negative_prompt (str): Text describing what to discourage in generation.
-        enhance_prompt (bool): Enable prompt rewriting using Gemini (enablePromptRewriting parameter).
-
-    Returns:
-        dict: {"status": "success", "results": [ [video_urls], ... ]} or {"status": "error", "message": ...}
-
-    **Vertex AI Project Cycling:**
-    - Uses 5 different Vertex AI projects for load distribution
-    - Distributes prompts across projects to handle rate limits and improve reliability
-    - All projects use us-central1 location and veo-2.0-generate-001 model
-
-    **Video Generation Types:**
-    1. **Text-to-Video**: Provide only prompts
-    2. **Image-to-Video**: Provide both prompts and input_images
-
-    **API Parameters Used:**
-    - aspectRatio: "16:9" or "9:16"
-    - sampleCount: 1-4 videos per prompt
-    - durationSeconds: 5-8 seconds
-    - personGeneration: "allow_adult" (default)
-    - enablePromptRewriting: true/false
-    - addWatermark: true (always enabled)
-    - includeRailReason: true (always enabled)
-
-    **Prompting Guidelines for Veo 2:**
-    - **Camera Movement**: "A fast-tracking shot", "aerial view", "close-up", "wide shot"
-    - **Lighting**: "volumetric lighting", "lens flare", "soft light", "dramatic lighting"
-    - **Environment**: "bustling dystopian sprawl", "deep ocean", "Arctic sky", "futuristic Tokyo"
-    - **Style**: "cinematic", "incredible details", "timelapse", "slow motion"
-    - **Examples**:
-        - "create a video of a cat eating mushrooms"
-        - "A fast-tracking shot through a bustling dystopian sprawl with bright neon signs, flying cars and mist, night, lens flare, volumetric lighting"
-        - "Many spotted jellyfish pulsating under water. Their bodies are transparent and glowing in deep ocean"
-        - "Timelapse of the northern lights dancing across the Arctic sky, stars twinkling, snow-covered landscape"
-        - "A lone cowboy rides his horse across an open plain at beautiful sunset, soft light, warm colors"
-
-    **Technical Specifications:**
-    - Duration: 5-8 seconds (configurable, default 8)
-    - Resolution: 1280x720 (16:9) or 720x1280 (9:16)
-    - Format: MP4 (no audio - use Veo 3 for audio support)
-    - Input images: 720p+ recommended, 16:9 or 9:16 aspect ratio
-
-    **Current Limitations:**
-    - Video generation takes 2-5 minutes per video
-    - Maximum 4 videos per prompt
-    - No audio generation (Veo 2 limitation)
-    - Both portrait (9:16) and landscape (16:9) supported
-    """
-    # Use default user number if empty
-    if not user_number or user_number == "--user_number_not_needed--":
-        user_number = "+17145986105"
-    
-    return await _generate_videos_with_prompts_concurrent(
-        user_number, prompts, input_images, duration_seconds, aspect_ratio, 
-        sample_count, negative_prompt, enhance_prompt
-    )
 
 if __name__ == "__main__":
     # Check if we should use HTTP transport

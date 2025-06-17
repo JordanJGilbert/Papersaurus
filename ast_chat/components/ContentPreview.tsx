@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ExternalLink, Code2, Eye, FileText, Download, Copy, Check } from 'lucide-react';
 import InlineDiffViewer from './InlineDiffViewer';
+import FileContentDisplay from './FileContentDisplay';
 import { useTheme } from "next-themes";
 
 interface WebAppData {
@@ -26,13 +27,24 @@ interface CodeData {
   backup_created?: string;
 }
 
+// NEW: File content data interface
+interface FileContentData {
+  content: string;
+  filename: string;
+  fullPath?: string;
+  fileSize?: number;
+  lines?: number;
+  encoding?: string;
+  absolutePath?: string;
+}
+
 interface ContentPreviewProps {
   // Unique identifier for this preview instance (e.g., app_name for web apps)
   id: string;
   
   // Content type and data
-  type: 'web_app' | 'code' | 'diff';
-  data: WebAppData | CodeData;
+  type: 'web_app' | 'code' | 'diff' | 'file_content';
+  data: WebAppData | CodeData | FileContentData;
   
   // Tool call context for additional info
   toolCall?: {
@@ -57,6 +69,20 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
   const [htmlContent, setHtmlContent] = useState<string | null>(null);
   const [loadingHtml, setLoadingHtml] = useState(false);
   const { theme } = useTheme();
+
+  // NEW: Handle file content type directly
+  if (type === 'file_content') {
+    const fileData = data as FileContentData;
+    return (
+      <FileContentDisplay
+        content={fileData.content}
+        filename={fileData.filename}
+        fileSize={fileData.fileSize}
+        lines={fileData.lines}
+        encoding={fileData.encoding}
+      />
+    );
+  }
 
   // Determine available tabs based on content type
   const availableTabs = React.useMemo(() => {

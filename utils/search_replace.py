@@ -5,16 +5,18 @@ import re
 import os
 from pathlib import Path
 
-try:
-    import git
-except ImportError:
-    git = None
-
 from diff_match_patch import diff_match_patch
 from tqdm import tqdm
 
-from aider.dump import dump
-from aider.utils import GitTemporaryDirectory
+# Simple replacement for aider.dump
+def dump(*args, **kwargs):
+    """Simple replacement for aider.dump - just prints debug info"""
+    if args:
+        for arg in args:
+            print(f"DEBUG: {repr(arg)}")
+    if kwargs:
+        for k, v in kwargs.items():
+            print(f"DEBUG {k}: {repr(v)}")
 
 
 class RelativeIndenter:
@@ -461,82 +463,6 @@ def search_and_replace(texts):
     return new_text
 
 
-def git_cherry_pick_osr_onto_o(texts):
-    search_text, replace_text, original_text = texts
-
-    with GitTemporaryDirectory() as dname:
-        repo = git.Repo(dname)
-
-        fname = Path(dname) / "file.txt"
-
-        # Make O->S->R
-        fname.write_text(original_text)
-        repo.git.add(str(fname))
-        repo.git.commit("-m", "original")
-        original_hash = repo.head.commit.hexsha
-
-        fname.write_text(search_text)
-        repo.git.add(str(fname))
-        repo.git.commit("-m", "search")
-
-        fname.write_text(replace_text)
-        repo.git.add(str(fname))
-        repo.git.commit("-m", "replace")
-        replace_hash = repo.head.commit.hexsha
-
-        # go back to O
-        repo.git.checkout(original_hash)
-
-        # cherry pick R onto original
-        try:
-            repo.git.cherry_pick(replace_hash, "--minimal")
-        except (git.exc.ODBError, git.exc.GitError):
-            # merge conflicts!
-            return
-
-        new_text = fname.read_text()
-        return new_text
-
-
-def git_cherry_pick_sr_onto_so(texts):
-    search_text, replace_text, original_text = texts
-
-    with GitTemporaryDirectory() as dname:
-        repo = git.Repo(dname)
-
-        fname = Path(dname) / "file.txt"
-
-        fname.write_text(search_text)
-        repo.git.add(str(fname))
-        repo.git.commit("-m", "search")
-        search_hash = repo.head.commit.hexsha
-
-        # make search->replace
-        fname.write_text(replace_text)
-        repo.git.add(str(fname))
-        repo.git.commit("-m", "replace")
-        replace_hash = repo.head.commit.hexsha
-
-        # go back to search,
-        repo.git.checkout(search_hash)
-
-        # make search->original
-        fname.write_text(original_text)
-        repo.git.add(str(fname))
-        repo.git.commit("-m", "original")
-
-        # cherry pick replace onto original
-        try:
-            repo.git.cherry_pick(replace_hash, "--minimal")
-        except (git.exc.ODBError, git.exc.GitError):
-            # merge conflicts!
-            return
-
-        new_text = fname.read_text()
-
-        return new_text
-
-
 class SearchTextNotUnique(ValueError):
     pass
 
@@ -562,7 +488,6 @@ always_relative_indent = [
 
 editblock_strategies = [
     (search_and_replace, all_preprocs),
-    (git_cherry_pick_osr_onto_o, all_preprocs),
     (dmp_lines_apply, all_preprocs),
 ]
 
@@ -573,7 +498,6 @@ never_relative = [
 
 udiff_strategies = [
     (search_and_replace, all_preprocs),
-    (git_cherry_pick_osr_onto_o, all_preprocs),
     (dmp_lines_apply, all_preprocs),
 ]
 
@@ -651,8 +575,6 @@ def proc(dname):
 
     strategies = [
         # (search_and_replace, all_preprocs),
-        # (git_cherry_pick_osr_onto_o, all_preprocs),
-        # (git_cherry_pick_sr_onto_so, all_preprocs),
         # (dmp_apply, all_preprocs),
         (dmp_lines_apply, all_preprocs),
     ]
@@ -661,9 +583,6 @@ def proc(dname):
 
     short_names = dict(
         search_and_replace="sr",
-        git_cherry_pick_osr_onto_o="cp_o",
-        git_cherry_pick_sr_onto_so="cp_so",
-        dmp_apply="dmp",
         dmp_lines_apply="dmpl",
     )
 
@@ -803,6 +722,24 @@ class SearchReplaceBlockParser:
             re.DOTALL | re.MULTILINE
         )
 
+        # NEW: Pattern for blocks without file paths (just the search/replace content)
+        self.no_filepath_pattern = re.compile(
+            r'```[a-zA-Z]*\n<<<<<<< SEARCH\n(.*?)\n=======\n(.*?)\n>>>>>>> REPLACE\n```',
+            re.DOTALL | re.MULTILINE
+        )
+        
+        # NEW: Pattern for blocks without file paths and no language specification
+        self.no_filepath_alt_pattern = re.compile(
+            r'```\n<<<<<<< SEARCH\n(.*?)\n=======\n(.*?)\n>>>>>>> REPLACE\n```',
+            re.DOTALL | re.MULTILINE
+        )
+        
+        # NEW: Pattern for raw blocks without file paths
+        self.raw_no_filepath_pattern = re.compile(
+            r'<<<<<<< SEARCH\n(.*?)\n=======\n(.*?)\n>>>>>>> REPLACE',
+            re.DOTALL | re.MULTILINE
+        )
+
     def parse_blocks(self, ai_output):
         """
         Parse SEARCH/REPLACE blocks from AI output.
@@ -838,6 +775,38 @@ class SearchReplaceBlockParser:
             
             # Validate file path
             if not file_path or file_path.startswith('#') or file_path.startswith('//'):
+                continue
+                
+            cleaned_blocks.append((file_path, search_text, replace_text))
+        
+        # NEW: If no blocks found with file paths, try patterns without file paths
+        if not blocks:
+            # Try no-filepath pattern with language
+            matches = self.no_filepath_pattern.findall(ai_output)
+            if matches:
+                blocks.extend([("", search_text, replace_text) for search_text, replace_text in matches])
+            
+            # Try no-filepath pattern without language
+            if not matches:
+                matches = self.no_filepath_alt_pattern.findall(ai_output)
+                if matches:
+                    blocks.extend([("", search_text, replace_text) for search_text, replace_text in matches])
+            
+            # Try raw no-filepath pattern
+            if not matches:
+                matches = self.raw_no_filepath_pattern.findall(ai_output)
+                if matches:
+                    blocks.extend([("", search_text, replace_text) for search_text, replace_text in matches])
+        
+        # Clean up the blocks
+        cleaned_blocks = []
+        for file_path, search_text, replace_text in blocks:
+            file_path = file_path.strip() if file_path else ""
+            search_text = search_text.rstrip('\n\r')
+            replace_text = replace_text.rstrip('\n\r')
+            
+            # Validate file path (skip if it's a comment)
+            if file_path and (file_path.startswith('#') or file_path.startswith('//')):
                 continue
                 
             cleaned_blocks.append((file_path, search_text, replace_text))

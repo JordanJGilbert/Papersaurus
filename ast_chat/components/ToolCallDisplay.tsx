@@ -79,7 +79,7 @@ const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCall, renderSanit
       <div className="tool-call-content p-3 border-t border-border bg-background rounded-b-lg space-y-2">
         <div>
           <h4 className="text-xs font-semibold uppercase text-muted-foreground mb-1">Arguments:</h4>
-          <pre className="w-full max-w-full p-2 border rounded-md bg-muted/30 text-xs overflow-x-auto overflow-y-auto max-h-40 min-w-0" style={{ 
+          <pre className="w-full max-w-full p-2 border rounded-md bg-muted/30 text-xs overflow-x-auto overflow-y-auto max-h-96 min-w-0" style={{ 
             wordBreak: 'break-all', 
             whiteSpace: 'pre-wrap', 
             overflowWrap: 'anywhere',
@@ -175,7 +175,7 @@ const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCall, renderSanit
                       Raw Result ({toolCall.status === "Streaming..." && !toolCall.is_error ? "Streaming..." : toolCall.status}):
                     </h4>
                     <div
-                      className={`w-full max-w-full p-2 border rounded-md overflow-x-auto overflow-y-auto max-h-60 text-xs min-w-0 ${
+                      className={`w-full max-w-full p-2 border rounded-md overflow-x-auto overflow-y-auto max-h-96 text-xs min-w-0 ${
                         toolCall.is_error ? 'border-red-500 bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
                                           : 'border-border bg-muted/30'
                       }`}
@@ -196,7 +196,7 @@ const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCall, renderSanit
                   Result ({toolCall.status === "Streaming..." && !toolCall.is_error ? "Streaming..." : toolCall.status}):
                 </h4>
                 <div
-                  className={`w-full max-w-full p-2 border rounded-md overflow-x-auto overflow-y-auto max-h-60 text-xs min-w-0 ${
+                  className={`w-full max-w-full p-2 border rounded-md overflow-x-auto overflow-y-auto max-h-96 text-xs min-w-0 ${
                     toolCall.is_error ? 'border-red-500 bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
                                       : 'border-border bg-muted/30'
                   }`}
@@ -224,7 +224,7 @@ const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCall, renderSanit
                     <h4 className="font-medium text-blue-500 dark:text-blue-400 text-xs mb-1">
                       ↳ LLM Sampling Thoughts (#{index + 1}):
                     </h4>
-                    <pre className="mt-1 p-2 border rounded-md border-blue-500/30 bg-blue-500/5 whitespace-pre-wrap text-xs font-mono w-full max-w-full overflow-x-auto min-w-0" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                    <pre className="mt-1 p-2 border rounded-md border-blue-500/30 bg-blue-500/5 whitespace-pre-wrap text-xs font-mono w-full max-w-full overflow-x-auto overflow-y-auto max-h-96 min-w-0" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                       {pair.thoughts}
                     </pre>
                   </div>
@@ -237,7 +237,7 @@ const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCall, renderSanit
                     <h4 className="font-medium text-green-600 dark:text-green-400 text-xs mb-1">
                       ↳ LLM Sampling Output (#{index + 1}):
                     </h4>
-                    <pre className="mt-1 p-2 border rounded-md border-green-500/30 bg-green-500/5 whitespace-pre-wrap text-xs font-mono w-full max-w-full overflow-x-auto min-w-0" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                    <pre className="mt-1 p-2 border rounded-md border-green-500/30 bg-green-500/5 whitespace-pre-wrap text-xs font-mono w-full max-w-full overflow-x-auto overflow-y-auto max-h-96 min-w-0" style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                       {pair.output}
                     </pre>
                   </div>

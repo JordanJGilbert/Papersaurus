@@ -1,0 +1,208 @@
+# MCP Server Creator Agent - Design Document
+
+## Overview
+A two-phase AI-driven system for creating MCP (Model Context Protocol) servers that ensures clear requirements gathering before autonomous implementation.
+
+## Architecture: Two-Phase Approach
+
+### Phase 1: Co-Pilot Phase (Requirements & Design)
+**Goal**: Collaborative requirement gathering and design agreement between user and AI
+
+#### Key Responsibilities:
+1. **Requirements Discovery**
+   - Interactive dialogue to understand user's high-level goals
+   - Identify the domain/use case for the MCP server
+   - Determine what problems the server should solve
+
+2. **Tool Design & Specification**
+   - Define each tool the MCP server will provide
+   - Collaborate on input schemas for each tool
+   - Design output schemas for each tool
+   - Validate tool interfaces make sense for the use case
+
+3. **Dependency Analysis**
+   - Identify if the MCP server needs to call external MCP tools
+   - Map out which external tools are required
+   - Verify external tool availability and compatibility
+
+4. **Project Specification Creation**
+   - Generate a high-level project overview
+   - Document the server's purpose and capabilities
+   - Create a clear implementation roadmap
+
+#### Interaction Pattern:
+- Back-and-forth conversation until mutual agreement
+- AI asks clarifying questions about ambiguous requirements
+- User can refine and adjust specifications
+- Final approval checkpoint before moving to Phase 2
+
+#### Deliverables:
+- **Project Spec**: High-level description of MCP server purpose
+- **Tool Specifications**: Complete input/output schemas for each tool
+- **Dependency Map**: List of external MCP tools required
+- **Implementation Agreement**: Signed-off requirements document
+
+### Phase 2: Agent Phase (Autonomous Implementation)
+**Goal**: Autonomous code generation, iteration, and testing until requirements are satisfied
+
+#### Key Responsibilities:
+1. **Code Generation**
+   - Generate initial MCP server implementation
+   - Use the existing `create_mcp_server` tool from the server creation system
+   - Follow FastMCP patterns and best practices
+
+2. **Self-Iteration**
+   - Test generated code against requirements
+   - Identify gaps or issues in implementation
+   - Use `edit_mcp_server` tool to make corrections
+   - Repeat until all requirements are met
+
+3. **Validation & Testing**
+   - Verify each tool works as specified
+   - Test input/output schemas match the agreed design
+   - Validate external MCP tool integrations
+   - Ensure error handling and edge cases are covered
+
+4. **Quality Assurance**
+   - Code review against best practices
+   - Performance optimization if needed
+   - Documentation generation
+   - Final validation against Phase 1 specifications
+
+#### Autonomous Capabilities:
+- Self-directed problem solving
+- Iterative improvement without user intervention
+- Automated testing and validation
+- Error detection and correction
+
+## System Components
+
+### 1. Co-Pilot Interface
+- **Conversation Manager**: Handles back-and-forth dialogue
+- **Requirement Extractor**: Parses and structures user requirements
+- **Schema Designer**: Interactive tool for designing input/output schemas
+- **Dependency Resolver**: Identifies and validates external MCP tools
+- **Specification Generator**: Creates formal project specifications
+
+### 2. Agent Controller
+- **Task Planner**: Breaks down implementation into subtasks
+- **Code Generator**: Creates MCP server code using existing tools
+- **Test Runner**: Validates implementation against requirements
+- **Iteration Manager**: Handles self-improvement cycles
+- **Quality Checker**: Ensures code meets standards
+
+### 3. Integration Layer
+- **MCP Server Creation API**: Interfaces with existing server creation tools
+- **External Tool Registry**: Manages available MCP tools for integration
+- **Version Control**: Tracks iterations and changes
+- **Validation Framework**: Tests generated servers
+
+## Workflow
+
+### Phase 1 Workflow:
+1. **Initial Consultation**
+   - User describes high-level goals
+   - AI asks clarifying questions
+   - Scope and complexity assessment
+
+2. **Tool Design Session**
+   - For each identified tool:
+     - Define purpose and functionality
+     - Design input schema collaboratively
+     - Design output schema collaboratively
+     - Validate tool interface
+
+3. **Dependency Planning**
+   - Identify external MCP tools needed
+   - Verify tool availability
+   - Plan integration approach
+
+4. **Specification Review**
+   - Present complete project specification
+   - User review and approval
+   - Final adjustments if needed
+
+5. **Handoff to Phase 2**
+   - Package all specifications
+   - Initialize Agent Phase
+
+### Phase 2 Workflow:
+1. **Implementation Planning**
+   - Analyze Phase 1 specifications
+   - Create implementation strategy
+   - Identify potential challenges
+
+2. **Initial Code Generation**
+   - Generate MCP server skeleton
+   - Implement each tool according to specs
+   - Add external tool integrations
+
+3. **Iterative Improvement**
+   - Test implementation
+   - Identify issues or gaps
+   - Make corrections and improvements
+   - Repeat until requirements satisfied
+
+4. **Final Validation**
+   - Comprehensive testing
+   - Specification compliance check
+   - Performance validation
+   - Documentation generation
+
+5. **Delivery**
+   - Present completed MCP server
+   - Provide usage documentation
+   - Offer deployment guidance
+
+## Technical Implementation
+
+### Phase 1 Technical Stack:
+- **Conversation Engine**: Structured dialogue management
+- **Schema Validation**: JSON Schema tools for input/output design
+- **Requirement Tracking**: Structured storage of evolving requirements
+- **External Tool Discovery**: API to query available MCP tools
+
+### Phase 2 Technical Stack:
+- **Code Generation**: Integration with existing `create_mcp_server` tool
+- **Testing Framework**: Automated validation of generated code
+- **Iteration Engine**: Self-directed improvement capabilities
+- **Quality Metrics**: Code quality and performance measurement
+
+## Success Criteria
+
+### Phase 1 Success:
+- Clear, unambiguous project specification
+- Complete tool schemas (input/output)
+- Validated external dependencies
+- User approval and sign-off
+
+### Phase 2 Success:
+- Working MCP server that meets all specifications
+- All tools function as designed
+- External integrations work correctly
+- Code passes quality standards
+- Comprehensive testing completed
+
+## Benefits
+
+1. **Reduced Ambiguity**: Phase 1 ensures clear requirements before implementation
+2. **Higher Quality**: Autonomous iteration in Phase 2 improves code quality
+3. **User Confidence**: Clear agreement phase builds trust
+4. **Efficiency**: Autonomous implementation reduces back-and-forth during coding
+5. **Consistency**: Structured approach ensures reliable outcomes
+
+## Future Enhancements
+
+1. **Learning System**: Agent learns from successful patterns
+2. **Template Library**: Reusable patterns for common MCP server types
+3. **Advanced Testing**: Automated integration testing with external systems
+4. **Performance Optimization**: Automatic performance tuning
+5. **Documentation Generation**: Automatic API documentation creation
+
+## Risk Mitigation
+
+1. **Requirement Drift**: Phase 1 lock-in prevents scope creep
+2. **Implementation Failures**: Iterative approach catches issues early
+3. **Quality Issues**: Automated testing and validation
+4. **User Dissatisfaction**: Clear agreement phase manages expectations
+5. **Technical Debt**: Code review and quality standards enforcement

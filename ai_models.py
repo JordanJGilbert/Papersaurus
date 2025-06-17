@@ -185,103 +185,8 @@ def _resolve_path(data_dict: Dict[str, Any], path_str: str) -> Any:
             raise TypeError(f"Cannot access path component '{key_or_index}' on non-dict/non-list type: {type(current).__name__}.")
     return current
 
-def _resolve_placeholders_in_args(
-    arguments: Dict[str, Any],
-    history: List[StandardizedMessage] # Standardized history where results are on 'tool_result'
-) -> Dict[str, Any]:
-    """
-    Resolves placeholders like @@ref_<TOOL_CALL_ID>__<PATH_TO_VALUE> in tool arguments.
-    """
-    print(f"DEBUG: _resolve_placeholders_in_args called with arguments: {arguments}")
-    print(f"DEBUG: History for placeholder resolution (first 3 messages): {history[:3]}")
-    resolved_args = {}
-    # Regex to find placeholders like @@ref_abcdef12__some_key__0__another_key
-    # It captures the 8-char hex ID (call_id) and the double-underscore-separated path.
-    placeholder_pattern = re.compile(r"^@@ref_([0-9a-fA-F]{8})__(.+)$") # Using __ as path delimiter
 
-    for key, value in arguments.items():
-        print(f"DEBUG: Processing arg key='{key}', value='{str(value)[:100]}...'")
-        if isinstance(value, str):
-            match = placeholder_pattern.match(value)
-            if match:
-                call_id_str, path_str = match.groups()
-                print(f"DEBUG: Matched placeholder for arg '{key}'. call_id_str='{call_id_str}', path_str='{path_str}'")
-                found_referenced_message = False
-                try:
-                    for i, referenced_message in enumerate(history):
-                        # We are looking for a 'tool' role message whose tool_call_id matches
-                        print(f"DEBUG: Checking history message {i}: role='{referenced_message.role}', tool_call_id='{referenced_message.tool_call_id}'")
-                        if referenced_message.role == "tool" and referenced_message.tool_call_id == call_id_str:
-                            print(f"DEBUG: Found matching tool message in history at index {i} for call_id_str='{call_id_str}'")
-                            if referenced_message.tool_result is not None:
-                                print(f"DEBUG: Tool message has tool_result: {str(referenced_message.tool_result)[:200]}...")
-                                retrieved_value = _resolve_path(referenced_message.tool_result, path_str)
-                                resolved_args[key] = retrieved_value
-                                print(f"DEBUG: Successfully resolved placeholder '{value}' (id: {call_id_str}) to: {type(retrieved_value)} from history index {i}. Value: {str(retrieved_value)[:100]}...")
-                                found_referenced_message = True
-                                break # Found and processed
-                            else:
-                                print(f"DEBUG: Placeholder '{value}' (id: {call_id_str}) references tool message at history index {i} which has None tool_result. Passing placeholder as is.")
-                                resolved_args[key] = value # Pass placeholder as is
-                                found_referenced_message = True # Found, but result was None
-                                break
-                    
-                    if not found_referenced_message:
-                        print(f"DEBUG: Placeholder '{value}' (id: {call_id_str}) did not find a matching 'tool' role message with this tool_call_id in history. Passing placeholder as is.")
-                        resolved_args[key] = value
 
-                except Exception as e:
-                    print(f"DEBUG: Error resolving placeholder '{value}' (id: {call_id_str}): {type(e).__name__} - {e}. Passing placeholder as is.")
-                    traceback.print_exc() # Add traceback for the exception
-                    resolved_args[key] = value # Pass placeholder as is on error
-            else:
-                print(f"DEBUG: Arg '{key}' value is a string but not a placeholder.")
-                resolved_args[key] = value # Not a placeholder string
-        else:
-            print(f"DEBUG: Arg '{key}' value is not a string.")
-            resolved_args[key] = value # Not a string, pass as is
-    print(f"DEBUG: _resolve_placeholders_in_args returning: {resolved_args}")
-    return resolved_args
-
-def _get_referenceable_tool_outputs_summary(history: List[StandardizedMessage]) -> str:
-    """
-    Creates a summary of available tool outputs from history for the LLM prompt.
-    """
-    summary_lines = []
-    for i, msg in enumerate(history):
-        # We are interested in messages of role 'tool' as these contain 'tool_result'
-        if msg.role == "tool" and msg.tool_name and msg.tool_result and msg.tool_call_id:
-            # msg.tool_result is already a dict due to ensure_serializable_tool_result
-            # and now it's wrapped like {'tool_name_response': {...original_result...}}
-            wrapped_result_keys = list(msg.tool_result.keys()) # Should be one key: f"{msg.tool_name}_response"
-            
-            inner_result_preview = "Output structure is unexpected or result is not a dictionary."
-            # Path for @@ref should start with the key in tool_result, e.g., {tool_name}_response
-            path_prefix_for_ref = ""
-            if wrapped_result_keys:
-                path_prefix_for_ref = wrapped_result_keys[0] # e.g. "web_search_response"
-                inner_result = msg.tool_result[path_prefix_for_ref]
-                if isinstance(inner_result, dict):
-                    output_keys = list(inner_result.keys())
-                    if not output_keys:
-                        inner_result_preview = f"Tool '{msg.tool_name}' output (under '{path_prefix_for_ref}') is an empty dictionary."
-                    else:
-                        inner_result_preview = f"Tool '{msg.tool_name}' output (under '{path_prefix_for_ref}') contains keys: {', '.join(output_keys[:3])}{'...' if len(output_keys) > 3 else ''}."
-                else:
-                    # If the inner result (e.g., from web_search_response) is a string or list directly
-                    inner_result_preview = f"Tool '{msg.tool_name}' output (under '{path_prefix_for_ref}') is a {type(inner_result).__name__}. To reference it directly, use @@ref_{msg.tool_call_id}__{path_prefix_for_ref}."
-            
-            summary_lines.append(
-                f"- Tool Call ID '{msg.tool_call_id}' (for tool '{msg.tool_name}') executed. {inner_result_preview} "
-                f"To reference an output (e.g., a key named 'example_key' from the dictionary under '{path_prefix_for_ref}'), use the format @@ref_{msg.tool_call_id}__{path_prefix_for_ref}__example_key. "
-                f"For nested outputs, append more keys: @@ref_{msg.tool_call_id}__{path_prefix_for_ref}__outer_key__inner_key. "
-                f"If the output under '{path_prefix_for_ref}' is a simple type (string, list) and you want to reference it directly, use @@ref_{msg.tool_call_id}__{path_prefix_for_ref}."
-            )
-    
-    if not summary_lines:
-        return "No previous tool results available for referencing in this conversation turn."
-    
-    return "Available previous tool results for reference (use the format @@ref_<TOOL_CALL_ID>__<PATH_USING_DOUBLE_UNDERSCORES> to use a result in a tool argument):\n" + "\n".join(summary_lines)
 
 # --- Placeholder Resolution Logic --- END ---
 
@@ -426,23 +331,33 @@ async def function_calling_loop(
     mcp_tool_to_session_map: Optional[Dict[str, Any]] = None,
     user_number="typically_a_phone_number_string",
     conversation_history: Optional[List[StandardizedMessage]] = None,
+    conversation_id: Optional[str] = None, # NEW: Optional conversation_id
     test_mode=False,
     attachments: Optional[List[Dict[str, Any]]] = None,
     attachment_urls: Optional[List[str]] = None,  # NEW: Direct URLs to attachments
     stream_chunk_handler: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
-    final_response_json_schema: Optional[Dict[str, Any]] = None
+    final_response_json_schema: Optional[Dict[str, Any]] = None,
+    system_prompt: Optional[str] = None  # NEW: System prompt override
 ):
     MAX_CONVERSATION_HISTORY_MESSAGES = 30
     model_name = "gemini-2.5-pro-preview-05-06"
 
+    # Determine the key for history loading/saving
+    history_key = conversation_id if conversation_id else user_number
+    print(f"Using history key: {history_key}")
+
     if user_input.strip().lower() == "clear" or user_input.strip().lower() == "buddy clear":
-        clear_conversation_history_for_user(user_number)
-        await send_signal_message(user_number, message="Conversation history cleared.")
+        clear_conversation_history_for_user(history_key) # Use history_key here
+        if stream_chunk_handler is None and history_key == user_number: # Only send signal if it's the main user chat
+            await send_signal_message(user_number, message="Conversation history cleared.")
+        elif stream_chunk_handler:
+            await stream_chunk_handler({"type": "info", "content": "Conversation history cleared for this session."})
+            # No stream_end needed here, as it's typically part of a full interaction
         return "Conversation history cleared.", [], None
 
     current_standardized_history: List[StandardizedMessage]
     if conversation_history is None:
-        current_standardized_history = load_conversation_history_from_file(user_number)
+        current_standardized_history = load_conversation_history_from_file(history_key) # Use history_key
     else:
         current_standardized_history = conversation_history
 
@@ -479,8 +394,18 @@ async def function_calling_loop(
     current_date = now.strftime("%Y-%m-%d")
     day_of_week = now.strftime("%A")
     timezone = str(datetime.now(pytz.timezone('UTC')).astimezone().tzinfo)
+    
+    # NEW: Use system_prompt override if provided, otherwise use default channel-based prompt
+    # Always define channel first for later logic that depends on it
     channel = "web_chat" if stream_chunk_handler else "signal"
-    base_prompt = get_system_prompt(channel)
+    
+    if system_prompt:
+        base_prompt = system_prompt
+        print(f"Using system prompt override (length: {len(system_prompt)} chars)")
+    else:
+        base_prompt = get_system_prompt(channel)
+        print(f"Using default system prompt for channel: {channel}")
+    
     system_instruction_text = (
         base_prompt
         + f"\n\nCURRENT DATE CONTEXT:"
@@ -489,23 +414,6 @@ async def function_calling_loop(
         + f"\n  Day of week: {day_of_week}"
         + f"\n  Timezone: {timezone}"
         + f"\n\nUSER NUMBER: {user_number}"
-        + "\n\nMULTI-STEP OPERATIONS & CONTEXT PASSING VIA 'additional_context':"
-        + "\n  - Several tools (e.g., code generation, document generation/editing) accept an 'additional_context' STRING parameter."
-        + "\n  - GENERAL RULE: The 'additional_context' parameter MUST always receive a string. It cannot be a complex object like a JSON dictionary or list resolved from an @@ref_."
-        + "\n  - USING @@ref_ TO POPULATE ARGUMENTS (INCLUDING 'additional_context'):"
-        + "\n    - If you use @@ref_<TOOL_CALL_ID>__<PATH_TO_VALUE> to populate any argument, ensure the <PATH_TO_VALUE> resolves to the correct type for that argument."
-        + "\n    - For 'additional_context', this means the <PATH_TO_VALUE> must resolve to a STRING. Example: 'additional_context': '@@ref_prev_call_id__tool_response__summary_text'."
-        + "\n  - SPECIAL GUIDANCE FOR 'additional_context' IN DOCUMENT *CREATION* TOOLS (create_web_app, create_pdf_document):"
-        + "\n    - For these specific creation tools, you are responsible for SYNTHESIZING the string for 'additional_context'."
-        + "\n    - DO NOT use @@ref_ to point 'additional_context' to a complex object (like a full JSON dictionary from 'search_batch_tool')."
-        + "\n    - INSTEAD: If data from a complex object (e.g., search results) is needed for document creation:"
-        + "\n      1. Have the search tool return its results (which will be in history)."
-        + "\n      2. In your thought process for the create_web_app/create_pdf_document call, analyze those results."
-        + "\n      3. Formulate a STRING containing all necessary details from those results. This might be a comprehensive summary, a list of extracted key information, or any textual representation that is optimally detailed for the creation task. Ensure it is a single string."
-        + "\n      4. Pass this *self-generated, appropriately detailed string* directly as the value for 'additional_context'."
-        + "\n  - GUIDANCE FOR 'additional_context' IN *OTHER* TOOLS (e.g., code/document *editing* tools):"
-        + "\n    - For tools like 'edit_python_code', 'edit_web_app', 'edit_pdf_document', if you use @@ref_ to populate 'additional_context', it is permissible as long as the <PATH_TO_VALUE> resolves to a string (e.g., pointing to a specific text field from a previous tool's output)."
-        + "\n    - ALWAYS be strategic: the string passed to 'additional_context' should contain all relevant information needed for the task, structured clearly if possible. Avoid including truly irrelevant data, but prioritize completeness of necessary details over excessive brevity if that detail is required for optimal performance of the next tool."
     )
 
     # Add instruction about final response schema if provided
@@ -572,15 +480,7 @@ async def function_calling_loop(
         
         session_for_tool = mcp_tool_to_session_map[tool_name]
         
-        try:
-            resolved_args_dict = _resolve_placeholders_in_args(tool_call.arguments, history_for_placeholders)
-            print(f"Original arguments for {tool_name} (ID: {tool_id}): {tool_call.arguments}")
-            print(f"Resolved arguments for {tool_name} (ID: {tool_id}): {resolved_args_dict}")
-        except Exception as e_resolve:
-            print(f"Critical error during placeholder resolution for {tool_name} (ID: {tool_id}): {e_resolve}")
-            traceback.print_exc()
-            # Fallback to original arguments if resolution fails, but log critical error
-            resolved_args_dict = tool_call.arguments 
+        resolved_args_dict = tool_call.arguments 
         
         args_dict = resolved_args_dict
         
@@ -673,6 +573,7 @@ async def function_calling_loop(
     final_assistant_response_text = ""
     error_message_from_loop = None
     intermediate_text_sent_via_signal_non_streaming = False
+    llm_response = None # Initialize llm_response to ensure it's defined before the loop
 
     while turns < max_turns:
         turns += 1
@@ -708,8 +609,7 @@ async def function_calling_loop(
         if not current_standardized_history and original_len > 0: # original_len check from truncation block
             print("Warning: History became empty after trimming leading tool calls/results.")
 
-        reference_summary = _get_referenceable_tool_outputs_summary(current_standardized_history)
-        current_system_prompt = system_instruction_text + "\n\n" + reference_summary
+        current_system_prompt = system_instruction_text
         
         current_llm_config = StandardizedLLMConfig(
             system_prompt=current_system_prompt,
@@ -879,7 +779,9 @@ async def function_calling_loop(
                 await stream_chunk_handler({"type": "error", "content": error_message_from_loop })
             break
 
-    save_conversation_history_to_file(user_number, current_standardized_history)
+    # Save history using the determined key, but only if it wasn't explicitly passed in override
+    if conversation_history is None:
+        save_conversation_history_to_file(history_key, current_standardized_history)
 
     if stream_chunk_handler is None:
         if final_assistant_response_text and not intermediate_text_sent_via_signal_non_streaming:

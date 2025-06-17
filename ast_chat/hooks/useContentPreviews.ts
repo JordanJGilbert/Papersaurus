@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 
 export interface PreviewInstance {
   id: string;
-  type: 'web_app' | 'code' | 'diff';
+  type: 'web_app' | 'code' | 'diff' | 'file_content';
   data: any;
   toolCall?: {
     name: string;
@@ -20,7 +20,7 @@ export const useContentPreviews = () => {
   // Create or update a preview
   const upsertPreview = useCallback((
     id: string,
-    type: 'web_app' | 'code' | 'diff',
+    type: 'web_app' | 'code' | 'diff' | 'file_content',
     data: any,
     messageId: string,
     toolCall?: { name: string; call_id: string; status?: string }

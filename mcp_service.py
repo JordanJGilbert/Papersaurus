@@ -35,8 +35,6 @@ from ai_models import function_calling_loop, clear_conversation_history_for_user
 # For example, set MCP_INTERNAL_API_KEY in your shell or deployment environment.
 logging.info("Relying on globally set environment variables. Ensure necessary variables (e.g., MCP_INTERNAL_API_KEY, API keys for services) are available.")
 
-# REMOVED: DYNAMIC_SERVERS_JSON_PATH and USER_PREFS_JSON_PATH as they are no longer primary drivers for server startup
-
 # --- Placeholder for Internal API Key (SHOULD BE IN ENV VARS) ---
 INTERNAL_API_KEY = os.getenv("MCP_INTERNAL_API_KEY", "your_secret_internal_api_key_here")
 INTERNAL_API_KEY_NAME = "X-Internal-API-Key"
@@ -93,6 +91,116 @@ def sanitize_user_id_for_key(user_id_str: str) -> str:
     if not user_id_str:
         return ""
     return user_id_str.replace('+', '')
+
+async def handle_sampling_with_tools(
+    messages: List,  # StandardizedMessage list
+    system_prompt: str,
+    model_name: str,
+    stream_callback,
+    sample_id: str
+):
+    """Handle sampling requests that need tool access by calling the query endpoint internally."""
+    
+    # Convert messages to a simple user query string
+    user_query = ""
+    for msg in messages:
+        if hasattr(msg, 'role') and msg.role == "user" and hasattr(msg, 'content'):
+            user_query = msg.content
+            break
+    
+    if not user_query:
+        return "Error: No user message found in sampling request"
+    
+    logging.info(f"[SAMPLING-{sample_id}] Converting to internal query: {user_query[:100]}...")
+    
+    try:
+        # Determine if we should stream based on callback availability
+        should_stream = stream_callback is not None
+        
+        # Create internal query request
+        query_request = QueryRequest(
+            query=user_query,
+            sender="sampling_user",  # Special user ID for sampling context
+            model=model_name,
+            stream=should_stream,  # Enable streaming if callback is available
+            system_prompt=system_prompt
+        )
+        
+        if should_stream:
+            # Handle streaming response
+            logging.info(f"[SAMPLING-{sample_id}] Using streaming mode for tool-enabled sampling")
+            
+            # Call the query endpoint internally with streaming
+            response = await handle_query(query_request)
+            
+            # For streaming, handle_query returns a StreamingResponse
+            if hasattr(response, 'body_iterator'):
+                accumulated_text = ""
+                async for chunk in response.body_iterator:
+                    try:
+                        # Parse the chunk as JSON - handle both bytes and string chunks
+                        if isinstance(chunk, bytes):
+                            chunk_str = chunk.decode('utf-8').strip()
+                        else:
+                            chunk_str = str(chunk).strip()
+                        
+                        if chunk_str:
+                            chunk_data = json.loads(chunk_str)
+                            
+                            # Forward different chunk types to the stream callback
+                            if chunk_data.get("type") == "text_chunk":
+                                content = chunk_data.get("content", "")
+                                accumulated_text += content
+                                # Forward to sampling stream callback
+                                await stream_callback({
+                                    "type": "text_chunk",
+                                    "content": content
+                                })
+                            elif chunk_data.get("type") == "thought_summary":
+                                # Forward thought chunks too
+                                await stream_callback({
+                                    "type": "thought_summary", 
+                                    "content": chunk_data.get("content", "")
+                                })
+                            elif chunk_data.get("type") == "tool_call_pending":
+                                # Could forward tool call info to stream if desired
+                                pass
+                            elif chunk_data.get("type") == "tool_result":
+                                # Could forward tool results to stream if desired  
+                                pass
+                            elif chunk_data.get("type") == "stream_end":
+                                break
+                            elif chunk_data.get("type") == "error":
+                                error_content = chunk_data.get("content", "Unknown error")
+                                logging.error(f"[SAMPLING-{sample_id}] Streaming error: {error_content}")
+                                return f"Error in tool-enabled sampling: {error_content}"
+                    except json.JSONDecodeError:
+                        # Skip malformed chunks
+                        continue
+                    except Exception as e:
+                        logging.error(f"[SAMPLING-{sample_id}] Error processing stream chunk: {e}")
+                        continue
+                
+                logging.info(f"[SAMPLING-{sample_id}] Tool-enabled streaming completed. Result length: {len(accumulated_text)} chars")
+                return accumulated_text
+            else:
+                # Fallback if streaming response doesn't have expected format
+                return str(response)
+        else:
+            # Non-streaming mode (original logic)
+            response = await handle_query(query_request)
+            
+            if response.error:
+                logging.error(f"[SAMPLING-{sample_id}] Error in tool-enabled sampling: {response.error}")
+                return f"Error in tool-enabled sampling: {response.error}"
+            
+            logging.info(f"[SAMPLING-{sample_id}] Tool-enabled sampling completed successfully. Result length: {len(response.result)} chars")
+            return response.result
+        
+    except Exception as e:
+        logging.error(f"[SAMPLING-{sample_id}] Exception in tool-enabled sampling: {e}")
+        logging.error(f"[SAMPLING-{sample_id}] Exception traceback:", exc_info=True)
+        return f"Exception in tool-enabled sampling: {str(e)}"
 
 # === MCPManager CLASS FOR ENCAPSULATION ===
 class MCPManager:
@@ -241,16 +349,37 @@ class MCPManager:
                 if isinstance(messages, str):
                     standardized_messages.append(StandardizedMessage(role="user", content=messages))
                 elif isinstance(messages, list):
+                    # NEW: Handle SamplingMessage objects from FastMCP
+                    sampling_message_contents = []
                     for msg_item in messages:
-                        if isinstance(msg_item, dict) and "_attachments" in msg_item:
-                            # Extract smuggled attachment URLs
-                            attachment_urls_from_messages.extend(msg_item["_attachments"])
-                        elif isinstance(msg_item, str):
-                            standardized_messages.append(StandardizedMessage(role="user", content=msg_item))
+                        if hasattr(msg_item, 'content') and hasattr(msg_item.content, 'text'):
+                            # This is a SamplingMessage with TextContent
+                            sampling_message_contents.append(msg_item.content.text)
                         elif hasattr(msg_item, 'role') and hasattr(msg_item, 'content'):
-                            standardized_messages.append(StandardizedMessage(role=str(msg_item.role), content=str(msg_item.content)))
+                            # Fallback for other message types
+                            sampling_message_contents.append(str(msg_item.content))
+                        elif isinstance(msg_item, str):
+                            sampling_message_contents.append(msg_item)
                         else:
-                            standardized_messages.append(StandardizedMessage(role="user", content=str(msg_item)))
+                            sampling_message_contents.append(str(msg_item))
+                    
+                    # Now check if we have a simplified format (first message is prompt, rest are URLs)
+                    if len(sampling_message_contents) > 1:
+                        # First message is the main prompt
+                        standardized_messages.append(StandardizedMessage(role="user", content=sampling_message_contents[0]))
+                        
+                        # Check if remaining items are URLs
+                        for content in sampling_message_contents[1:]:
+                            if isinstance(content, str) and content.startswith(('http://', 'https://')):
+                                attachment_urls_from_messages.append(content)
+                                logging.debug(f"[SAMPLING-{sample_id}] Extracted URL from SamplingMessage: {content}")
+                            else:
+                                # If it's not a URL, add it as additional user content
+                                standardized_messages.append(StandardizedMessage(role="user", content=content))
+                    else:
+                        # Single message, just add it
+                        if sampling_message_contents:
+                            standardized_messages.append(StandardizedMessage(role="user", content=sampling_message_contents[0]))
                 else:
                     standardized_messages.append(StandardizedMessage(role="user", content=str(messages)))
 
@@ -272,33 +401,56 @@ class MCPManager:
                     logging.debug(f"[SAMPLING-{sample_id}] Processing {len(all_attachment_urls)} attachments...")
                     import requests
                     import filetype
+                    from PIL import Image
+                    from io import BytesIO
+                    
                     for attachment_url in all_attachment_urls:
                         if isinstance(attachment_url, str) and attachment_url.startswith(('http://', 'https://')):
                             try:
-                                resp = requests.get(attachment_url, timeout=10)
+                                # Use asyncio.to_thread for non-blocking download like analyze_images
+                                resp = await asyncio.to_thread(requests.get, attachment_url, timeout=10)
                                 resp.raise_for_status()
-                                data_bytes = resp.content
-                                mime_type = resp.headers.get('Content-Type', '')
                                 
-                                # Guess mime_type if it's generic or missing
-                                if not mime_type or mime_type == 'application/octet-stream':
-                                    kind = filetype.guess(data_bytes)
-                                    if kind: 
-                                        mime_type = kind.mime
-                                    else: 
-                                        mime_type = 'application/octet-stream'
+                                content_type = resp.headers.get('Content-Type', '')
                                 
-                                # Only include image attachments for now
-                                if mime_type.startswith('image/'):
-                                    attachment_parts.append(AttachmentPart(
-                                        mime_type=mime_type, 
-                                        data=data_bytes, 
-                                        name=attachment_url
-                                    ))
-                                    logging.debug(f"[SAMPLING-{sample_id}] Added image attachment: {mime_type}")
+                                # Skip non-image attachments
+                                if not content_type.startswith('image/'):
+                                    logging.debug(f"[SAMPLING-{sample_id}] Skipping non-image attachment: {attachment_url} (type: {content_type})")
+                                    continue
+                                
+                                # Process image through PIL like analyze_images does
+                                image_bytes_io = BytesIO(resp.content)
+                                image = await asyncio.to_thread(Image.open, image_bytes_io)
+                                
+                                # Re-save to ensure proper format
+                                img_bytes_for_llm = BytesIO()
+                                img_format = image.format if image.format and image.format.upper() in Image.SAVE.keys() else "PNG"
+                                await asyncio.to_thread(image.save, img_bytes_for_llm, format=img_format)
+                                img_bytes_for_llm.seek(0)
+                                
+                                # Use the processed image data
+                                final_image_data = img_bytes_for_llm.getvalue()
+                                
+                                # Determine final mime type based on format
+                                if img_format.upper() == "JPEG":
+                                    final_mime_type = "image/jpeg"
+                                elif img_format.upper() == "PNG":
+                                    final_mime_type = "image/png"
+                                elif img_format.upper() == "WEBP":
+                                    final_mime_type = "image/webp"
+                                else:
+                                    final_mime_type = content_type  # Fallback to original
+                                
+                                attachment_parts.append(AttachmentPart(
+                                    mime_type=final_mime_type, 
+                                    data=final_image_data, 
+                                    name=attachment_url
+                                ))
+                                logging.debug(f"[SAMPLING-{sample_id}] Added processed image attachment: {final_mime_type}, size: {len(final_image_data)} bytes")
+                                
                             except Exception as e:
-                                logging.warning(f"[SAMPLING-{sample_id}] Could not download attachment {attachment_url}: {e}")
-                                print(f"Warning: Could not download attachment {attachment_url} for sampling: {e}")
+                                logging.warning(f"[SAMPLING-{sample_id}] Could not download/process attachment {attachment_url}: {e}")
+                                print(f"Warning: Could not download/process attachment {attachment_url} for sampling: {e}")
 
                 # Add attachments to the user message if any were processed
                 if attachment_parts and standardized_messages:
@@ -372,25 +524,114 @@ class MCPManager:
                                     model_preferences_for_sample.append(second_hint_name)
                                     logging.warning(f"[SAMPLING-{sample_id}] Failed to parse JSON schema from FastMCP hints")
                                     print(f"[SAMPLING_HANDLER DEBUG] Failed to parse second hint as JSON, treating as regular model preference")
+
+                # Robust model selection with validation and fallback
+                supported_models = [
+                    "gemini-2.5-flash-preview-05-20",
+                    "gemini-2.5-pro-preview-05-06", 
+                    "models/gemini-2.0-flash",
+                    "gemini-2.0-flash",
+                    "claude-3-7-sonnet-latest",
+                    "gpt-4.1-2025-04-14",
+                    "o4-mini-2025-04-16"
+                ]
                 
+                target_model_for_sample = "gemini-2.5-flash-preview-05-20"  # Default fallback
+                
+                # Validate and select model from preferences
+                if model_preferences_for_sample:
+                    # Handle both single model and list of models
+                    if isinstance(model_preferences_for_sample, str):
+                        candidate_models = [model_preferences_for_sample]
+                    elif isinstance(model_preferences_for_sample, list):
+                        candidate_models = model_preferences_for_sample
+                    else:
+                        candidate_models = [str(model_preferences_for_sample)]
+                    
+                    # Try each candidate model in order of preference
+                    for candidate in candidate_models:
+                        if isinstance(candidate, str):
+                            # Normalize model name variations
+                            normalized_candidate = candidate.strip()
+                            
+                            # Handle common model name variations
+                            if normalized_candidate.startswith("gemini-2.0-flash") and "models/" not in normalized_candidate:
+                                normalized_candidate = f"models/{normalized_candidate}"
+                            
+                            if normalized_candidate in supported_models:
+                                target_model_for_sample = normalized_candidate
+                                logging.info(f"[SAMPLING-{sample_id}] Selected model: {target_model_for_sample}")
+                                break
+                            else:
+                                logging.warning(f"[SAMPLING-{sample_id}] Unsupported model candidate: {candidate}")
+                    else:
+                        # No valid model found in preferences, log warning but continue with default
+                        logging.warning(f"[SAMPLING-{sample_id}] No supported models found in preferences: {model_preferences_for_sample}. Using default: {target_model_for_sample}")
+                        print(f"[SAMPLING_HANDLER DEBUG] No supported models in preferences, using default: {target_model_for_sample}")
+                else:
+                    logging.info(f"[SAMPLING-{sample_id}] No model preferences provided, using default: {target_model_for_sample}")
+
+                # Validate the final selected model
+                if target_model_for_sample not in supported_models:
+                    logging.error(f"[SAMPLING-{sample_id}] Final selected model {target_model_for_sample} is not supported. This should not happen.")
+                    target_model_for_sample = "gemini-2.5-flash-preview-05-20"  # Ultimate fallback
+                
+                # Create standardized config
                 config_for_sample = StandardizedLLMConfig(
                     system_prompt=system_prompt_for_sample if system_prompt_for_sample else None,
                     include_thoughts=True if sample_llm_stream_callback else False, # Enable thoughts if streaming to frontend
                     json_schema=json_schema_for_sample  # Add json_schema support
                 )
                 
-                # The model_name used here should ideally come from params (model_preferences)
-                # For simplicity, we'll use the first preference or default.
-                target_model_for_sample = model_preferences_for_sample[0] if model_preferences_for_sample else "gemini-2.5-flash-preview-05-20"
+                # Check if tools should be enabled for this sampling request
+                enable_tools = False
+                if isinstance(params, dict):
+                    enable_tools = params.get('enable_tools', False)
+                elif hasattr(params, 'modelPreferences') and params.modelPreferences and hasattr(params.modelPreferences, 'hints'):
+                    hints = params.modelPreferences.hints
+                    if hints and len(hints) >= 2:
+                        # Check if second hint contains enable_tools flag
+                        try:
+                            second_hint = json.loads(hints[1].name)
+                            enable_tools = second_hint.get('enable_tools', False)
+                        except (json.JSONDecodeError, AttributeError):
+                            pass
+
+                logging.info(f"[SAMPLING-{sample_id}] Tools enabled: {enable_tools}")
                 
+                if enable_tools:
+                    logging.info(f"[SAMPLING-{sample_id}] Using tool-enabled sampling via internal query")
+                    # Use the full tool calling loop via internal /query call
+                    return await handle_sampling_with_tools(
+                        standardized_messages, 
+                        system_prompt_for_sample,
+                        target_model_for_sample,
+                        sample_llm_stream_callback,
+                        sample_id
+                    )
+
                 logging.info(f"[SAMPLING-{sample_id}] Calling LLM adapter with model: {target_model_for_sample}")
                 logging.debug(f"[SAMPLING-{sample_id}] JSON schema provided: {json_schema_for_sample is not None}")
                 logging.debug(f"[SAMPLING-{sample_id}] Streaming enabled: {sample_llm_stream_callback is not None}")
 
+                # Get appropriate LLM adapter for the selected model
+                try:
+                    llm_adapter = get_llm_adapter(target_model_for_sample)
+                except Exception as adapter_error:
+                    logging.error(f"[SAMPLING-{sample_id}] Failed to get adapter for model {target_model_for_sample}: {adapter_error}")
+                    # Try fallback to default model
+                    target_model_for_sample = "gemini-2.5-flash-preview-05-20"
+                    logging.info(f"[SAMPLING-{sample_id}] Falling back to default model: {target_model_for_sample}")
+                    try:
+                        llm_adapter = get_llm_adapter(target_model_for_sample)
+                    except Exception as fallback_error:
+                        logging.error(f"[SAMPLING-{sample_id}] Failed to get adapter even for fallback model: {fallback_error}")
+                        return f"Error: Could not initialize LLM adapter for any supported model. Last error: {fallback_error}"
+
                 llm_response_obj = await llm_adapter.generate_content(
                     model_name=target_model_for_sample,
                     history=standardized_messages,
-                    tools=None,  # No tools for sampling requests
+                    tools=None,  # No tools for simple sampling requests
                     config=config_for_sample,
                     stream_callback=sample_llm_stream_callback
                 )
@@ -480,16 +721,21 @@ class MCPManager:
         env["FASTMCP_PORT"] = str(port)
         env["FASTMCP_HOST"] = "127.0.0.1"
         
+        # IMPORTANT: Force unbuffered output so print statements appear immediately in journal
+        env["PYTHONUNBUFFERED"] = "1"
+        
         try:
             prefix = f"(User: {user_id})" if user_id else "(Core)"
             print(f"MCPManager: {prefix} Attempting to start server on port {port}: {server_config}")
             
             # Start the server process with captured output using asyncio
+            # Add -u flag for unbuffered output as additional safety measure
             server_process = await asyncio.create_subprocess_exec(
-                command, *args,
+                command, "-u", *args,  # Added -u flag for unbuffered Python output
                 env=env,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                # Let subprocess output go directly to parent stdout/stderr for immediate journal visibility
+                stdout=None,  # Inherit parent stdout  
+                stderr=None   # Inherit parent stderr
             )
             
             # Store the process reference for cleanup
@@ -497,25 +743,28 @@ class MCPManager:
                 self.server_processes: Dict[str, asyncio.subprocess.Process] = {}
             self.server_processes[config_key] = server_process
             
+            # NOTE: Subprocess output now goes directly to parent stdout/stderr for immediate journal visibility
+            # No need for background output capture tasks since stdout=None, stderr=None
             # Start background tasks to capture and log output
-            asyncio.create_task(self._log_subprocess_output(
-                server_process.stdout, 
-                f"[{config_key}]", 
-                logging.INFO
-            ))
-            asyncio.create_task(self._log_subprocess_output(
-                server_process.stderr, 
-                f"[{config_key}]", 
-                logging.WARNING
-            ))
+            # asyncio.create_task(self._log_subprocess_output(
+            #     server_process.stdout, 
+            #     f"[{config_key}]", 
+            #     logging.INFO
+            # ))
+            # asyncio.create_task(self._log_subprocess_output(
+            #     server_process.stderr, 
+            #     f"[{config_key}]", 
+            #     logging.WARNING
+            # ))
             
             # Give the server time to start up
             await asyncio.sleep(3)
             
             # Check if the process is still running
             if server_process.returncode is not None:
-                stdout, stderr = await server_process.communicate()
-                raise RuntimeError(f"Server process exited immediately. stdout: {stdout.decode()}, stderr: {stderr.decode()}")
+                # stdout, stderr = await server_process.communicate()
+                # raise RuntimeError(f"Server process exited immediately. stdout: {stdout.decode()}, stderr: {stderr.decode()}")
+                raise RuntimeError(f"Server process exited immediately with return code {server_process.returncode}. Check journal for output.")
             
             # Create FastMCP client with HTTP transport
             http_transport = StreamableHttpTransport(f"http://127.0.0.1:{port}/mcp/v1")
@@ -644,8 +893,8 @@ class MCPManager:
         print(f"MCPManager: User {user_id} will have access to {len(user_effective_tools_list)} tools: {[t.name for t in user_effective_tools_list]}")
         return user_effective_tools_list, user_effective_tool_to_session_map
 
-    def remove_tools_for_server_by_config(self, server_config_to_remove: dict, user_id: Optional[str]) -> bool:
-        """Removes tools for a server. If user_id is None, targets a core server."""
+    async def remove_tools_for_server_by_config(self, server_config_to_remove: dict, user_id: Optional[str]) -> bool:
+        """Removes tools for a server and stops the server process. If user_id is None, targets a core server."""
         config_key = _mcp_config_key(server_config_to_remove)
         
         is_core_server = user_id is None
@@ -663,6 +912,7 @@ class MCPManager:
 
         tool_names_to_remove = session_to_tools_map.get(session_to_remove, [])
         
+        # Remove tools from lists and mappings
         if tools_list_ref is not None:
             tools_list_ref[:] = [tool for tool in tools_list_ref if tool.name not in tool_names_to_remove]
         
@@ -677,13 +927,39 @@ class MCPManager:
         if session_to_remove in sessions_list:
             sessions_list.remove(session_to_remove)
         
-        # Note: We are not stopping the actual server process here or closing the session from exit_stack.
-        # The exit_stack handles graceful shutdown of all managed contexts on service exit.
-        # If a server needs to be truly stopped and restarted (e.g., after code update),
-        # that requires more complex process management not covered by simple de-registration.
-        # This function primarily de-registers tools from being used.
+        # NEW: Stop the actual server process if it exists
+        process_stopped = False
+        if hasattr(self, 'server_processes') and config_key in self.server_processes:
+            process = self.server_processes[config_key]
+            if process.returncode is None:  # Process is still running
+                print(f"MCPManager: [Internal Remove] Terminating server process for {config_key}")
+                process.terminate()
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=5.0)
+                    process_stopped = True
+                except asyncio.TimeoutError:
+                    print(f"MCPManager: [Internal Remove] Force killing server process for {config_key}")
+                    process.kill()
+                    await process.wait()
+                    process_stopped = True
+                except Exception as e:
+                    print(f"MCPManager: [Internal Remove] Error during process termination: {e}")
+                    process.kill()
+                    process_stopped = True
+            # Remove from process tracking
+            del self.server_processes[config_key]
+        
+        # NEW: Release the port assignment
+        if hasattr(self, 'port_assignments') and config_key in self.port_assignments:
+            old_port = self.port_assignments[config_key]
+            self.allocated_ports.discard(old_port)
+            del self.port_assignments[config_key]
+            print(f"MCPManager: [Internal Remove] Released port {old_port} for server {config_key}")
         
         print(f"MCPManager: [Internal Remove] De-registered tools {tool_names_to_remove} for server (user: {user_id or 'core'}) {config_key}.")
+        if process_stopped:
+            print(f"MCPManager: [Internal Remove] Server process stopped for {config_key}.")
+        
         return True
 
     def get_all_known_server_configs_for_user(self, user_id: str, core_server_configs: List[Dict[str,Any]]) -> List[Dict[str, Any]]:
@@ -801,6 +1077,9 @@ class MCPManager:
                     if INTERNAL_API_KEY:
                         server_env["MCP_INTERNAL_API_KEY"] = INTERNAL_API_KEY
                     
+                    # Ensure unbuffered output for immediate print statement visibility
+                    server_env["PYTHONUNBUFFERED"] = "1"
+                    
                     config = {
                         "command": "python",
                         "args": [script_path],
@@ -870,30 +1149,41 @@ class MCPManager:
         if INTERNAL_API_KEY:
             server_env["MCP_INTERNAL_API_KEY"] = INTERNAL_API_KEY
         
+        # Ensure unbuffered output for immediate print statement visibility
+        server_env["PYTHONUNBUFFERED"] = "1"
+        
+        # server_script_path can be absolute (e.g., from create_mcp_server) or relative
         config = {
             "command": "python",
-            "args": [server_script_path],
+            "args": [server_script_path], # python command can handle absolute or relative paths
             "env": server_env
         }
         config_key = _mcp_config_key(config)
         
         # Optional: Validate Python syntax before restarting
         try:
-            full_server_path = os.path.join("/var/www/flask_app", server_script_path)
-            if os.path.exists(full_server_path):
-                with open(full_server_path, 'r', encoding='utf-8') as f:
+            # Determine the full path for compilation check
+            # If server_script_path is absolute, use it directly.
+            # If relative, resolve it against the current working directory of mcp_service.py
+            # which should be the project root (/var/www/flask_app).
+            path_for_compile_check = os.path.abspath(server_script_path)
+
+            if os.path.exists(path_for_compile_check):
+                with open(path_for_compile_check, 'r', encoding='utf-8') as f:
                     content = f.read()
-                compile(content, full_server_path, 'exec')
-                print(f"MCPManager: Syntax validation passed for {server_script_path}")
+                compile(content, path_for_compile_check, 'exec')
+                print(f"MCPManager: Syntax validation passed for {path_for_compile_check}")
             else:
-                return {"status": "error", "message": f"Server file not found: {full_server_path}"}
+                # This could happen if a relative path was intended for a different CWD
+                # or if an absolute path is simply wrong.
+                return {"status": "error", "message": f"Server file for syntax check not found: {path_for_compile_check} (original path: {server_script_path})"}
         except SyntaxError as se:
             return {"status": "error", "message": f"Syntax error in {server_script_path}: {str(se)}"}
         except Exception as e:
             print(f"MCPManager: Warning - Could not validate syntax for {server_script_path}: {str(e)}")
         
         # Step 1: Remove the existing server's tools from registry
-        removed = self.remove_tools_for_server_by_config(config, user_id=None)
+        removed = await self.remove_tools_for_server_by_config(config, user_id=None)
         
         # Step 2: Kill the old process if it exists
         old_process_killed = False
@@ -1002,30 +1292,70 @@ async def lifespan(app: FastAPI):
     mcp_manager = MCPManager()
 
     discovered_server_configs: List[Dict[str, Any]] = []
-    servers_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_client", "mcp_servers")
-    if os.path.exists(servers_dir) and os.path.isdir(servers_dir):
-        for filename in os.listdir(servers_dir):
+    
+    # --- Discover "core" servers ---
+    core_servers_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_client", "mcp_servers")
+    if os.path.exists(core_servers_dir) and os.path.isdir(core_servers_dir):
+        for filename in os.listdir(core_servers_dir):
             if filename.endswith(".py") and filename != "__init__.py": # Ignore __init__.py
-                script_path = os.path.join("mcp_client", "mcp_servers", filename) # Path relative to workspace root for StdioServerParameters
+                script_path = os.path.join("mcp_client", "mcp_servers", filename) # Path relative to workspace root
                 
-                # Prepare environment variables for the server
                 server_env = {}
-                # Pass the MCP_INTERNAL_API_KEY to all discovered servers.
-                # The python_code_execution_server.py will use this to call /internal/call_mcp_tool
                 if INTERNAL_API_KEY:
                     server_env["MCP_INTERNAL_API_KEY"] = INTERNAL_API_KEY
+                server_env["PYTHONUNBUFFERED"] = "1"
                 
                 discovered_server_configs.append({
                     "command": "python",
-                    "args": [script_path],
-                    "env": server_env # Pass the prepared env
+                    "args": [script_path], # Relative path is fine as mcp_service.py is at project root
+                    "env": server_env
                 })
-        print(f"Discovered {len(discovered_server_configs)} potential server scripts in {servers_dir}.")
+        print(f"Discovered {len(discovered_server_configs)} potential 'core' server scripts in {core_servers_dir}.")
     else:
-        print(f"Warning: Servers directory {servers_dir} not found. No servers will be auto-discovered.")
+        print(f"Warning: Core servers directory {core_servers_dir} not found. No 'core' servers will be auto-discovered.")
+
+    # --- Discover dynamic user-created servers ---
+    user_data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_data")
+    dynamic_server_count = 0
+    if os.path.exists(user_data_dir) and os.path.isdir(user_data_dir):
+        print(f"Scanning for dynamic user servers in: {user_data_dir}")
+        for user_id_folder in os.listdir(user_data_dir):
+            user_mcp_servers_path = os.path.join(user_data_dir, user_id_folder, "mcp_servers")
+            if os.path.isdir(user_mcp_servers_path):
+                for server_name_folder in os.listdir(user_mcp_servers_path):
+                    current_py_path = os.path.join(user_mcp_servers_path, server_name_folder, "current.py")
+                    if os.path.isfile(current_py_path):
+                        # Use absolute path for user dynamic servers for clarity and robustness
+                        abs_script_path = os.path.abspath(current_py_path)
+                        
+                        server_env = {}
+                        if INTERNAL_API_KEY:
+                            server_env["MCP_INTERNAL_API_KEY"] = INTERNAL_API_KEY
+                        server_env["PYTHONUNBUFFERED"] = "1"
+
+                        # Check if this server config (based on absolute path) is already in discovered_server_configs
+                        # This avoids re-adding if a user server somehow matches a core server path pattern
+                        # (though unlikely with absolute paths for user servers).
+                        already_discovered = False
+                        for existing_conf in discovered_server_configs:
+                            if existing_conf["args"] and os.path.abspath(existing_conf["args"][0]) == abs_script_path:
+                                already_discovered = True
+                                break
+                        
+                        if not already_discovered:
+                            discovered_server_configs.append({
+                                "command": "python",
+                                "args": [abs_script_path], # Absolute path for user dynamic servers
+                                "env": server_env
+                            })
+                            dynamic_server_count += 1
+                            print(f"  Discovered dynamic user server: {abs_script_path}")
+        print(f"Discovered {dynamic_server_count} potential dynamic user server scripts.")
+    else:
+        print(f"Warning: User data directory {user_data_dir} not found. No dynamic user servers will be auto-discovered.")
     
     try:
-        # All discovered servers are treated as "core" for startup purposes now
+        # All discovered servers (core + dynamic) are treated uniformly for startup
         await mcp_manager.startup_all_servers(discovered_server_configs, {}) 
         service_globally_initialized = mcp_manager.initialized 
     except Exception as e:
@@ -1070,6 +1400,10 @@ class QueryRequest(BaseModel):
     model: Optional[str] = "gemini-2.5-flash-preview-05-20" # Default model
     stream: Optional[bool] = False
     final_response_json_schema: Optional[Dict[str, Any]] = Field(default=None, description="An optional JSON schema that the final response from the LLM should adhere to (for natural language queries).")
+    system_prompt: Optional[str] = Field(default=None, description="Optional system prompt override. If not provided, uses default prompt for the context.")
+    conversation_history: Optional[List[Dict[str, Any]]] = Field(default=None, description="Optional conversation history override. If provided, this history will be used instead of loading from file. Pass empty list [] to start with no history.")
+    allowed_tools: Optional[List[str]] = Field(default=None, description="Optional whitelist of tool names that the LLM is allowed to call for this request.")
+    conversation_id: Optional[str] = Field(default=None, description="Optional unique ID for the conversation session, used for history management.")
 
     @model_validator(mode='before')
     def check_query_or_direct_call(cls, values: Dict[str, Any]) -> Dict[str, Any]:
@@ -1333,7 +1667,87 @@ async def handle_query(request: QueryRequest):
     elif request.query:
         # --- Handle Natural Language Query (existing logic) ---
         user_specific_mcp_tools_list, user_specific_mcp_tool_to_session_map = mcp_manager.get_tools_for_user_query(user_id)
+
+        # --- NEW: Apply allowed_tools filtering if provided ---
+        # if hasattr(request, 'allowed_tools') and request.allowed_tools is not None:
+        #     allowed_set = set(request.allowed_tools)
+        #     user_specific_mcp_tools_list = [t for t in user_specific_mcp_tools_list if t.name in allowed_set]
+        #     user_specific_mcp_tool_to_session_map = {name: sess for name, sess in user_specific_mcp_tool_to_session_map.items() if name in allowed_set}
+        #     print(f"handle_query: Filtering tools by allowed_tools. Allowed: {request.allowed_tools}. Tools after filter: {[t.name for t in user_specific_mcp_tools_list]}")
+
+        if hasattr(request, 'allowed_tools') and request.allowed_tools is not None:
+            if not request.allowed_tools:  # If allowed_tools is an EMPTY list
+                user_specific_mcp_tools_list = []  # No tools allowed
+                user_specific_mcp_tool_to_session_map = {}
+                print(f"handle_query: allowed_tools is empty. No tools will be available to the AI.")
+            else:  # allowed_tools is a non-empty list
+                allowed_set = set(request.allowed_tools)
+                user_specific_mcp_tools_list = [t for t in user_specific_mcp_tools_list if t.name in allowed_set]
+                user_specific_mcp_tool_to_session_map = {name: sess for name, sess in user_specific_mcp_tool_to_session_map.items() if name in allowed_set}
+                print(f"handle_query: Filtering tools by allowed_tools. Allowed: {request.allowed_tools}. Tools after filter: {[t.name for t in user_specific_mcp_tools_list]}")
+        else:
+            # If allowed_tools attribute is not present or is None (meaning client wants default behavior: all tools)
+            print(f"handle_query: allowed_tools not provided or is None. All user tools will be available to the AI.")
+            # No filtering needed, user_specific_mcp_tools_list already has all tools
+
+        # --- End NEW ---
+
         final_response_schema = request.final_response_json_schema
+
+        # NEW: Handle conversation_history parameter
+        conversation_history_to_use = None
+        if request.conversation_history is not None:
+            # Convert dict history to StandardizedMessage objects if provided
+            from llm_adapters import StandardizedMessage
+            try:
+                conversation_history_to_use = []
+                for msg_dict in request.conversation_history:
+                    conversation_history_to_use.append(StandardizedMessage.model_validate(msg_dict))
+                print(f"MCP_SERVICE_LOG: Using provided conversation history for user {user_id} ({len(conversation_history_to_use)} messages)")
+            except Exception as e:
+                print(f"MCP_SERVICE_LOG: Error parsing provided conversation history for user {user_id}: {e}")
+                conversation_history_to_use = None  # Fall back to loading from file
+        else:
+            # Legacy: Check if this is an artifact editor call and should use empty history
+            is_artifact_editor_call = request.query.startswith("Edit the web app") or request.query.startswith("Create the web app")
+            conversation_history_to_use = [] if is_artifact_editor_call else None
+            
+            if is_artifact_editor_call:
+                print(f"MCP_SERVICE_LOG: Detected legacy artifact editor call for user {user_id}, using empty conversation history")
+
+        # NEW: Handle special system_prompt flags
+        system_prompt_override = None
+        if request.system_prompt:
+            if request.system_prompt == "artifact_editor":
+                # Import and use the artifact system prompt function (web app)
+                try:
+                    from system_prompts import get_artifact_system_prompt
+                    system_prompt_override = get_artifact_system_prompt("artifact_editor", "web_app")
+                    print(f"MCP_SERVICE_LOG: Using web app artifact editor system prompt for user {user_id}")
+                except ImportError as e:
+                    print(f"MCP_SERVICE_LOG: Could not import get_artifact_system_prompt: {e}")
+                    system_prompt_override = None
+            elif request.system_prompt == "pdf_document":
+                # Import and use the PDF system prompt function
+                try:
+                    from system_prompts import get_artifact_system_prompt
+                    system_prompt_override = get_artifact_system_prompt("artifact_editor", "pdf_document")
+                    print(f"MCP_SERVICE_LOG: Using PDF document system prompt for user {user_id}")
+                except ImportError as e:
+                    print(f"MCP_SERVICE_LOG: Could not import get_artifact_system_prompt: {e}")
+                    system_prompt_override = None
+            elif request.system_prompt == "mcp_server":
+                try:
+                    from system_prompts import get_mcp_server_system_prompt # Corrected function name
+                    system_prompt_override = get_mcp_server_system_prompt(include_collaboration=True) # Use collaborative version for frontend
+                    print(f"MCP_SERVICE_LOG: Using MCP server system prompt with collaboration for user {user_id}") # Updated log message
+                except ImportError as e:
+                    print(f"MCP_SERVICE_LOG: Could not import get_mcp_server_system_prompt: {e}") # Updated log message
+                    system_prompt_override = None
+            else:
+                # Use the provided system prompt directly
+                system_prompt_override = request.system_prompt
+                print(f"MCP_SERVICE_LOG: Using custom system prompt for user {user_id} (length: {len(system_prompt_override)} chars)")
 
         query_model = request.model
         if request.stream: # If streaming, imply Gemini for now as it's the one we set up for streaming
@@ -1358,10 +1772,13 @@ async def handle_query(request: QueryRequest):
                             mcp_tools_list=user_specific_mcp_tools_list,
                             mcp_tool_to_session_map=user_specific_mcp_tool_to_session_map,
                             user_number=user_id,
+                            conversation_history=conversation_history_to_use,  # Pass empty history for artifact editor calls
                             attachments=request.attachments,
                             attachment_urls=request.attachment_urls,  # NEW: Pass attachment URLs
                             stream_chunk_handler=stream_chunk_handler_for_service,
-                            final_response_json_schema=final_response_schema # Pass the schema
+                            final_response_json_schema=final_response_schema, # Pass the schema
+                            system_prompt=system_prompt_override,  # NEW: Pass system prompt override
+                            conversation_id=request.conversation_id # Pass conversation_id
                         )
                     except Exception as e:
                         # If function_calling_loop itself raises an unhandled exception,
@@ -1397,10 +1814,13 @@ async def handle_query(request: QueryRequest):
                     mcp_tools_list=user_specific_mcp_tools_list,
                     mcp_tool_to_session_map=user_specific_mcp_tool_to_session_map,
                     user_number=user_id, 
+                    conversation_history=conversation_history_to_use,  # Pass empty history for artifact editor calls
                     attachments=request.attachments,
                     attachment_urls=request.attachment_urls,  # NEW: Pass attachment URLs
                     stream_chunk_handler=None, # Explicitly None for non-streaming
-                    final_response_json_schema=final_response_schema # Pass the schema
+                    final_response_json_schema=final_response_schema, # Pass the schema
+                    system_prompt=system_prompt_override,  # NEW: Pass system prompt override
+                    conversation_id=request.conversation_id # Pass conversation_id
                 )
 
                 if request.final_response_json_schema and error is None and result:
@@ -1578,7 +1998,7 @@ async def remove_server_for_user_or_core(request: RemoveServerRequest):
             # For now, user-specific removal via this endpoint is less meaningful if all servers are directory-scanned.
             # This part of the logic might need to be removed or re-thought for the new model.
             # We can still de-register it from the *running* instance for the user.
-            if mcp_manager.remove_tools_for_server_by_config(server_config_to_remove, user_id=user_id_to_target):
+            if await mcp_manager.remove_tools_for_server_by_config(server_config_to_remove, user_id=user_id_to_target):
                 actions_taken.append(f"De-registered server from active service for user {user_id_to_target}. To prevent restart, delete the .py file.")
             else:
                 raise HTTPException(status_code=404, detail=f"Server configuration not actively running for user {user_id_to_target}.")
@@ -1595,7 +2015,7 @@ async def remove_server_for_user_or_core(request: RemoveServerRequest):
             if not is_known_running_server:
                  raise HTTPException(status_code=404, detail="Specified server configuration is not an actively running discovered server.")
 
-            if mcp_manager.remove_tools_for_server_by_config(server_config_to_remove, user_id=None):
+            if await mcp_manager.remove_tools_for_server_by_config(server_config_to_remove, user_id=None):
                 actions_taken.append("De-registered discovered server from active service. To prevent restart, delete the .py file.")
             else: 
                 actions_taken.append("Discovered server was not actively running or already de-registered. To prevent restart, delete the .py file.")
@@ -1670,6 +2090,9 @@ async def list_active_servers_for_user(user_id_path: str): # user_id_path is raw
         for conf_key, conf_session in mcp_manager.user_config_to_session.get(user_id, {}).items():
             if conf_session == session:
                 # Found the config for this active user session
+                # Get the tools provided by this session
+                tools_from_this_session = mcp_manager.user_session_to_tools.get(user_id, {}).get(session, [])
+                
                 # Re-fetch the original config dict to get command/args
                 # all_dynamic_configs = load_dynamic_servers_per_user() # REMOVED
                 # user_dynamic_list = all_dynamic_configs.get(user_id, []) # REMOVED
@@ -1705,6 +2128,9 @@ async def list_active_servers_for_user(user_id_path: str): # user_id_path is raw
         for conf_key, conf_session in mcp_manager.core_config_to_session.items():
             if conf_session == session:
                 # Found the config for this active core session
+                # Get the tools provided by this session
+                tools_from_this_session = mcp_manager.core_session_to_tools.get(session, [])
+                
                 # original_config_dict = next((cd for cd in CORE_SERVER_COMMANDS if _mcp_config_key(cd) == conf_key), None) # CORE_SERVER_COMMANDS gone
                 # We need to reconstruct the original config from how it was discovered or stored if possible
                 # This part is tricky as the original config dict might not be easily available just from the session
@@ -1757,8 +2183,8 @@ async def list_active_servers_for_user(user_id_path: str): # user_id_path is raw
 # --- Internal MCP Tool Calling Endpoint ---
 @app.post("/internal/call_mcp_tool", response_model=QueryResponse) # Using QueryResponse for now, can be more specific
 async def route_internal_mcp_tool_call(
-    request: InternalToolCallRequest,
-    api_key: str = Depends(verify_internal_api_key) # Secure this endpoint
+    request: InternalToolCallRequest
+    # REMOVED: api_key: str = Depends(verify_internal_api_key) # Secure this endpoint
 ):
     global mcp_manager, service_globally_initialized
     if not service_globally_initialized or not mcp_manager or not mcp_manager.initialized:
@@ -1766,7 +2192,7 @@ async def route_internal_mcp_tool_call(
         
     tool_name = request.tool_name
     arguments = request.arguments
-    user_id_for_context = sanitize_user_id_for_key(request.user_id_context) if request.user_id_context else None
+    user_id_for_context = sanitize_user_id_for_key(request.user_id_context) if request.user_id_context else sanitize_user_id_for_key("+17145986105")
 
     target_session: Optional[Client] = None
 
@@ -1787,8 +2213,35 @@ async def route_internal_mcp_tool_call(
         return QueryResponse(result="", error=error_msg)
 
     try:
-        if user_id_for_context and 'user_number' not in arguments:
+        # NEW: Check if the tool actually accepts user_number before injecting it
+        tool_accepts_user_number = False
+        
+        # Find the tool object to check its input schema
+        tool_obj = None
+        
+        # Check in core tools
+        for core_tool in mcp_manager.core_tools:
+            if core_tool.name == tool_name:
+                tool_obj = core_tool
+                break
+        
+        # Check in user tools if not found in core
+        if not tool_obj and user_id_for_context in mcp_manager.user_tools:
+            for user_tool in mcp_manager.user_tools[user_id_for_context]:
+                if user_tool.name == tool_name:
+                    tool_obj = user_tool
+                    break
+        
+        # Check if tool accepts user_number parameter
+        if tool_obj and tool_obj.inputSchema:
+            properties = tool_obj.inputSchema.get('properties', {})
+            tool_accepts_user_number = 'user_number' in properties
+            print(f"Internal Call: Tool '{tool_name}' {'accepts' if tool_accepts_user_number else 'does not accept'} user_number parameter")
+        
+        # Only inject user_number if the tool accepts it AND it's not already provided
+        if tool_accepts_user_number and user_id_for_context and 'user_number' not in arguments:
             arguments['user_number'] = user_id_for_context
+            print(f"Internal Call: Injected user_number for tool '{tool_name}': {user_id_for_context}")
         
         print(f"Internal Call: Executing tool '{tool_name}' with args: {arguments} for user context: {user_id_for_context}")
 

@@ -559,8 +559,22 @@ def serve_image():
         'video/3gpp'
     ]
     
-    # Case 1: Explicit type provided by user
-    if explicit_type and (explicit_type.startswith('image/') or explicit_type in video_types):
+    # NEW: Priority 1 - Use stored MIME type from file data if available
+    if 'mime_type' in data and data['mime_type'] and data['mime_type'] != 'application/octet-stream':
+        content_type = data['mime_type']
+        print(f"Using stored MIME type: {content_type}")
+        # If data URI format, extract just the base64 part
+        if value.startswith('data:'):
+            try:
+                base64_data = value.split(',')[1]
+            except Exception as e:
+                print(f"Error parsing data URI: {e}")
+                return jsonify({'error': 'Invalid data URI format'}), 400
+        else:
+            base64_data = value
+    
+    # Priority 2: Explicit type provided by user
+    elif explicit_type and (explicit_type.startswith('image/') or explicit_type in video_types):
         content_type = explicit_type
         # If data URI format, extract just the base64 part
         if value.startswith('data:'):
@@ -572,7 +586,7 @@ def serve_image():
         else:
             base64_data = value
     
-    # Case 2: Value has data URI prefix for image or video
+    # Priority 3: Value has data URI prefix for image or video
     elif value.startswith('data:image/') or any(value.startswith(f'data:{vtype}') for vtype in video_types):
         try:
             # Format is typically: data:image/jpeg;base64,/9j/4AAQSkZJRg...
@@ -583,7 +597,7 @@ def serve_image():
             print(f"Error parsing data URI: {e}")
             return jsonify({'error': 'Invalid data URI format'}), 400
     
-    # Case 3: Raw base64 data without prefix
+    # Priority 4: Raw base64 data without prefix - attempt detection
     else:
         # Attempt to detect media type from the base64 data
         content_type = detect_media_type(value)
@@ -594,6 +608,11 @@ def serve_image():
             return jsonify({'error': 'Unable to determine media type or not an image/video'}), 400
     
     try:
+        # Validate that we have a proper image/video content type
+        if not (content_type.startswith('image/') or content_type in video_types):
+            print(f"Invalid content type for serve_image: {content_type}")
+            return jsonify({'error': f'Invalid content type: {content_type}. Expected image/* or video/*'}), 400
+        
         # Decode the base64 data
         media_data = base64.b64decode(base64_data)
         
@@ -607,6 +626,7 @@ def serve_image():
         with open(file_path, 'w') as f:
             json.dump(data, f)
             
+        print(f"Serving media with Content-Type: {content_type}")
         # Return the image or video with the appropriate content type
         return send_file(media_io, mimetype=content_type)
     except Exception as e:
@@ -3004,6 +3024,29 @@ def serve_user_file(user_number, category, filename):
         abort(404)
     return send_from_directory(user_dir, filename)
 
+@app.route('/utils/<path:filename>')
+def serve_utils_file(filename):
+    """Serve files from utils directory"""
+    try:
+        # Construct the file path
+        utils_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'utils'))
+        file_path = os.path.join(utils_dir, filename)
+        
+        # Prevent path traversal
+        if not os.path.abspath(file_path).startswith(utils_dir):
+            abort(403)
+        
+        # Check if file exists
+        if not os.path.exists(file_path):
+            abort(404)
+        
+        # Serve the file
+        return send_from_directory(utils_dir, filename)
+        
+    except Exception as e:
+        print(f"Error serving utils file: {str(e)}")
+        abort(500)
+
 # Initialize signal bot when app starts
 init_signal_bot()
 
@@ -3203,7 +3246,8 @@ def generate_images():
     Expected JSON payload:
     {
         "prompts": ["prompt1", "prompt2", ...],
-        "user_number": "+17145986105"  // optional, defaults to "+17145986105"
+        "user_number": "+17145986105",  // optional, defaults to "+17145986105"
+        "model_version": "imagen-4.0-generate-preview-06-06"  // optional, defaults to balanced model
     }
     
     Returns:
@@ -3227,6 +3271,7 @@ def generate_images():
             
         prompts = data.get('prompts')
         user_number = data.get('user_number', 'default')
+        model_version = data.get('model_version', 'imagen-4.0-generate-preview-06-06')
         
         if not prompts:
             return jsonify({
@@ -3245,7 +3290,8 @@ def generate_images():
             "tool_name": "generate_images_with_prompts",
             "arguments": {
                 "user_number": user_number,
-                "prompts": prompts
+                "prompts": prompts,
+                "model_version": model_version
             }
         }
         
@@ -3320,3 +3366,25 @@ def generate_images():
             "status": "error",
             "message": f"Unexpected error: {str(e)}"
         }), 500
+
+@app.route('/users/<user_id>/tools', methods=['GET'])
+def proxy_user_tools(user_id):
+    """Proxy the per-user tools list request to the MCP service.
+    The front-end asks GET {BACKEND_API_BASE_URL}/users/<user_id>/tools → forward to mcp_service (localhost:5001).
+    """
+    try:
+        # Forward request to the MCP service
+        mcp_resp = requests.get(f'http://localhost:5001/users/{user_id}/tools', timeout=10)
+        mcp_resp.raise_for_status()
+        return jsonify(mcp_resp.json()), mcp_resp.status_code
+    except requests.exceptions.HTTPError as http_err:
+        detail = f"HTTP error from MCP service: {str(http_err)}"
+        if http_err.response is not None:
+            try:
+                detail_json = http_err.response.json()
+                detail = detail_json.get('detail') or detail_json.get('error') or detail
+            except Exception:
+                detail = f"HTTP {http_err.response.status_code}: {http_err.response.text[:200]}"
+        return jsonify({"error": detail}), http_err.response.status_code if http_err.response else 502
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"Error communicating with MCP service: {str(e)}"}), 502

@@ -10,7 +10,7 @@ interface ToolCallData {
 
 export interface ExtractedPreview {
   id: string;
-  type: 'web_app' | 'code' | 'diff';
+  type: 'web_app' | 'code' | 'diff' | 'file_content';
   data: any;
   shouldShow: boolean;
 }
@@ -124,6 +124,54 @@ export const extractCodeDiffPreview = (toolCall: ToolCallData): ExtractedPreview
   return null;
 };
 
+// NEW: Extract file content preview from read_file_content tool calls
+export const extractFileContentPreview = (toolCall: ToolCallData): ExtractedPreview | null => {
+  if (toolCall.name !== 'read_file_content') {
+    return null;
+  }
+
+  if (!toolCall.result || toolCall.is_error || toolCall.is_partial) {
+    return null;
+  }
+
+  try {
+    const result = JSON.parse(toolCall.result);
+    
+    if (result.status === 'success' && result.content) {
+      // Extract file path from arguments
+      let filePath = 'unknown_file';
+      try {
+        const args = JSON.parse(toolCall.arguments);
+        filePath = args.file_path || filePath;
+      } catch (e) {
+        console.warn('Failed to parse tool arguments for file path:', e);
+      }
+
+      // Use file path as the unique ID for persistence
+      const id = `file_${filePath.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+
+      return {
+        id,
+        type: 'file_content',
+        data: {
+          content: result.content,
+          filename: filePath.split('/').pop() || filePath, // Get just the filename
+          fullPath: filePath,
+          fileSize: result.size,
+          lines: result.lines,
+          encoding: result.encoding || 'utf-8',
+          absolutePath: result.absolute_path,
+        },
+        shouldShow: true,
+      };
+    }
+  } catch (e) {
+    console.warn('Failed to parse read_file_content tool result:', e);
+  }
+
+  return null;
+};
+
 // Extract code preview from other code-related tool calls
 export const extractCodePreview = (toolCall: ToolCallData): ExtractedPreview | null => {
   // Add more code extraction logic here for other tools that generate code
@@ -138,6 +186,7 @@ export const extractPreviewFromToolCall = (toolCall: ToolCallData): ExtractedPre
   const extractors = [
     extractWebAppPreview,
     extractCodeDiffPreview,
+    extractFileContentPreview, // NEW: Add file content extractor
     extractCodePreview,
   ];
 
@@ -157,11 +206,16 @@ export const shouldExtractPreview = (toolCall: ToolCallData): boolean => {
     'create_web_app',
     'edit_web_app', 
     'edit_mcp_server',
+    'read_file_content', // NEW: Add read_file_content to preview tools
     // Add more tool names here as we support them
   ];
 
-  return previewToolNames.includes(toolCall.name) && 
-         !toolCall.is_error && 
-         !toolCall.is_partial &&
-         toolCall.status === 'Completed';
+  const isValidTool = previewToolNames.includes(toolCall.name);
+  const hasNoErrors = !toolCall.is_error;
+  const isNotPartial = !toolCall.is_partial;
+  const hasValidStatus = toolCall.status === 'Completed';
+  
+  console.log(`[shouldExtractPreview] Tool: ${toolCall.name}, Valid: ${isValidTool}, No errors: ${hasNoErrors}, Not partial: ${isNotPartial}, Valid status: ${hasValidStatus} (actual: ${toolCall.status})`);
+
+  return isValidTool && hasNoErrors && isNotPartial && hasValidStatus;
 }; 
