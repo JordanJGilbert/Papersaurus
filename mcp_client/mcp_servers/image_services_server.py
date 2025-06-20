@@ -290,7 +290,7 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                         except Exception as e_proc_img:
                             print(f"⚠️ Failed to process input_image source #{source_index} for prompt #{prompt_idx_openai}: {e_proc_img}")
                 
-                print(f"Calling OpenAI client.responses.create with model gpt-4o-mini, tool image_generation, size: {gpt_size}")
+                print(f"Calling OpenAI client.responses.create with model gpt-4.1-2025-04-14, tool image_generation, size: {gpt_size}")
                 input_summary = []
                 for item in input_content_for_api:
                     if item["type"] == "input_text":
@@ -301,7 +301,7 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
 
                 response_openai = await asyncio.to_thread(
                     client.responses.create,
-                    model="gpt-4o-mini", 
+                    model="gpt-4.1-2025-04-14", 
                     input=[{"role": "user", "content": input_content_for_api}],
                     tools=[{
                         "type": "image_generation",
@@ -324,7 +324,7 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                             if output_item.status == "completed" and output_item.result:
                                 generated_image_b64 = output_item.result
                                 revised_prompt_for_image = output_item.revised_prompt
-                                print(f"🖼️ Image generated. Revised prompt by gpt-4o-mini: {revised_prompt_for_image}")
+                                print(f"🖼️ Image generated. Revised prompt by gpt-4.1-2025-04-14: {revised_prompt_for_image}")
                                 break
                             else:
                                 print(f"⚠️ Image generation tool call not completed or no result: Status {output_item.status}. Message: {getattr(output_item, 'message', 'N/A')}")
