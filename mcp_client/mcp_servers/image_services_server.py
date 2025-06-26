@@ -162,7 +162,132 @@ def sanitize_for_path(name_part: str) -> str:
         return f"sanitized_{uuid.uuid4().hex[:8]}"
     return name_part
 
-async def _generate_images_with_prompts_concurrent(user_number, prompts, model_version="imagen-4.0-generate-preview-06-06", input_images=None, aspect_ratio="16:9"):
+def strip_markdown(text):
+    """Remove markdown formatting from text for image generation prompts."""
+    if not isinstance(text, str):
+        return text
+    
+    # Remove markdown formatting
+    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)  # **bold** -> bold
+    text = re.sub(r'\*([^*]+)\*', r'\1', text)      # *italic* -> italic
+    text = re.sub(r'_([^_]+)_', r'\1', text)        # _italic_ -> italic
+    text = re.sub(r'__([^_]+)__', r'\1', text)      # __bold__ -> bold
+    text = re.sub(r'`([^`]+)`', r'\1', text)        # `code` -> code
+    text = re.sub(r'```[^`]*```', '', text)         # Remove code blocks
+    text = re.sub(r'~~([^~]+)~~', r'\1', text)      # ~~strikethrough~~ -> strikethrough
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)  # [link text](url) -> link text
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)  # Remove headers
+    text = re.sub(r'^\s*[-*+]\s+', '', text, flags=re.MULTILINE)  # Remove list markers
+    text = re.sub(r'^\s*\d+\.\s+', '', text, flags=re.MULTILINE)  # Remove numbered list markers
+    text = re.sub(r'^\s*>\s+', '', text, flags=re.MULTILINE)  # Remove blockquotes
+    
+    # Clean up extra whitespace
+    text = re.sub(r'\n\s*\n', '\n', text)  # Multiple newlines to single
+    text = text.strip()
+    
+    return text
+
+async def qa_check_spelling(image_url: str, original_prompt: str) -> dict:
+    """
+    Check an image for spelling mistakes using Gemini 2.5 Pro vision.
+    
+    Args:
+        image_url: URL of the image to check
+        original_prompt: The original prompt used to generate the image
+        
+    Returns:
+        dict: {"has_errors": bool, "errors": list, "analysis": str}
+    """
+    try:
+        from llm_adapters import get_llm_adapter, StandardizedMessage, StandardizedLLMConfig, AttachmentPart
+        
+        # Download the image for analysis
+        response = await asyncio.to_thread(requests.get, image_url, timeout=10)
+        response.raise_for_status()
+        
+        content_type = response.headers.get('Content-Type', '')
+        if not content_type.startswith('image/'):
+            return {"has_errors": False, "errors": [], "analysis": "Could not analyze: not an image"}
+        
+        # Create analysis prompt
+        analysis_prompt = f"""Carefully examine this image for any spelling mistakes in any visible text.
+
+Original prompt used to generate this image: "{original_prompt}"
+
+Please:
+1. Identify ALL visible text in the image
+2. Check each word for correct spelling
+3. Note any misspelled words, typos, or incorrect letter combinations
+4. Consider context - some stylized text or artistic fonts might look unusual but be correct
+5. Ignore decorative symbols, non-English text, or intentionally stylized text unless clearly misspelled
+
+Respond with:
+- "SPELLING_ERRORS_FOUND" if there are any spelling mistakes
+- "NO_SPELLING_ERRORS" if all text is spelled correctly
+- "NO_TEXT_VISIBLE" if there's no readable text in the image
+
+Then list any specific errors found, if any.
+
+Focus only on actual spelling mistakes, not font choices or styling."""
+
+        # Use Gemini 2.5 Pro for analysis
+        adapter = get_llm_adapter("gemini-2.5-pro-preview-06-05")
+        attachment = AttachmentPart(
+            mime_type=content_type, 
+            data=response.content, 
+            name=f"qa_check_{image_url.split('/')[-1]}"
+        )
+        
+        history = [
+            StandardizedMessage(
+                role="user",
+                content=analysis_prompt,
+                attachments=[attachment]
+            )
+        ]
+        
+        llm_config = StandardizedLLMConfig()
+        llm_response = await adapter.generate_content(
+            model_name="gemini-2.5-pro-preview-06-05",
+            history=history,
+            tools=None,
+            config=llm_config
+        )
+        
+        if llm_response.error:
+            print(f"❌ QA Check Error: {llm_response.error}")
+            return {"has_errors": False, "errors": [], "analysis": f"Analysis failed: {llm_response.error}"}
+        
+        analysis_text = llm_response.text_content or ""
+        
+        # Parse the response
+        has_errors = "SPELLING_ERRORS_FOUND" in analysis_text
+        no_text = "NO_TEXT_VISIBLE" in analysis_text
+        
+        # Extract specific errors (simple parsing)
+        errors = []
+        if has_errors:
+            lines = analysis_text.split('\n')
+            for line in lines:
+                if any(keyword in line.lower() for keyword in ['error', 'mistake', 'misspelled', 'incorrect', 'wrong']):
+                    errors.append(line.strip())
+        
+        print(f"🔍 QA Check Result: {'ERRORS FOUND' if has_errors else 'NO ERRORS' if not no_text else 'NO TEXT'}")
+        if errors:
+            print(f"   Errors: {errors}")
+        
+        return {
+            "has_errors": has_errors,
+            "errors": errors,
+            "analysis": analysis_text,
+            "no_text": no_text
+        }
+        
+    except Exception as e:
+        print(f"❌ QA Check Exception: {e}")
+        return {"has_errors": False, "errors": [], "analysis": f"QA check failed: {str(e)}"}
+
+async def _generate_images_with_prompts_concurrent(user_number, prompts, model_version="imagen-4.0-generate-preview-06-06", input_images=None, aspect_ratio="16:9", quality="auto", output_format="png", output_compression=100, moderation="auto"):
     import re
     import hashlib
     import time
@@ -177,6 +302,13 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
     # Use default user number if empty
     if not user_number or user_number == "--user_number_not_needed--":
         user_number = "+17145986105"
+    
+    # Strip markdown formatting from all prompts
+    cleaned_prompts = [strip_markdown(prompt) for prompt in prompts]
+    print(f"🧹 Cleaned {len(prompts)} prompts by removing markdown formatting")
+    
+    # Use cleaned prompts for generation
+    prompts = cleaned_prompts
     
     def sanitize_for_path_local(s_input): # Renamed to avoid conflict with global sanitize_for_path
         s = str(s_input).replace('+', '')
@@ -299,16 +431,31 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                         input_summary.append({"type": "input_image", "image_url_preview": item["image_url"][:100] + "..." if item.get("image_url") else "No URL"})
                 print(f"Input content summary: {json.dumps(input_summary, indent=2)}")
 
+                # 🔍 DEBUG: Log what parameters are being sent to OpenAI Responses API
+                tool_params = {
+                    "type": "image_generation",
+                    "size": gpt_size,
+                }
+                
+                # Add optional parameters if not default
+                if quality != "auto":
+                    tool_params["quality"] = quality
+                if output_format != "png":
+                    tool_params["output_format"] = output_format
+                if output_compression != 100 and output_format in ["webp", "jpeg"]:
+                    tool_params["output_compression"] = output_compression
+                # Always include moderation for GPT-1 (forced to "low")
+                tool_params["moderation"] = moderation
+                
+                print(f"🔧 OpenAI Responses API Tool Parameters being sent:")
+                for key, value in tool_params.items():
+                    print(f"   {key}: {value}")
+
                 response_openai = await asyncio.to_thread(
                     client.responses.create,
                     model="gpt-4.1-2025-04-14", 
                     input=[{"role": "user", "content": input_content_for_api}],
-                    tools=[{
-                        "type": "image_generation",
-                        "size": gpt_size,
-                        "quality": "high", 
-                        "moderation": "low",
-                    }],
+                    tools=[tool_params],
                 )
 
                 end_time_openai = time.time()
@@ -350,6 +497,63 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                 
                 image_url_openai = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename_openai}"
                 print(f"✅ OpenAI (Responses API) Success: Prompt #{prompt_idx_openai}. Generated image: {image_url_openai}")
+                
+                # QA Check for spelling mistakes
+                print(f"🔍 Starting QA check for spelling mistakes...")
+                qa_result = await qa_check_spelling(image_url_openai, prompt_text)
+                
+                if qa_result["has_errors"]:
+                    print(f"❌ QA Check: Spelling errors detected in image {prompt_idx_openai}")
+                    print(f"   Errors: {qa_result['errors']}")
+                    print(f"🔄 Regenerating image to fix spelling errors...")
+                    
+                    # Try regeneration once
+                    try:
+                        regeneration_prompt = f"{prompt_text}\n\nIMPORTANT: Pay special attention to correct spelling of all text. Double-check every word for spelling accuracy."
+                        
+                        regeneration_response = await asyncio.to_thread(
+                            client.responses.create,
+                            model="gpt-4.1-2025-04-14", 
+                            input=[{"role": "user", "content": [{"type": "input_text", "text": regeneration_prompt}]}],
+                            tools=[tool_params],
+                        )
+                        
+                        # Process regenerated image
+                        regenerated_image_b64 = None
+                        if regeneration_response.output:
+                            for output_item in regeneration_response.output:
+                                if output_item.type == "image_generation_call":
+                                    if output_item.status == "completed" and output_item.result:
+                                        regenerated_image_b64 = output_item.result
+                                        break
+                        
+                        if regenerated_image_b64:
+                            # Save regenerated image
+                            regenerated_image_bytes = base64.b64decode(regenerated_image_b64)
+                            regenerated_pil_image = Image.open(BytesIO(regenerated_image_bytes))
+                            
+                            regenerated_filename = f"gpt_responses_img_fixed_{uuid.uuid4().hex[:8]}.png"
+                            regenerated_local_path = os.path.join(image_dir, regenerated_filename)
+                            await asyncio.to_thread(regenerated_pil_image.save, regenerated_local_path, format="PNG")
+                            
+                            regenerated_url = f"{DOMAIN}/user_data/{user_number_safe}/images/{regenerated_filename}"
+                            print(f"✅ Successfully regenerated image with corrected spelling: {regenerated_url}")
+                            
+                            # Remove the original image with errors
+                            try:
+                                os.remove(local_path_openai)
+                                print(f"🗑️ Removed original image with spelling errors")
+                            except Exception:
+                                pass
+                            
+                            return [regenerated_url]
+                        else:
+                            print(f"⚠️ Regeneration failed, keeping original image despite spelling errors")
+                    except Exception as regen_error:
+                        print(f"⚠️ Regeneration failed: {regen_error}, keeping original image")
+                else:
+                    print(f"✅ QA Check: No spelling errors detected in image {prompt_idx_openai}")
+                
                 return [image_url_openai]
 
             except Exception as e_openai:
@@ -485,8 +689,87 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
             # Filter out None results (errors during saving/processing)
             successful_urls = [url for url in image_url_results if url is not None]
             
-            # Return only the successfully processed URLs
-            return successful_urls
+            # QA Check each image for spelling mistakes
+            final_urls = []
+            for url in successful_urls:
+                print(f"🔍 Starting QA check for spelling mistakes on image: {url}")
+                qa_result = await qa_check_spelling(url, prompt)
+                
+                if qa_result["has_errors"]:
+                    print(f"❌ QA Check: Spelling errors detected in image {url}")
+                    print(f"   Errors: {qa_result['errors']}")
+                    print(f"🔄 Regenerating image to fix spelling errors...")
+                    
+                    # Try regeneration once with corrected prompt
+                    try:
+                        regeneration_prompt = f"{prompt}\n\nIMPORTANT: Pay special attention to correct spelling of all text. Double-check every word for spelling accuracy."
+                        
+                        # Find the client and project for regeneration (use first available)
+                        if generation_clients:
+                            regen_project_id, regen_client = generation_clients[0]
+                            print(f"🔄 Regenerating with project: {regen_project_id}")
+                            
+                            # Map aspect ratio for regeneration
+                            genai_aspect_ratio = aspect_ratio
+                            if aspect_ratio == "16:9":
+                                genai_aspect_ratio = "16:9"
+                            elif aspect_ratio == "9:16":
+                                genai_aspect_ratio = "9:16"
+                            elif aspect_ratio == "1:1":
+                                genai_aspect_ratio = "1:1"
+                            elif aspect_ratio == "4:3":
+                                genai_aspect_ratio = "4:3"
+                            elif aspect_ratio == "3:4":
+                                genai_aspect_ratio = "3:4"
+                            else:
+                                genai_aspect_ratio = "16:9"
+                            
+                            regen_response = await asyncio.to_thread(
+                                regen_client.models.generate_images,
+                                model=model_version,
+                                prompt=regeneration_prompt,
+                                config=types.GenerateImagesConfig(
+                                    aspect_ratio=genai_aspect_ratio,
+                                    number_of_images=1,
+                                    safety_filter_level="BLOCK_MEDIUM_AND_ABOVE",
+                                    person_generation="ALLOW_ADULT",
+                                )
+                            )
+                            
+                            # Process regenerated image
+                            if hasattr(regen_response, 'generated_images') and regen_response.generated_images:
+                                regen_image = regen_response.generated_images[0]
+                                if hasattr(regen_image, 'image'):
+                                    regen_filename = f"img_fixed_{uuid.uuid4().hex[:8]}.png"
+                                    regen_local_path = os.path.join(image_dir, regen_filename)
+                                    await asyncio.to_thread(regen_image.image.save, regen_local_path)
+                                    regen_url = f"{DOMAIN}/user_data/{user_number_safe}/images/{regen_filename}"
+                                    
+                                    print(f"✅ Successfully regenerated image with corrected spelling: {regen_url}")
+                                    
+                                    # Remove the original image with errors
+                                    try:
+                                        original_filename = url.split('/')[-1]
+                                        original_path = os.path.join(image_dir, original_filename)
+                                        os.remove(original_path)
+                                        print(f"🗑️ Removed original image with spelling errors")
+                                    except Exception:
+                                        pass
+                                    
+                                    final_urls.append(regen_url)
+                                    continue
+                                    
+                        print(f"⚠️ Regeneration failed, keeping original image despite spelling errors")
+                        
+                    except Exception as regen_error:
+                        print(f"⚠️ Regeneration failed: {regen_error}, keeping original image")
+                else:
+                    print(f"✅ QA Check: No spelling errors detected in image {url}")
+                
+                final_urls.append(url)
+            
+            # Return only the successfully processed URLs (with QA checks and potential regenerations)
+            return final_urls
 
         async def generate_for_prompt(prompt, idx, project_client_tuple):
             project_id, client = project_client_tuple
@@ -658,7 +941,11 @@ async def generate_images_with_prompts(
     prompts: list = None,
     model_version: str = "imagen-4.0-generate-preview-06-06",
     input_images: list = None,
-    aspect_ratio: str = "16:9" # Add aspect_ratio parameter
+    aspect_ratio: str = "16:9",
+    quality: str = "auto",
+    output_format: str = "png",
+    output_compression: int = 100,
+    moderation: str = "low"
 ) -> dict:
     """
     Generate one image for each prompt using Google's Imagen 4.0 model or OpenAI's GPT-1.
@@ -691,6 +978,15 @@ async def generate_images_with_prompts(
                             - "2:3" (portrait) - 1024x1536 for GPT-1
                             Defaults to "16:9". GPT-1 uses closest supported size, Imagen supports exact ratios.
                             Note: GPT-1 only supports '1024x1024', '1024x1536', '1536x1024', 'auto'.
+        quality (str): Image quality for GPT-1. Options: "auto" (default), "high", "medium", "low".
+                      Ignored for Imagen models.
+        output_format (str): Output format for GPT-1. Options: "png" (default), "jpeg", "webp".
+                            Ignored for Imagen models.
+        output_compression (int): Compression level 0-100% for GPT-1 with webp/jpeg formats.
+                                 Default: 100. Ignored for Imagen models.
+        moderation (str): Content moderation for GPT-1. Always forced to "low" for GPT-1 models.
+                         Options: "auto", "low" - but GPT-1 will always use "low".
+                         Ignored for Imagen models.
 
     Returns:
         dict: {"status": "success", "results": [ [url], ... ]} or {"status": "error", "message": ...}
@@ -730,6 +1026,11 @@ async def generate_images_with_prompts(
     if not user_number or user_number == "--user_number_not_needed--":
         user_number = "+17145986105"
     
+    # Force moderation to "low" for GPT-1 models
+    if model_version == "gpt-image-1":
+        moderation = "low"
+        print(f"🔒 Forced moderation to 'low' for GPT-1 model")
+    
     # Validate model version
     valid_models = [
         "imagen-4.0-generate-preview-06-06",
@@ -752,7 +1053,7 @@ async def generate_images_with_prompts(
             "message": f"Invalid aspect_ratio '{aspect_ratio}'. Must be one of: {', '.join(valid_aspect_ratios)}"
         }
     
-    return await _generate_images_with_prompts_concurrent(user_number, prompts, model_version, input_images, aspect_ratio)
+    return await _generate_images_with_prompts_concurrent(user_number, prompts, model_version, input_images, aspect_ratio, quality, output_format, output_compression, moderation)
 
 @mcp.tool(
     annotations={
@@ -809,11 +1110,12 @@ async def edit_images(
     model: str = "gpt-image-1",
     background: str = "auto",
     mask: str = None,
-    output_format: str = "png",
-    quality: str = "auto",
+    output_format: str = "jpeg",
+    quality: str = "high",
     output_compression: int = 100,
     size: str = "1024x1536",
-    n: int = 1
+    n: int = 1,
+    moderation: str = "low"
 ) -> dict:
     """
     Edits images using either OpenAI's GPT-1 (default) or Google's Gemini image generation models.
@@ -849,6 +1151,8 @@ async def edit_images(
                    Ignored for other models.
         n (int): Number of edited images to generate per input image (1-10). Default: 1.
                 Only supported by gpt-image-1.
+        moderation (str): Content moderation level for gpt-image-1. Always forced to "low" for GPT-1.
+                         Ignored for other models.
 
     Returns:
         dict: {"status": "success", "results": [{"edited_url": "...", "original_image": "...", ...}]}
@@ -914,7 +1218,7 @@ async def edit_images(
     result = await edit_images(
         images=["https://example.com/image.jpg"],
         edit_prompt="Professional photo retouching - enhance lighting and colors",
-        quality="high",
+        quality="auto",
         output_format="jpeg"
     )
     ```
@@ -963,6 +1267,16 @@ async def edit_images(
     # Use default user number if empty or placeholder
     if not user_number or user_number == "--user_number_not_needed--":
         user_number = "+17145986105"
+
+    # Strip markdown formatting from edit prompt
+    cleaned_edit_prompt = strip_markdown(edit_prompt)
+    print(f"🧹 Cleaned edit prompt by removing markdown formatting")
+    edit_prompt = cleaned_edit_prompt
+
+    # Force moderation to "low" for GPT-1 models
+    if model == "gpt-image-1":
+        moderation = "low"
+        print(f"🔒 Forced moderation to 'low' for GPT-1 image editing")
 
     # Validate inputs
     if not isinstance(images, list):
@@ -1118,38 +1432,42 @@ async def edit_images(
                     print(f"🎨 GPT-1 editing image: '{image_input[:50]}...' with prompt: '{edit_prompt[:50]}...'")
                     print(f"📋 Image details: format={img_format}, size={len(img_bytes)} bytes, filename={image_file.name}")
                     
-                    # Prepare API call parameters
+                    # Prepare API call parameters - Only use parameters supported by Images.edit()
                     api_params = {
                         "model": "gpt-image-1",
                         "prompt": edit_prompt,
                         "n": n
-                        # Note: gpt-image-1 automatically returns b64_json format, no response_format parameter needed
+                        # Note: Images.edit() doesn't support moderation, output_format, quality, compression, size, background
                     }
                     
-                    # Add GPT-1 specific parameters
-                    if background != "auto":
-                        api_params["background"] = background
-                    if output_format != "png":
-                        api_params["output_format"] = output_format
-                    if quality != "auto":
-                        api_params["quality"] = quality
-                    if output_compression != 100 and output_format in ["webp", "jpeg"]:
-                        api_params["output_compression"] = output_compression
-                    if size != "auto":
-                        api_params["size"] = size
-
                     # Add mask if provided
+                    mask_file = None
                     if mask_bytes:
                         mask_file = BytesIO(mask_bytes)
                         mask_file.name = "mask.png"
-                        api_params["mask"] = mask_file
 
-                    # Make API call
-                    response = await asyncio.to_thread(
-                        client.images.edit,
-                        image=image_file,
-                        **api_params
-                    )
+                    # 🔍 DEBUG: Log what parameters are actually being sent to OpenAI
+                    print(f"🔧 OpenAI Images.edit() API Parameters being sent:")
+                    for key, value in api_params.items():
+                        print(f"   {key}: {value}")
+                    if mask_file:
+                        print(f"   mask: <mask_file_object>")
+                    print(f"📝 Note: Images.edit() API doesn't support moderation parameter")
+
+                    # Make API call - Images.edit() doesn't support output_format, quality, compression, size, background
+                    if mask_file:
+                        response = await asyncio.to_thread(
+                            client.images.edit,
+                            image=image_file,
+                            mask=mask_file,
+                            **api_params
+                        )
+                    else:
+                        response = await asyncio.to_thread(
+                            client.images.edit,
+                            image=image_file,
+                            **api_params
+                        )
                     
                     if not response.data:
                         return {"status": "error", "original_image": image_input, "message": "No edited images returned by GPT-1."}
@@ -1162,11 +1480,11 @@ async def edit_images(
                             continue
                             
                         try:
-                            # Decode base64 image
+                            # Decode base64 image (from OpenAI edit API)
                             edited_img_bytes = base64.b64decode(image_data.b64_json)
                             edited_img = await asyncio.to_thread(Image.open, BytesIO(edited_img_bytes))
                             
-                            # Save edited image
+                            # Save edited image in requested format
                             filename = f"gpt1_edit_{uuid.uuid4().hex[:8]}_{i}.{output_format}"
                             file_path = os.path.join(image_dir, filename)
                             
@@ -1179,8 +1497,14 @@ async def edit_images(
                                     rgb_img = Image.new("RGB", edited_img.size, (255, 255, 255))
                                     rgb_img.paste(edited_img, mask=edited_img.split()[-1])
                                     edited_img = rgb_img
-                            
-                            await asyncio.to_thread(edited_img.save, file_path, format=save_format)
+                                # Save with compression
+                                await asyncio.to_thread(edited_img.save, file_path, format=save_format, quality=output_compression, optimize=True)
+                            elif save_format == "WEBP":
+                                # Save as WebP with compression
+                                await asyncio.to_thread(edited_img.save, file_path, format="WEBP", quality=output_compression, optimize=True)
+                            else:
+                                # Save as PNG (default)
+                                await asyncio.to_thread(edited_img.save, file_path, format="PNG", optimize=True)
                             
                             url = f"{DOMAIN}/user_data/{user_number_safe}/edited_images/{filename}"
                             edited_urls.append(url)

@@ -8,8 +8,10 @@ import time
 import json
 import requests
 import re
+import uuid
 from dotenv import load_dotenv
 from routes.signal_bot import signal_bp, init_signal_bot
+from database import read_data, write_data
 import anthropic
 import asyncio
 import threading
@@ -23,6 +25,12 @@ from weasyprint import HTML  # Add this import at the top of the file
 import pygments
 from pygments.lexers import PythonLexer
 from pygments.formatters import HtmlFormatter
+# PDF generation imports
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.units import inch
+from reportlab.lib.utils import ImageReader
+from PIL import Image
 # Image processing imports for HEIC support
 from PIL import Image
 try:
@@ -101,7 +109,7 @@ def slugify(name):
 
 @app.route('/')
 def root():
-    return render_template("static_html/dashboard.html")
+    return redirect('/chat')
 
 @app.route('/warehouse')
 def warehouse():
@@ -509,7 +517,7 @@ def serve():
     if key.startswith('app-'):
         return data['value']['html'], 200, {'Content-Type': 'text/html'}
     
-    # If this is a PDF request, generate and return the PDF
+    # If this is a PDF request (old style), generate and return the PDF
     if key.startswith('pdf-'):
         html_content = data['value']['html']
         filename = data['value'].get('filename', 'document.pdf')
@@ -521,6 +529,33 @@ def serve():
         response = make_response(pdf_data)
         response.headers['Content-Type'] = 'application/pdf'
         response.headers['Content-Disposition'] = f'inline; filename="{filename}.pdf"'
+        return response
+    
+    # If this is a card PDF (new style), serve the stored PDF data
+    if key.startswith('card-pdf-') and data.get('mime_type') == 'application/pdf':
+        value = data['value']
+        filename = data.get('filename', 'document.pdf')
+        
+        # Handle data URI format
+        if value.startswith('data:application/pdf;base64,'):
+            # Extract base64 data
+            pdf_base64 = value.split(',')[1]
+            pdf_data = base64.b64decode(pdf_base64)
+        else:
+            # Assume it's raw base64
+            pdf_data = base64.b64decode(value)
+        
+        # Update read statistics
+        data['read_timestamp'] = time.time()
+        data['read_count'] += 1
+        
+        with open(file_path, 'w') as f:
+            json.dump(data, f)
+        
+        # Return the PDF with appropriate headers
+        response = make_response(pdf_data)
+        response.headers['Content-Type'] = 'application/pdf'
+        response.headers['Content-Disposition'] = f'inline; filename="{filename}"'
         return response
         
     # Otherwise return the value field as before
@@ -3388,3 +3423,1086 @@ def proxy_user_tools(user_id):
         return jsonify({"error": detail}), http_err.response.status_code if http_err.response else 502
     except requests.exceptions.RequestException as e:
         return jsonify({"error": f"Error communicating with MCP service: {str(e)}"}), 502
+
+# Add Epson Connect API integration before the user tools proxy section
+
+# Epson Connect API Configuration
+EPSON_CLIENT_ID = "56686329726c4e079b93fd9c4250f7f5"
+EPSON_CLIENT_SECRET = "Rnf1TIOnPenFR8OQkH9ybPKbFGhhoTXy3wSeWNRhhYbdx9FnHPW5TpW9lX2XB7t8VEX79ZqQMZAEc4XTqYx1VQ"
+EPSON_API_KEY = "xbAKo4PujZ79C1t02TAjl8SuazDD7Nyx2UT4kfty"
+EPSON_REDIRECT_URI = f"{DOMAIN_FROM_ENV}/epson/callback"
+
+def get_epson_tokens():
+    """Get stored Epson tokens from data storage"""
+    try:
+        file_path = get_file_path('epson-tokens')
+        if os.path.exists(file_path):
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+                return data.get('value', {})
+    except Exception as e:
+        print(f"Error reading Epson tokens: {e}")
+    return None
+
+def store_epson_tokens(tokens):
+    """Store Epson tokens in data storage"""
+    try:
+        data = {
+            'key': 'epson-tokens',
+            'value': tokens,
+            'write_timestamp': time.time(),
+            'read_timestamp': None,
+            'read_count': 0
+        }
+        file_path = get_file_path('epson-tokens')
+        with open(file_path, 'w') as f:
+            json.dump(data, f)
+        return True
+    except Exception as e:
+        print(f"Error storing Epson tokens: {e}")
+        return False
+
+def refresh_epson_token():
+    """Refresh the Epson device token using the refresh token"""
+    tokens = get_epson_tokens()
+    if not tokens or 'refresh_token' not in tokens:
+        return None
+    
+    try:
+        # Encode client credentials
+        credentials = f"{EPSON_CLIENT_ID}:{EPSON_CLIENT_SECRET}"
+        encoded_credentials = base64.b64encode(credentials.encode()).decode()
+        
+        headers = {
+            'Authorization': f'Basic {encoded_credentials}',
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+        
+        data = {
+            'grant_type': 'refresh_token',
+            'refresh_token': tokens['refresh_token']
+        }
+        
+        response = requests.post(
+            'https://auth.epsonconnect.com/auth/token',
+            headers=headers,
+            data=data,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            token_data = response.json()
+            # Update stored tokens
+            updated_tokens = {
+                'access_token': token_data['access_token'],
+                'refresh_token': token_data['refresh_token'],
+                'expires_in': token_data['expires_in'],
+                'token_timestamp': time.time(),
+                'scope': token_data.get('scope', 'device')
+            }
+            store_epson_tokens(updated_tokens)
+            return updated_tokens
+        else:
+            print(f"Failed to refresh Epson token: {response.status_code} - {response.text}")
+            return None
+            
+    except Exception as e:
+        print(f"Error refreshing Epson token: {e}")
+        return None
+
+@app.route('/epson/authorize')
+def epson_authorize():
+    """Redirect user to Epson Connect authorization"""
+    auth_url = (
+        f"https://auth.epsonconnect.com/auth/authorize"
+        f"?response_type=code"
+        f"&client_id={EPSON_CLIENT_ID}"
+        f"&redirect_uri={EPSON_REDIRECT_URI}"
+        f"&scope=device"
+    )
+    return redirect(auth_url)
+
+@app.route('/epson/callback')
+def epson_callback():
+    """Handle Epson Connect OAuth callback"""
+    # Debug: log all parameters received
+    all_args = dict(request.args)
+    print(f"Epson callback received parameters: {all_args}")
+    
+    code = request.args.get('code')
+    error = request.args.get('error')
+    error_description = request.args.get('error_description')
+    
+    if error:
+        return jsonify({
+            'status': 'error',
+            'message': f'Authorization failed: {error}',
+            'error_description': error_description,
+            'received_params': all_args
+        }), 400
+    
+    if not code:
+        return jsonify({
+            'status': 'error',
+            'message': 'No authorization code received',
+            'received_params': all_args
+        }), 400
+    
+    try:
+        # Exchange authorization code for tokens
+        credentials = f"{EPSON_CLIENT_ID}:{EPSON_CLIENT_SECRET}"
+        encoded_credentials = base64.b64encode(credentials.encode()).decode()
+        
+        headers = {
+            'Authorization': f'Basic {encoded_credentials}',
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+        
+        data = {
+            'grant_type': 'authorization_code',
+            'code': code,
+            'redirect_uri': EPSON_REDIRECT_URI,
+            'client_id': EPSON_CLIENT_ID
+        }
+        
+        response = requests.post(
+            'https://auth.epsonconnect.com/auth/token',
+            headers=headers,
+            data=data,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            token_data = response.json()
+            tokens = {
+                'access_token': token_data['access_token'],
+                'refresh_token': token_data['refresh_token'],
+                'expires_in': token_data['expires_in'],
+                'token_timestamp': time.time(),
+                'scope': token_data.get('scope', 'device')
+            }
+            
+            if store_epson_tokens(tokens):
+                return """
+                <html>
+                <head><title>Epson Authorization Success</title></head>
+                <body>
+                    <h1>✅ Epson Printer Authorized!</h1>
+                    <p>Your printer has been successfully connected.</p>
+                    <p>You can now close this window and use the printing API.</p>
+                    <script>
+                        setTimeout(() => window.close(), 3000);
+                    </script>
+                </body>
+                </html>
+                """
+            else:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Failed to store tokens'
+                }), 500
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': f'Token exchange failed: {response.status_code} - {response.text}'
+            }), 400
+            
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Authorization error: {str(e)}'
+        }), 500
+
+@app.route('/epson/status')
+def epson_status():
+    """Check Epson printer connection status"""
+    tokens = get_epson_tokens()
+    if not tokens:
+        return jsonify({
+            'status': 'not_authorized',
+            'message': 'Printer not authorized. Please authorize first.',
+            'auth_url': f"{DOMAIN_FROM_ENV}/epson/authorize"
+        })
+    
+    # Check if token needs refresh (expires in 1 hour)
+    token_age = time.time() - tokens.get('token_timestamp', 0)
+    if token_age > 3000:  # Refresh if older than 50 minutes
+        refreshed_tokens = refresh_epson_token()
+        if refreshed_tokens:
+            tokens = refreshed_tokens
+        else:
+            return jsonify({
+                'status': 'token_expired',
+                'message': 'Token expired and refresh failed. Please re-authorize.',
+                'auth_url': f"{DOMAIN_FROM_ENV}/epson/authorize"
+            })
+    
+    # Test device info API to verify connection
+    try:
+        headers = {
+            'Authorization': f"Bearer {tokens['access_token']}",
+            'x-api-key': EPSON_API_KEY
+        }
+        
+        response = requests.get(
+            'https://api.epsonconnect.com/api/2/printing/devices/info',
+            headers=headers,
+            timeout=15
+        )
+        
+        if response.status_code == 200:
+            device_info = response.json()
+            return jsonify({
+                'status': 'connected',
+                'message': 'Printer is connected and ready',
+                'device_info': device_info,
+                'token_age_minutes': int(token_age / 60)
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': f'Device check failed: {response.status_code}',
+                'details': response.text[:200]
+            })
+            
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Connection test failed: {str(e)}'
+        })
+
+@app.route('/epson/print', methods=['POST'])
+def epson_print():
+    """Print a document via Epson Connect API"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+        
+        # Required fields
+        file_url = data.get('file_url')
+        job_name = data.get('job_name', 'Print Job')
+        
+        if not file_url:
+            return jsonify({'error': 'file_url is required'}), 400
+        
+        # Optional print settings with defaults
+        print_settings = {
+            'paperSize': data.get('paper_size', 'ps_letter'),
+            'paperType': data.get('paper_type', 'pt_plainpaper'),
+            'borderless': data.get('borderless', False),
+            'printQuality': data.get('print_quality', 'normal'),
+            'paperSource': data.get('paper_source', 'auto'),
+            'colorMode': data.get('color_mode', 'color'),
+            'copies': data.get('copies', 1),
+            'doubleSided': data.get('double_sided', 'none')
+        }
+        
+        # Get valid tokens
+        tokens = get_epson_tokens()
+        if not tokens:
+            return jsonify({
+                'error': 'Printer not authorized',
+                'auth_url': f"{DOMAIN_FROM_ENV}/epson/authorize"
+            }), 401
+        
+        # Check if token needs refresh
+        token_age = time.time() - tokens.get('token_timestamp', 0)
+        if token_age > 3000:  # Refresh if older than 50 minutes
+            refreshed_tokens = refresh_epson_token()
+            if refreshed_tokens:
+                tokens = refreshed_tokens
+            else:
+                return jsonify({
+                    'error': 'Token expired and refresh failed',
+                    'auth_url': f"{DOMAIN_FROM_ENV}/epson/authorize"
+                }), 401
+        
+        headers = {
+            'Authorization': f"Bearer {tokens['access_token']}",
+            'x-api-key': EPSON_API_KEY,
+            'Content-Type': 'application/json'
+        }
+        
+        # Step 1: Create print job
+        job_payload = {
+            'jobName': job_name,
+            'printMode': 'document',
+            'printSettings': print_settings
+        }
+        
+        job_response = requests.post(
+            'https://api.epsonconnect.com/api/2/printing/jobs',
+            headers=headers,
+            json=job_payload,
+            timeout=30
+        )
+        
+        if job_response.status_code != 200:
+            return jsonify({
+                'error': 'Failed to create print job',
+                'details': job_response.text
+            }), job_response.status_code
+        
+        job_data = job_response.json()
+        job_id = job_data['jobId']
+        upload_uri = job_data['uploadUri']
+        
+        # Step 2: Download and upload file
+        try:
+            # Download the file
+            file_response = requests.get(file_url, timeout=60)
+            file_response.raise_for_status()
+            
+            # Upload to Epson
+            upload_response = requests.post(
+                f"{upload_uri}&File=document.pdf",
+                headers={'Content-Type': 'application/pdf'},
+                data=file_response.content,
+                timeout=60
+            )
+            
+            if upload_response.status_code not in [200, 204]:
+                return jsonify({
+                    'error': 'Failed to upload file',
+                    'details': upload_response.text
+                }), upload_response.status_code
+            
+        except Exception as e:
+            return jsonify({
+                'error': 'Failed to download or upload file',
+                'details': str(e)
+            }), 500
+        
+        # Step 3: Start printing
+        print_response = requests.post(
+            f'https://api.epsonconnect.com/api/2/printing/jobs/{job_id}/print',
+            headers={
+                'Authorization': f"Bearer {tokens['access_token']}",
+                'x-api-key': EPSON_API_KEY
+            },
+            timeout=30
+        )
+        
+        if print_response.status_code == 200:
+            return jsonify({
+                'status': 'success',
+                'message': 'Print job started successfully',
+                'job_id': job_id,
+                'job_name': job_name
+            })
+        else:
+            return jsonify({
+                'error': 'Failed to start printing',
+                'details': print_response.text
+            }), print_response.status_code
+            
+    except Exception as e:
+        return jsonify({
+            'error': 'Print request failed',
+            'details': str(e)
+        }), 500
+
+@app.route('/epson/capabilities')
+def epson_capabilities():
+    """Get printer capabilities"""
+    try:
+        print_mode = request.args.get('mode', 'document')  # document or photo
+        
+        tokens = get_epson_tokens()
+        if not tokens:
+            return jsonify({
+                'error': 'Printer not authorized',
+                'auth_url': f"{DOMAIN_FROM_ENV}/epson/authorize"
+            }), 401
+        
+        # Check if token needs refresh
+        token_age = time.time() - tokens.get('token_timestamp', 0)
+        if token_age > 3000:
+            refreshed_tokens = refresh_epson_token()
+            if refreshed_tokens:
+                tokens = refreshed_tokens
+            else:
+                return jsonify({
+                    'error': 'Token expired and refresh failed',
+                    'auth_url': f"{DOMAIN_FROM_ENV}/epson/authorize"
+                }), 401
+        
+        headers = {
+            'Authorization': f"Bearer {tokens['access_token']}",
+            'x-api-key': EPSON_API_KEY
+        }
+        
+        response = requests.get(
+            f'https://api.epsonconnect.com/api/2/printing/capability/{print_mode}',
+            headers=headers,
+            timeout=15
+        )
+        
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({
+                'error': 'Failed to get capabilities',
+                'details': response.text
+            }), response.status_code
+            
+    except Exception as e:
+        return jsonify({
+            'error': 'Capabilities request failed',
+            'details': str(e)
+        }), 500
+
+@app.route('/epson/print-card', methods=['POST'])
+def epson_print_card():
+    """Simple endpoint for Card Studio to print cards"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+        
+        # Extract card URLs
+        front_cover = data.get('front_cover')
+        back_cover = data.get('back_cover')
+        left_page = data.get('left_page') 
+        right_page = data.get('right_page')
+        card_name = data.get('card_name', 'Greeting Card')
+        
+        if not front_cover:
+            return jsonify({'error': 'front_cover URL is required'}), 400
+        
+        # For now, let's just print the front cover as a test
+        # Later we can enhance this to create a proper card layout PDF
+        
+        # Get valid tokens
+        tokens = get_epson_tokens()
+        if not tokens:
+            return jsonify({
+                'error': 'Printer not authorized',
+                'auth_url': f"{DOMAIN_FROM_ENV}/epson/authorize"
+            }), 401
+        
+        # Check if token needs refresh
+        token_age = time.time() - tokens.get('token_timestamp', 0)
+        if token_age > 3000:  # Refresh if older than 50 minutes
+            refreshed_tokens = refresh_epson_token()
+            if refreshed_tokens:
+                tokens = refreshed_tokens
+            else:
+                return jsonify({
+                    'error': 'Token expired and refresh failed',
+                    'auth_url': f"{DOMAIN_FROM_ENV}/epson/authorize"
+                }), 401
+        
+        headers = {
+            'Authorization': f"Bearer {tokens['access_token']}",
+            'x-api-key': EPSON_API_KEY,
+            'Content-Type': 'application/json'
+        }
+        
+        # Print settings optimized for card printing
+        print_settings = {
+            'paperSize': 'ps_letter',  # Standard letter size
+            'paperType': 'pt_plainpaper',
+            'borderless': True,  # Full bleed for cards
+            'printQuality': 'high',
+            'paperSource': 'auto',
+            'colorMode': 'color',
+            'copies': 1,
+            'doubleSided': 'none'
+        }
+        
+        # Step 1: Create print job
+        job_payload = {
+            'jobName': f"Card: {card_name}",
+            'printMode': 'document',
+            'printSettings': print_settings
+        }
+        
+        job_response = requests.post(
+            'https://api.epsonconnect.com/api/2/printing/jobs',
+            headers=headers,
+            json=job_payload,
+            timeout=30
+        )
+        
+        if job_response.status_code != 200:
+            return jsonify({
+                'error': 'Failed to create print job',
+                'details': job_response.text
+            }), job_response.status_code
+        
+        job_data = job_response.json()
+        job_id = job_data['jobId']
+        upload_uri = job_data['uploadUri']
+        
+        # Step 2: Download and upload the front cover image
+        try:
+            # Download the image
+            file_response = requests.get(front_cover, timeout=60)
+            file_response.raise_for_status()
+            
+            # For now, upload as PDF - in the future we'll convert image to PDF properly
+            upload_response = requests.post(
+                f"{upload_uri}&File=card.jpg",
+                headers={'Content-Type': 'image/jpeg'},
+                data=file_response.content,
+                timeout=60
+            )
+            
+            if upload_response.status_code not in [200, 204]:
+                return jsonify({
+                    'error': 'Failed to upload card image',
+                    'details': upload_response.text
+                }), upload_response.status_code
+            
+        except Exception as e:
+            return jsonify({
+                'error': 'Failed to download or upload card image',
+                'details': str(e)
+            }), 500
+        
+        # Step 3: Start printing
+        print_response = requests.post(
+            f'https://api.epsonconnect.com/api/2/printing/jobs/{job_id}/print',
+            headers={
+                'Authorization': f"Bearer {tokens['access_token']}",
+                'x-api-key': EPSON_API_KEY
+            },
+            timeout=30
+        )
+        
+        if print_response.status_code == 200:
+            return jsonify({
+                'status': 'success',
+                'message': f'Card "{card_name}" sent to printer successfully',
+                'job_id': job_id,
+                'printed_section': 'front_cover'
+            })
+        else:
+            return jsonify({
+                'error': 'Failed to start printing',
+                'details': print_response.text
+            }), print_response.status_code
+            
+    except Exception as e:
+        return jsonify({
+            'error': 'Card print request failed',
+            'details': str(e)
+        }), 500
+
+# Print Queue System for Remote Printing
+print_queue = []
+
+@app.route('/api/print-queue', methods=['GET'])
+def get_print_queue():
+    """Get pending print jobs for local print agent"""
+    try:
+        # Return only pending jobs
+        pending_jobs = [job for job in print_queue if job['status'] == 'pending']
+        
+        return jsonify({
+            'status': 'success',
+            'jobs': pending_jobs,
+            'total_pending': len(pending_jobs),
+            'total_jobs': len(print_queue)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': 'Failed to get print queue',
+            'details': str(e)
+        }), 500
+
+@app.route('/api/print-complete/<job_id>', methods=['POST'])
+def mark_print_complete(job_id):
+    """Mark a print job as completed"""
+    try:
+        data = request.get_json() or {}
+        success = data.get('success', True)
+        error_message = data.get('error_message', '')
+        
+        # Find and update the job
+        for job in print_queue:
+            if job['id'] == job_id:
+                job['status'] = 'completed' if success else 'failed'
+                job['completed_at'] = time.time()
+                if error_message:
+                    job['error_message'] = error_message
+                
+                return jsonify({
+                    'status': 'updated',
+                    'job_id': job_id,
+                    'new_status': job['status']
+                })
+        
+        return jsonify({
+            'error': 'Job not found',
+            'job_id': job_id
+        }), 404
+        
+    except Exception as e:
+        return jsonify({
+            'error': 'Failed to update job status',
+            'details': str(e)
+        }), 500
+
+@app.route('/api/print-status/<job_id>', methods=['GET'])
+def get_print_status(job_id):
+    """Get the status of a specific print job"""
+    try:
+        # Find the job
+        for job in print_queue:
+            if job['id'] == job_id:
+                return jsonify({
+                    'status': 'found',
+                    'job': job
+                })
+        
+        return jsonify({
+            'status': 'not_found',
+            'job_id': job_id
+        }), 404
+        
+    except Exception as e:
+        return jsonify({
+            'error': 'Failed to get job status',
+            'details': str(e)
+        }), 500
+
+@app.route('/api/print-history', methods=['GET'])
+def get_print_history():
+    """Get print job history"""
+    try:
+        # Get query parameters
+        limit = request.args.get('limit', 50, type=int)
+        status_filter = request.args.get('status')  # pending, completed, failed
+        
+        # Filter jobs
+        filtered_jobs = print_queue
+        if status_filter:
+            filtered_jobs = [job for job in print_queue if job['status'] == status_filter]
+        
+        # Sort by creation time (newest first) and limit
+        sorted_jobs = sorted(filtered_jobs, key=lambda x: x['created_at'], reverse=True)[:limit]
+        
+        return jsonify({
+            'status': 'success',
+            'jobs': sorted_jobs,
+            'total_returned': len(sorted_jobs),
+            'total_all_jobs': len(print_queue)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': 'Failed to get print history',
+                      'details': str(e)
+      }), 500
+
+@app.route('/api/create-card-pdf', methods=['POST'])
+def create_card_pdf():
+    """Create a proper duplex PDF for card printing"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+        
+        # Required card images
+        front_cover = data.get('front_cover')
+        back_cover = data.get('back_cover')
+        left_page = data.get('left_page')
+        right_page = data.get('right_page')
+        
+        # Optional settings
+        paper_size = data.get('paper_size', 'standard')  # standard = 5x7 card
+        is_front_back_only = data.get('is_front_back_only', False)
+        
+        if not front_cover or not back_cover:
+            return jsonify({'error': 'front_cover and back_cover are required'}), 400
+        
+        if not is_front_back_only and (not left_page or not right_page):
+            return jsonify({'error': 'left_page and right_page are required for full cards'}), 400
+        
+        # Set up PDF dimensions for 7x10 inch layout (10x7 landscape for duplex)
+        page_width = 10 * inch
+        page_height = 7 * inch
+        card_width = 5 * inch
+        card_height = 7 * inch
+        
+        # Create PDF in memory
+        pdf_buffer = io.BytesIO()
+        pdf = canvas.Canvas(pdf_buffer, pagesize=(page_width, page_height))
+        
+        def download_and_process_image(url):
+            """Download image and prepare for PDF"""
+            try:
+                response = requests.get(url, timeout=30)
+                response.raise_for_status()
+                
+                # Open with PIL to ensure proper format
+                img = Image.open(io.BytesIO(response.content))
+                
+                # Convert to RGB if needed
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                # Create BytesIO for reportlab
+                img_buffer = io.BytesIO()
+                img.save(img_buffer, format='JPEG', quality=95)
+                img_buffer.seek(0)
+                
+                return ImageReader(img_buffer)
+            except Exception as e:
+                print(f"Error processing image {url}: {e}")
+                return None
+        
+        # Download all images
+        print("Downloading card images...")
+        front_img = download_and_process_image(front_cover)
+        back_img = download_and_process_image(back_cover)
+        
+        if not front_img or not back_img:
+            return jsonify({'error': 'Failed to download required images'}), 500
+        
+        left_img = None
+        right_img = None
+        if not is_front_back_only:
+            left_img = download_and_process_image(left_page)
+            right_img = download_and_process_image(right_page)
+            
+            if not left_img or not right_img:
+                return jsonify({'error': 'Failed to download interior page images'}), 500
+        
+        if is_front_back_only:
+            # Simple front/back layout on one page
+            print("Creating front/back only PDF...")
+            
+            # Left half: Back cover (when folded, this becomes the back)
+            pdf.drawImage(back_img, 0, 0, width=card_width, height=card_height, preserveAspectRatio=True, anchor='c')
+            
+            # Right half: Front cover 
+            pdf.drawImage(front_img, card_width, 0, width=card_width, height=card_height, preserveAspectRatio=True, anchor='c')
+            
+            # Add fold line guide (very light)
+            pdf.setStrokeColorRGB(0.9, 0.9, 0.9)
+            pdf.setLineWidth(0.5)
+            pdf.line(card_width, 0, card_width, card_height)
+            
+        else:
+            # Full duplex card layout
+            print("Creating full duplex PDF...")
+            
+            # Page 1: Outside (Back + Front)
+            # Left half: Back cover
+            pdf.drawImage(back_img, 0, 0, width=card_width, height=card_height, preserveAspectRatio=True, anchor='c')
+            
+            # Right half: Front cover
+            pdf.drawImage(front_img, card_width, 0, width=card_width, height=card_height, preserveAspectRatio=True, anchor='c')
+            
+            # Add fold line guide
+            pdf.setStrokeColorRGB(0.9, 0.9, 0.9)
+            pdf.setLineWidth(0.5)
+            pdf.line(card_width, 0, card_width, card_height)
+            
+            # Start new page for inside
+            pdf.showPage()
+            
+            # Page 2: Inside (Left + Right interior) - Rotated 180° for proper duplex alignment
+            pdf.saveState()
+            
+            # Rotate 180 degrees around center of page
+            pdf.translate(page_width, page_height)
+            pdf.rotate(180)
+            
+            # Left half: Left interior (appears on left when opened)
+            pdf.drawImage(left_img, 0, 0, width=card_width, height=card_height, preserveAspectRatio=True, anchor='c')
+            
+            # Right half: Right interior (appears on right when opened)
+            pdf.drawImage(right_img, card_width, 0, width=card_width, height=card_height, preserveAspectRatio=True, anchor='c')
+            
+            # Add fold line guide
+            pdf.setStrokeColorRGB(0.9, 0.9, 0.9)
+            pdf.setLineWidth(0.5)
+            pdf.line(card_width, 0, card_width, card_height)
+            
+            pdf.restoreState()
+        
+        # Finalize PDF
+        pdf.save()
+        pdf_buffer.seek(0)
+        
+        # Store the PDF and return URL
+        pdf_data = pdf_buffer.getvalue()
+        pdf_base64 = base64.b64encode(pdf_data).decode('utf-8')
+        
+        # Create data URI
+        data_uri = f"data:application/pdf;base64,{pdf_base64}"
+        
+        # Generate unique key for the PDF
+        pdf_key = f"card-pdf-{hashlib.md5(f'{front_cover}-{back_cover}-{time.time()}'.encode()).hexdigest()}"
+        
+        # Store the PDF data
+        pdf_file_data = {
+            'key': pdf_key,
+            'value': data_uri,
+            'filename': f"greeting-card-{paper_size}.pdf",
+            'mime_type': 'application/pdf',
+            'size': len(pdf_data),
+            'write_timestamp': time.time(),
+            'read_timestamp': None,
+            'read_count': 0,
+            'card_type': 'front_back_only' if is_front_back_only else 'full_duplex',
+            'paper_size': paper_size
+        }
+        
+        # Save the PDF data
+        file_path = get_file_path(pdf_key)
+        with open(file_path, 'w') as f:
+            json.dump(pdf_file_data, f)
+        
+        # Generate URL for accessing the PDF
+        pdf_url = f"{DOMAIN_FROM_ENV}/serve?key={pdf_key}"
+        
+        return jsonify({
+            'status': 'success',
+            'pdf_url': pdf_url,
+            'pdf_key': pdf_key,
+            'size': len(pdf_data),
+            'pages': 1 if is_front_back_only else 2,
+            'layout': 'front_back_only' if is_front_back_only else 'full_duplex',
+            'instructions': {
+                'front_back_only': 'Print single-sided, then fold along center line',
+                'full_duplex': 'Print duplex with "flip on short edge" setting'
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error creating card PDF: {str(e)}")
+        return jsonify({
+            'error': 'Failed to create PDF',
+            'details': str(e)
+        }), 500
+
+@app.route('/api/print-queue', methods=['POST'])
+def queue_print_job():
+    """Add a print job to the queue for local print agent to process"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+        
+        # Check if this is a card print job
+        if 'front_cover' in data:
+            # This is a card - create PDF first
+            print("Creating PDF for card print job...")
+            
+            pdf_response = requests.post(
+                f"{DOMAIN_FROM_ENV}/api/create-card-pdf",
+                json=data,
+                timeout=60
+            )
+            
+            if pdf_response.status_code != 200:
+                return jsonify({
+                    'error': 'Failed to create card PDF',
+                    'details': pdf_response.text
+                }), 500
+            
+            pdf_data = pdf_response.json()
+            file_url = pdf_data['pdf_url']
+            job_name = f"Card: {data.get('card_name', 'Greeting Card')}"
+            
+            # Set duplex settings based on card type
+            is_duplex = not data.get('is_front_back_only', False)
+            
+        else:
+            # Regular file print job
+            file_url = data.get('file_url')
+            if not file_url:
+                return jsonify({'error': 'file_url is required'}), 400
+            job_name = data.get('job_name', 'Remote Print Job')
+            is_duplex = data.get('duplex', False)
+        
+        # Create print job
+        job = {
+            'id': str(uuid.uuid4()),
+            'file_url': file_url,
+            'job_name': job_name,
+            'settings': {
+                'duplex': is_duplex,
+                'copies': data.get('copies', 1),
+                'paper_size': data.get('paper_size', 'letter'),
+                'color_mode': data.get('color_mode', 'color'),
+                'quality': data.get('quality', 'high'),
+                'paper_type': 'cardstock' if 'front_cover' in data else 'plain'
+            },
+            'status': 'pending',
+            'created_at': time.time(),
+            'user_info': {
+                'user_agent': request.headers.get('User-Agent', ''),
+                'ip_address': request.remote_addr
+            },
+            'type': 'card' if 'front_cover' in data else 'document'
+        }
+        
+        print_queue.append(job)
+        
+        return jsonify({
+            'status': 'queued',
+            'job_id': job['id'],
+            'message': 'Print job added to queue successfully',
+            'file_url': file_url,
+            'duplex': is_duplex
+        })
+        
+    except Exception as e:
+        print(f"Error queuing print job: {str(e)}")
+        return jsonify({
+            'error': 'Failed to queue print job',
+            'details': str(e)
+        }), 500
+
+
+# Friendly URL generation arrays
+positiveAdjectives = [
+    "kind", "wise", "brave", "loyal", "joyful", "humble", "gentle", "zesty", "fun", "calm",
+    "pure", "bold", "bright", "sharp", "eager", "neat", "sweet", "clean", "free", "good",
+    "cool", "nice", "fair", "keen", "chill", "true", "open", "brisk", "warm", 
+    "gifted", "alert", "steady", "peppy", "fiery", "sly", "loving", "tender", "brilliant", "noble",
+    "energetic", "charismatic", "polite", "helpful", "jovial", "thoughtful", "fantastic", "pleasant", 
+    "affable", "cheerful", "delightful", "vibrant", "zestful", "creative", "kindhearted", "trustworthy", 
+    "optimistic", "charming", "adventurous", "confident", "affectionate", "respectful", "considerate", 
+    "motivated", "genuine", "determined", "compassionate", "faithful", "balanced", "exuberant", 
+    "hardworking", "insightful", "disciplined", "skilled", "openminded", "talented", "inspiring", 
+    "engaging", "peaceful", "innovative", "supportive", "resourceful", "funny", "modest", "perceptive", 
+    "excited", "grounded", "focused", "humorous", "gracious", "content", "knowledgeable", "sincere", 
+    "devoted", "reliable", "outgoing", "fascinating", "enthusiastic", "empowering", "diligent", 
+    "friendly", "welcoming", "honest", "careful", "lovable", "sympathetic", "empathetic", "productive", 
+    "dynamic", "resilient", "passionate", "curious", "dedicated", "capable", "encouraging", "caring", 
+    "intelligent", "ambitious", "generous", "positive", "honorable", "gracious"
+]
+
+positiveColors = [
+    "amber", "aqua", "apricot", "azure", "beige", "blush", "bronze", "cobalt", "coral", "crimson",
+    "emerald", "fuchsia", "gold", "green", "honey", "jade", "lavender", "lemon", "lilac", "lime",
+    "magenta", "mint", "moss", "nectar", "ocean", "peach", "pear", "periwinkle", "pink", "plum",
+    "poppy", "quartz", "rose", "ruby", "sapphire", "scarlet", "seafoam", "silver", "sky", "snow",
+    "sunshine", "tangerine", "topaz", "turquoise", "vanilla", "violet", "watermelon", "white", "yellow",
+    "caramel", "celeste", "champagne", "charcoal", "chocolate", "citrus", "copper", "ivory", "light", 
+    "melon", "midnight", "mocha", "mulberry", "navy", "orchid", "platinum", "sea", "slate", "sunset", 
+    "teal", "tomato", "wine", "blue", "candy", "clover", "cool", "dandelion", "dusty", "electric", 
+    "fandango", "fiesta", "flamingo", "forest", "frost", "grape", "guava", "hazel", "indigo", "jasmine", 
+    "kiwi", "lemonade", "magnolia", "neon", "peacock", "pineapple", "raspberry", "seashell", "shamrock", 
+    "snowflake", "soft", "spice", "spring", "sunflower", "swamp", "thistle", "wisteria", "apple", 
+    "banana", "butterscotch", "daisy", "fawn", "frosty", "goldenrod", "grapefruit", "honeysuckle", 
+    "jadeite", "mist", "morning", "nautical", "pearl", "peridot", "velvet", "wheat", "wild", "zinnia"
+]
+
+animals = [
+    "aardvark", "albatross", "alligator", "alpaca", "anaconda", "anteater", "antelope", "armadillo",
+    "baboon", "badger", "bat", "beagle", "bear", "beaver", "bee", "beetle", "beluga", "bison", 
+    "blackbird", "bobcat", "buffalo", "bulldog", "bullfrog", "buzzard", "caterpillar", "catfish", 
+    "chameleon", "cheetah", "chicken", "chimpanzee", "chipmunk", "clam", "clownfish", "cockroach", 
+    "coyote", "crab", "crane", "crocodile", "crow", "deer", "dingo", "dog", "dolphin", "donkey", 
+    "duck", "eagle", "echidna", "eel", "elephant", "elk", "emu", "falcon", "ferret", "finch", 
+    "firefly", "fish", "flamingo", "fox", "frog", "gerbil", "gibbon", "giraffe", "goat", "goldfish", 
+    "goose", "gorilla", "grasshopper", "guppy", "hamster", "hare", "hawk", "hedgehog", "hippopotamus", 
+    "hornet", "horse", "hummingbird", "hyena", "iguana", "impala", "jaguar", "jellyfish", "kangaroo", 
+    "kiwi", "koala", "komodo", "kookaburra", "ladybug", "leopard", "lion", "llama", "lobster", "lynx", 
+    "macaw", "manatee", "mandrill", "meerkat", "mole", "mongoose", "monkey", "moose", "mosquito", 
+    "mouse", "octopus", "ocelot", "orangutan", "ostrich", "otter", "owl", "ox", "panda", "panther", 
+    "parrot", "peacock", "pelican", "penguin", "pheasant", "pig", "pigeon", "platypus", "pony", 
+    "porcupine", "rabbit", "raccoon", "rat", "raven", "reindeer", "salamander", "salmon", "scorpion", 
+    "seahorse", "shark", "sheep", "shrimp", "skunk", "sloth", "slug", "snail", "snake", "sparrow", 
+    "spider", "squid", "squirrel", "starfish", "stingray", "stork", "swallow", "swan", "tadpole", 
+    "tarantula", "termite", "tiger", "toad", "toucan", "turkey", "turtle", "wallaby", "walrus", 
+    "warthog", "wasp", "weasel", "whale", "wolverine", "woodpecker", "worm", "yak", "zebra"
+]
+
+def generate_friendly_card_id():
+    """Generate a friendly card ID using adjective-color-animal format"""
+    import random
+    
+    adjective = random.choice(positiveAdjectives)
+    color = random.choice(positiveColors)
+    animal = random.choice(animals)
+    
+    # Create camelCase format: kindAmberPanda
+    card_id = adjective + color.capitalize() + animal.capitalize()
+    return card_id
+
+# Card sharing routes
+@app.route('/api/cards/store', methods=['POST'])
+def store_card():
+    """Store a card for sharing and return shareable URL"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'error': 'No card data provided'}), 400
+        
+        # Generate friendly card ID
+        card_id = generate_friendly_card_id()
+        
+        # Store card data using existing database system
+        card_data = {
+            'id': card_id,
+            'prompt': data.get('prompt', ''),
+            'frontCover': data.get('frontCover', ''),
+            'backCover': data.get('backCover', ''),
+            'leftPage': data.get('leftPage', ''),
+            'rightPage': data.get('rightPage', ''),
+            'createdAt': time.time(),
+            'expiresAt': time.time() + (30 * 24 * 60 * 60)  # 30 days from now
+        }
+        
+        # Use existing database write function
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(write_data(f"shared_card_{card_id}", card_data))
+        finally:
+            loop.close()
+        
+        # Return shareable URL
+        domain = DOMAIN_FROM_ENV or 'vibecarding.com'
+        share_url = f"https://{domain}/card/{card_id}"
+        
+        return jsonify({
+            'status': 'success',
+            'card_id': card_id,
+            'share_url': share_url
+        })
+        
+    except Exception as e:
+        print(f"Error storing card: {str(e)}")
+        return jsonify({
+            'error': 'Failed to store card',
+            'details': str(e)
+        }), 500
+
+
+@app.route('/card/<card_id>')
+def view_shared_card(card_id):
+    """Serve standalone card viewer page"""
+    try:
+        # Retrieve card data
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            card_data = loop.run_until_complete(read_data(f"shared_card_{card_id}"))
+        finally:
+            loop.close()
+        
+        if not card_data:
+            abort(404)
+        
+        # Check if card has expired
+        if card_data.get('expiresAt', 0) < time.time():
+            abort(410)  # Gone
+        
+        # Render card viewer template
+        return render_template('card_viewer.html', card=card_data)
+        
+    except Exception as e:
+        print(f"Error viewing shared card: {str(e)}")
+        abort(500)

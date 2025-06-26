@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Greeting Card</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .card-container {
+            max-width: 800px;
+            width: 100%;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+        .card-header {
+            padding: 20px;
+            text-align: center;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .card-header h1 {
+            color: #495057;
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+        
+        .card-header p {
+            color: #6c757d;
+            font-size: 14px;
+        }
+        
+        .card-viewer {
+            position: relative;
+            aspect-ratio: 5/7;
+            max-height: 600px;
+            margin: 20px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+        
+        .card-slide {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        
+        .card-slide.active {
+            opacity: 1;
+        }
+        
+        .card-slide img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .navigation {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        
+        .nav-btn {
+            padding: 12px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            min-width: 100px;
+        }
+        
+        .nav-btn:hover {
+            background: #0056b3;
+            transform: translateY(-1px);
+        }
+        
+        .nav-btn.active {
+            background: #28a745;
+        }
+        
+        .nav-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+            font-size: 12px;
+            background: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        @media (max-width: 768px) {
+            .card-container {
+                margin: 10px;
+            }
+            
+            .card-viewer {
+                margin: 10px;
+            }
+            
+            .navigation {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            
+            .nav-btn {
+                min-width: 80px;
+                padding: 10px 16px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="card-container">
+        <div class="card-header">
+            <h1>Greeting Card</h1>
+            <p>{{ card.prompt or 'A beautiful greeting card' }}</p>
+        </div>
+        
+        <div class="card-viewer">
+            {% if card.frontCover %}
+            <div class="card-slide active" id="slide-front">
+                <img src="{{ card.frontCover }}" alt="Front Cover">
+            </div>
+            {% endif %}
+            
+            {% if card.backCover %}
+            <div class="card-slide" id="slide-back">
+                <img src="{{ card.backCover }}" alt="Back Cover">
+            </div>
+            {% endif %}
+            
+            {% if card.leftPage %}
+            <div class="card-slide" id="slide-left">
+                <img src="{{ card.leftPage }}" alt="Left Interior">
+            </div>
+            {% endif %}
+            
+            {% if card.rightPage %}
+            <div class="card-slide" id="slide-right">
+                <img src="{{ card.rightPage }}" alt="Right Interior">
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="navigation">
+            {% if card.frontCover %}
+            <button class="nav-btn active" onclick="showSlide('front')">Front Cover</button>
+            {% endif %}
+            
+            {% if card.backCover %}
+            <button class="nav-btn" onclick="showSlide('back')">Back Cover</button>
+            {% endif %}
+            
+            {% if card.leftPage %}
+            <button class="nav-btn" onclick="showSlide('left')">Left Interior</button>
+            {% endif %}
+            
+            {% if card.rightPage %}
+            <button class="nav-btn" onclick="showSlide('right')">Right Interior</button>
+            {% endif %}
+        </div>
+        
+        <div class="footer">
+            Created with ❤️ using AI Card Studio
+        </div>
+    </div>
+    
+    <script>
+        let currentSlide = 'front';
+        
+        function showSlide(slideId) {
+            // Hide all slides
+            document.querySelectorAll('.card-slide').forEach(slide => {
+                slide.classList.remove('active');
+            });
+            
+            // Remove active from all buttons
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected slide
+            const targetSlide = document.getElementById(`slide-${slideId}`);
+            if (targetSlide) {
+                targetSlide.classList.add('active');
+                currentSlide = slideId;
+            }
+            
+            // Activate button
+            event.target.classList.add('active');
+        }
+        
+        // Auto-advance slides every 5 seconds (optional)
+        function autoAdvance() {
+            const slides = ['front', 'back', 'left', 'right'];
+            const availableSlides = slides.filter(id => document.getElementById(`slide-${id}`));
+            
+            if (availableSlides.length > 1) {
+                const currentIndex = availableSlides.indexOf(currentSlide);
+                const nextIndex = (currentIndex + 1) % availableSlides.length;
+                const nextSlide = availableSlides[nextIndex];
+                
+                // Simulate button click
+                const nextBtn = Array.from(document.querySelectorAll('.nav-btn')).find(
+                    btn => btn.textContent.toLowerCase().includes(nextSlide) || 
+                           (nextSlide === 'front' && btn.textContent.includes('Front')) ||
+                           (nextSlide === 'back' && btn.textContent.includes('Back')) ||
+                           (nextSlide === 'left' && btn.textContent.includes('Left')) ||
+                           (nextSlide === 'right' && btn.textContent.includes('Right'))
+                );
+                
+                if (nextBtn) {
+                    nextBtn.click();
+                }
+            }
+        }
+        
+        // Uncomment to enable auto-advance
+        // setInterval(autoAdvance, 5000);
+    </script>
+</body>
+</html>

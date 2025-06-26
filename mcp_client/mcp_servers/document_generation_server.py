@@ -54,7 +54,10 @@ mcp = FastMCP("Document Generation Server")
 # --- Supported LLM Models ---
 MODELS_LITERAL = Literal[
     "gemini-2.5-flash-preview-05-20",
+    "gemini-2.5-flash-lite-preview-06-17",
     "gemini-2.5-pro-preview-05-06",
+    "gemini-2.5-pro-preview-06-05",
+    "gemini-2.5-pro",
     "models/gemini-2.0-flash",
     "gemini-2.0-flash",
     "claude-3-7-sonnet-latest",
@@ -63,7 +66,10 @@ MODELS_LITERAL = Literal[
 ]
 SUPPORTED_MODELS_TUPLE = (
     "gemini-2.5-flash-preview-05-20",
+    "gemini-2.5-flash-lite-preview-06-17",
     "gemini-2.5-pro-preview-05-06",
+    "gemini-2.5-pro-preview-06-05",
+    "gemini-2.5-pro",
     "models/gemini-2.0-flash",
     "gemini-2.0-flash",
     "claude-3-7-sonnet-latest",
@@ -924,7 +930,8 @@ async function chatWithAI(userMessage, options = {}) {
         systemPrompt = null,
         model = 'gemini-2.5-flash-preview-05-20',
         includeThoughts = false,
-        jsonSchema = null  // NEW: Optional JSON schema for structured responses
+        jsonSchema = null,  // Optional JSON schema for structured responses
+        attachments = null  // NEW: Optional array of image URLs
     } = options;
     
     try {
@@ -938,7 +945,8 @@ async function chatWithAI(userMessage, options = {}) {
                     system_prompt: systemPrompt,
                     model: model,
                     include_thoughts: includeThoughts,
-                    json_schema: jsonSchema  // NEW: Pass JSON schema
+                    json_schema: jsonSchema,  // Pass JSON schema
+                    attachments: attachments  // NEW: Pass image URLs
                 }
             })
         });
@@ -1008,6 +1016,19 @@ async function chatWithAIAdvanced(messages, options = {}) {
 //     model: "gemini-2.5-pro-preview-05-06"
 // });
 
+// AI with image analysis (returns string)
+// const analysis = await chatWithAI("What do you see in this image?", {
+//     attachments: ["https://example.com/image.jpg"]
+// });
+
+// AI with multiple images (returns string)
+// const comparison = await chatWithAI("Compare these two images", {
+//     attachments: [
+//         "https://example.com/image1.jpg", 
+//         "https://example.com/image2.png"
+//     ]
+// });
+
 // Structured JSON response (returns object - DO NOT parse again!)
 // const analysisResult = await chatWithAI("Analyze this image", {
 //     jsonSchema: {
@@ -1049,6 +1070,21 @@ async function chatWithAIAdvanced(messages, options = {}) {
 //     }
 // });
 // // Returns: { name: "John", age: 25, location: "New York" }
+
+// Extract structured data from images (returns object)
+// const chartData = await chatWithAI("Extract the data from this chart", {
+//     attachments: ["https://example.com/chart.png"],
+//     jsonSchema: {
+//         type: "object",
+//         properties: {
+//             title: { type: "string" },
+//             data_points: { type: "array", items: { type: "number" } },
+//             insights: { type: "array", items: { type: "string" } }
+//         },
+//         required: ["title", "data_points"]
+//     }
+// });
+// // Returns: { title: "Sales Chart", data_points: [100, 150, 200], insights: ["Steady growth"] }
 
 // Generate structured content
 // const blogPost = await chatWithAI("Write a blog post about AI", {
@@ -2600,8 +2636,8 @@ async def update_pdf_commit_summary_background(
 
 async def generate_commit_summary(request_for_summary: str, html_content_for_summary: str, previous_version_content_for_summary: str = None, commit_history_for_summary: List[Dict] = None) -> str:
     """Generate AI-powered commit summary for this version using fast model and commit history context"""
-    # Always use Flash 2.5 for commit summaries - fast and good enough
-    model = "gemini-2.5-flash-preview-05-20"
+    # Always use Flash Lite for commit summaries - fastest and most efficient
+    model = "gemini-2.5-flash-lite-preview-06-17"
     
     try:
         # Build context from commit history
@@ -2683,7 +2719,6 @@ Generate only the commit summary, no additional text."""
 
 @mcp.tool()
 async def ai_chat(
-    ctx: Context,
     messages: Annotated[str, Field(
         description="The user's message or conversation to send to the AI"
     )],
@@ -2692,7 +2727,7 @@ async def ai_chat(
     )] = None,
     model: Annotated[MODELS_LITERAL, Field(
         description="The AI model to use for the response"
-    )] = "gemini-2.5-flash-preview-05-20",
+    )] = "gemini-2.5-flash-lite-preview-06-17",
     include_thoughts: Annotated[bool, Field(
         description="Whether to include the AI's thinking process in the response"
     )] = False,
@@ -2701,14 +2736,52 @@ async def ai_chat(
     )] = "+17145986105",
     json_schema: Annotated[Optional[dict], Field(
         description="Optional JSON schema that the AI response must follow. When provided, the AI will return structured data instead of free text."
+    )] = None,
+    attachments: Annotated[Optional[List[str]], Field(
+        description="A list of image URLs to include with the message. Supports common image formats (PNG, JPEG, GIF, WebP, SVG)."
     )] = None
 ) -> dict:
     """
-    Send a message to an AI model and get a response.
+    Send a message to an AI model and get a response using direct Gemini API calls.
     
     This allows web applications to have conversational AI capabilities
     by sending user messages to various AI models and receiving responses.
     Enables chatbots, content generation, code assistance, and other AI-powered features.
+    
+    ## Image Support
+    
+    The tool supports sending images along with text messages by providing image URLs
+    in the attachments parameter. Supported formats include PNG, JPEG, GIF, WebP, and SVG.
+    
+    ### Image Examples:
+    
+    ```javascript
+    // Analyze an image
+    const analysis = await chatWithAI("What do you see in this image?", {
+        attachments: ["https://example.com/image.jpg"]
+    });
+    
+    // Multiple images
+    const comparison = await chatWithAI("Compare these two images", {
+        attachments: [
+            "https://example.com/image1.jpg",
+            "https://example.com/image2.png"
+        ]
+    });
+    
+    // Image with structured output
+    const imageData = await chatWithAI("Extract information from this chart", {
+        attachments: ["https://example.com/chart.png"],
+        jsonSchema: {
+            type: "object",
+            properties: {
+                title: {type: "string"},
+                data_points: {type: "array", items: {type: "number"}},
+                insights: {type: "array", items: {type: "string"}}
+            }
+        }
+    });
+    ```
     
     ## JSON Schema Usage
     
@@ -2857,71 +2930,80 @@ async def ai_chat(
     ```
     """
     try:
-        # Prepare the system prompt based on whether JSON schema is requested
-        final_system_prompt = system_prompt or ""
+        # Process attachments if provided
+        attachment_parts = []
+        if attachments and isinstance(attachments, list):
+            print(f"DEBUG: Processing {len(attachments)} attachments for ai_chat")
+            for url in attachments:
+                if isinstance(url, str) and url.startswith(('http://', 'https://')):
+                    if url.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg')):
+                        # Download attachment for AI processing
+                        attachment_part = await download_and_create_attachment_part(url)
+                        if attachment_part:
+                            attachment_parts.append(attachment_part)
+                            print(f"DEBUG: Successfully downloaded image: {url}")
+                        else:
+                            print(f"WARNING: Failed to download image: {url}")
+                    else:
+                        print(f"WARNING: Unsupported file type for attachment: {url}")
+                else:
+                    print(f"WARNING: Invalid URL in attachments: {url}")
         
-        if json_schema:
-            # Add JSON formatting instructions to the system prompt
-            json_instructions = f"""
-You must respond with valid JSON that follows this exact schema:
-
-{json.dumps(json_schema, indent=2)}
-
-IMPORTANT:
-- Format your response as a JSON code block using triple backticks
-- Start with ```json
-- Put the JSON data on the lines between the backticks
-- End with ```
-- Do not include any text before or after the code block
-- Follow the schema structure exactly
-- All required fields must be present
-
-Example format:
-```json
-{{"key": "value", "number": 123}}
-```
-"""
-            if final_system_prompt:
-                final_system_prompt += "\n\n" + json_instructions
-            else:
-                final_system_prompt = json_instructions
+        # Use the LLM adapter to call Gemini directly
+        adapter = get_llm_adapter(model)
         
-        # Use ctx.sample to get AI response
-        response = await ctx.sample(
-            messages=messages,
-            system_prompt=final_system_prompt,
-            model_preferences=[model]
+        # Create standardized message with attachments
+        user_message = StandardizedMessage.from_text("user", messages)
+        if attachment_parts:
+            user_message.attachments = attachment_parts
+        
+        standardized_messages = [user_message]
+        
+        # Create standardized config
+        config = StandardizedLLMConfig(
+            system_prompt=system_prompt,
+            include_thoughts=include_thoughts,
+            json_schema=json_schema
         )
         
-        # Extract the response content properly
-        ai_response = ""
-        if hasattr(response, 'text') and response.text:
-            ai_response = response.text
-        elif hasattr(response, 'content') and response.content:
-            ai_response = response.content
-        else:
-            # Try to extract from string representation if it contains actual content
-            response_str = str(response)
-            if 'text=' in response_str:
-                # Extract text between quotes after 'text='
-                import re
-                text_match = re.search(r'text=[\'"](.*?)[\'"]', response_str, re.DOTALL)
-                if text_match:
-                    ai_response = text_match.group(1)
-                    # Clean up escaped newlines and quotes
-                    ai_response = ai_response.replace('\\\\n', '\n').replace('\\"', '"').replace("\\'", "'")
-                else:
-                    return {
-                        "status": "error",
-                        "message": "Could not extract text content from AI response"
-                    }
-            else:
-                return {
-                    "status": "error",
-                    "message": "AI response format error - no text content found"
-                }
+        print(f"DEBUG: ai_chat calling Gemini directly with model: {model}")
+        print(f"DEBUG: JSON schema provided: {json_schema is not None}")
+        print(f"DEBUG: Attachments processed: {len(attachment_parts)}")
         
-        # Process the response based on whether JSON schema was requested
+        # Call Gemini directly through the adapter
+        llm_response = await adapter.generate_content(
+            model_name=model,
+            history=standardized_messages,
+            tools=None,
+            config=config
+        )
+        
+        # Check for errors
+        if llm_response.error:
+            return {
+                "status": "error",
+                "message": f"Gemini API error: {llm_response.error}"
+            }
+        
+        # Handle structured output (when json_schema is provided)
+        if json_schema and llm_response.parsed is not None:
+            # For structured output, Gemini returns parsed JSON directly
+            print(f"DEBUG: Using parsed structured output from Gemini")
+            return {
+                "status": "success",
+                "response": llm_response.parsed,  # Already parsed JSON object
+                "response_type": "json",
+                "model_used": model,
+                "message_length": len(messages),
+                "response_length": len(str(llm_response.parsed)),
+                "schema_provided": True,
+                "parsed_from": "gemini_structured_output"
+            }
+        
+        # Handle regular text response
+        ai_response = llm_response.text_content or ""
+        
+        # If JSON schema was requested but we didn't get structured output, try to parse manually
         if json_schema:
             json_match = None
             try:
@@ -2934,7 +3016,6 @@ Example format:
                     parsed_response = json.loads(json_text)
                 else:
                     # Fallback: try to parse the entire response as JSON (without code blocks)
-                    # This handles cases where AI doesn't use code blocks despite instructions
                     parsed_response = json.loads(ai_response.strip())
                 
                 # Basic schema validation (check if required fields exist)
@@ -2949,7 +3030,7 @@ Example format:
                             "expected_fields": required_fields
                         }
                 
-                result = {
+                return {
                     "status": "success",
                     "response": parsed_response,  # Structured JSON response
                     "response_type": "json",
@@ -2969,7 +3050,7 @@ Example format:
                     "json_error_detail": str(e)
                 }
         else:
-            # Return text response as before
+            # Return text response
             result = {
                 "status": "success",
                 "response": ai_response,  # Text response
@@ -2979,14 +3060,15 @@ Example format:
                 "response_length": len(ai_response),
                 "schema_provided": False
             }
-        
-        # Include thinking if requested and available
-        if include_thoughts and hasattr(response, 'thinking'):
-            result["thinking"] = response.thinking
             
-        return result
+            # Include usage metadata if available
+            if llm_response.usage_metadata:
+                result["usage_metadata"] = llm_response.usage_metadata
+                
+            return result
         
     except Exception as e:
+        print(f"ERROR in ai_chat: {str(e)}")
         return {
             "status": "error",
             "message": f"AI chat failed: {str(e)}"

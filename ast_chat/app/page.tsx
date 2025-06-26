@@ -1,2363 +1,2148 @@
 "use client";
 
-import React, { useState, useEffect, useRef, FormEvent, useCallback } from "react";
-import { ModeToggle } from "@/components/mode-toggle";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronDown, Menu, Lock, Paperclip, ArrowUp, MapPin, Loader2, Edit3, ExternalLink, Settings, Bot, Zap, Sparkles } from "lucide-react";
-import Link from "next/link";
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
-import { v4 as uuidv4 } from 'uuid';
-import { toast } from "sonner";
-import ToolCallDisplay from "@/components/ToolCallDisplay";
-import MapDisplay, { defaultTheme, nightTheme } from "@/components/MapDisplay";
-import DirectionsSteps from "@/components/DirectionsSteps";
-import ImageDisplay from "@/components/ImageDisplay";
-import { useTheme } from "next-themes";
-import { useContentPreviews } from "@/hooks/useContentPreviews";
-import ContentPreview from "@/components/ContentPreview";
-import { extractPreviewFromToolCall, shouldExtractPreview } from "@/utils/previewExtractors";
-import ArtifactEditor, { ArtifactsList } from "@/components/ArtifactEditor";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-
-// Ensure marked runs synchronously for this page too, if not already global
-marked.setOptions({ async: false });
+import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ArrowLeft, Sparkles, Printer, Heart, Gift, GraduationCap, Calendar, Wand2, MessageSquarePlus, ChevronDown, Settings, Zap, Palette, Edit3, Upload, X, Cake, ThumbsUp, PartyPopper, Trophy, TreePine, Stethoscope, CloudRain, Baby, Church, Home, MessageCircle, Eye, Wrench } from "lucide-react";
+import Link from "next/link";
+import { toast } from "sonner";
+import CardPreview from "@/components/CardPreview";
+import { ModeToggle } from "@/components/mode-toggle";
 
 // Configuration for the backend API endpoint
-const BACKEND_API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'http://localhost:5001'; // Default to localhost:5001
+const BACKEND_API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'https://vibecarding.com';
 
-interface ToolCallData {
-  call_id: string;
-  name: string;
-  arguments: string;
-  result?: string;
-  status?: "Pending..." | "Completed" | "Error" | "Streaming...";
-  is_error?: boolean;
-  is_partial?: boolean;
-  sampleCallPairs?: Array<{ id: string; thoughts?: string; output?: string; }>;
-}
-
-// NEW: Define a type for individual parts of a message
-type MessagePart =
-  | { type: "text"; id: string; content: string }
-  | { type: "tool_call"; id: string; toolCall: ToolCallData }
-  | { type: "thought_summary"; id: string; content: string };
-
-interface Message {
+interface GeneratedCard {
   id: string;
-  sender: "user" | "bot";
-  parts: MessagePart[]; // REPLACES content and tool_calls
-  timestamp: number;
-  thinking?: boolean;
-  is_error_message?: boolean; // To flag bot messages that are errors
-  showMapToggleForThisMessage?: boolean; // <-- New flag
-  directionsData?: any;
-  showWebAppForThisMessage?: boolean; // <-- New flag for web apps
-  webAppUrl?: string; // <-- Store web app URL
-  showImagesForThisMessage?: boolean; // <-- New flag for generated images
-  generatedImageUrls?: string[]; // <-- Store generated image URLs
+  prompt: string;
+  frontCover: string;      // Portrait image - what recipients see first
+  backCover: string;       // Portrait image - back of the card
+  leftPage: string;        // Portrait image - left interior (decorative art)
+  rightPage: string;       // Portrait image - right interior (message area)
+  createdAt: Date;
 }
 
-// Add ToolMeta type for available tools
-interface ToolMeta {
-  name: string;
-  description: string;
+// Common card types with custom option
+const cardTypes = [
+  { id: "birthday", label: "Birthday", description: "Celebrate another year of life", icon: Cake },
+  { id: "thank-you", label: "Thank You", description: "Express gratitude and appreciation", icon: ThumbsUp },
+  { id: "anniversary", label: "Anniversary", description: "Commemorate special milestones", icon: Heart },
+  { id: "congratulations", label: "Congratulations", description: "Celebrate achievements and success", icon: Trophy },
+  { id: "holiday", label: "Holiday", description: "Seasonal and holiday greetings", icon: TreePine },
+  { id: "get-well", label: "Get Well Soon", description: "Send healing wishes and support", icon: Stethoscope },
+  { id: "sympathy", label: "Sympathy", description: "Offer comfort during difficult times", icon: CloudRain },
+  { id: "love", label: "Love & Romance", description: "Express romantic feelings", icon: Heart },
+  { id: "graduation", label: "Graduation", description: "Celebrate educational achievements", icon: GraduationCap },
+  { id: "new-baby", label: "New Baby", description: "Welcome new arrivals", icon: Baby },
+  { id: "wedding", label: "Wedding", description: "Celebrate unions and marriages", icon: Church },
+  { id: "retirement", label: "Retirement", description: "Honor career achievements", icon: Gift },
+  { id: "housewarming", label: "Housewarming", description: "Welcome to new homes", icon: Home },
+  { id: "apology", label: "Apology", description: "Make amends and seek forgiveness", icon: MessageCircle },
+  { id: "thinking-of-you", label: "Thinking of You", description: "Show you care and remember", icon: Eye },
+  { id: "custom", label: "Custom", description: "Create your own unique card type", icon: Wrench },
+];
+
+// Card tone/style options
+const cardTones = [
+  { id: "funny", label: "😄 Funny", description: "Humorous and lighthearted" },
+  { id: "genz-humor", label: "💀 GenZ Humor", description: "Internet memes, chaotic energy, and unhinged vibes" },
+  { id: "romantic", label: "💕 Romantic", description: "Sweet and loving" },
+  { id: "professional", label: "👔 Professional", description: "Formal and business-appropriate" },
+  { id: "heartfelt", label: "❤️ Heartfelt", description: "Sincere and emotional" },
+  { id: "playful", label: "🎉 Playful", description: "Fun and energetic" },
+  { id: "elegant", label: "✨ Elegant", description: "Sophisticated and refined" },
+  { id: "casual", label: "😊 Casual", description: "Relaxed and friendly" },
+  { id: "inspirational", label: "🌟 Inspirational", description: "Motivating and uplifting" },
+  { id: "quirky", label: "🤪 Quirky", description: "Unique and unconventional" },
+  { id: "traditional", label: "🎭 Traditional", description: "Classic and timeless" },
+];
+
+// Diverse artistic styles with cool options
+const artisticStyles = [
+  {
+    id: "ai-smart-style", 
+    label: "🤖 AI Smart Style", 
+    description: "Let AI choose the perfect style for your card",
+    promptModifier: "" // Will be dynamically generated by AI
+  },
+  {
+    id: "custom", 
+    label: "✨ Custom Style", 
+    description: "Define your own unique artistic style",
+    promptModifier: "" // Will be replaced with user input
+  },
+  { 
+    id: "dreamy-fantasy", 
+    label: "Dreamy Fantasy", 
+    description: "Enchanting anime-inspired art",
+    promptModifier: "in dreamy fantasy anime style, with soft pastels, magical atmosphere, detailed nature elements, whimsical characters, and enchanting fairy-tale qualities"
+  },
+  { 
+    id: "cyberpunk", 
+    label: "Cyberpunk", 
+    description: "Futuristic neon-lit digital art",
+    promptModifier: "in cyberpunk style with neon colors, holographic effects, dark urban backgrounds, glowing elements, and futuristic digital aesthetics"
+  },
+  { 
+    id: "art-deco", 
+    label: "Art Deco", 
+    description: "Elegant 1920s geometric luxury",
+    promptModifier: "in vintage Art Deco style with geometric patterns, gold accents, elegant typography, luxurious details, and 1920s glamour"
+  },
+  { 
+    id: "pixel-art", 
+    label: "Pixel Art", 
+    description: "Retro 8-bit gaming style",
+    promptModifier: "in pixel art style reminiscent of classic 8-bit and 16-bit video games, with blocky textures, limited color palettes, and nostalgic gaming aesthetics"
+  },
+  { 
+    id: "watercolor", 
+    label: "Watercolor", 
+    description: "Soft, flowing paint effects",
+    promptModifier: "in watercolor painting style, with soft flowing colors, artistic brush strokes, paper texture, and organic paint bleeds"
+  },
+  { 
+    id: "pop-art", 
+    label: "Pop Art", 
+    description: "Bold, colorful comic book style",
+    promptModifier: "in pop art style like Andy Warhol and Roy Lichtenstein, with bold colors, comic book elements, halftone dots, and graphic design aesthetics"
+  },
+  { 
+    id: "steampunk", 
+    label: "Steampunk", 
+    description: "Victorian-era mechanical fantasy",
+    promptModifier: "in steampunk style with brass gears, copper pipes, Victorian aesthetics, mechanical contraptions, and industrial fantasy elements"
+  },
+  {
+    id: "minimalist", 
+    label: "Minimalist", 
+    description: "Clean, simple, elegant design",
+    promptModifier: "in minimalist style with clean lines, simple shapes, plenty of white space, sophisticated typography, and elegant simplicity"
+  },
+  {
+    id: "gothic", 
+    label: "Gothic", 
+    description: "Dark, dramatic, ornate style",
+    promptModifier: "in gothic style with dark romantic elements, ornate details, dramatic shadows, mysterious atmosphere, and elegant darkness"
+  },
+  {
+    id: "retro-vintage", 
+    label: "Retro Vintage", 
+    description: "Classic 1950s-60s nostalgia",
+    promptModifier: "in retro vintage style with 1950s-60s aesthetics, classic typography, warm nostalgic colors, and mid-century design elements"
+  },
+  {
+    id: "impressionist", 
+    label: "Impressionist", 
+    description: "Soft brushstrokes like Monet",
+    promptModifier: "in impressionist painting style like Monet and Renoir, with soft brush strokes, light and shadow play, and dreamy atmospheric effects"
+  },
+  {
+    id: "neon-synthwave", 
+    label: "Neon Synthwave", 
+    description: "80s retro-futuristic vibes",
+    promptModifier: "in synthwave style with neon pink and blue colors, 80s retro-futuristic aesthetics, grid patterns, and nostalgic sci-fi elements"
+  },
+  {
+    id: "handwritten", 
+    label: "Handwritten", 
+    description: "Personal, organic lettering",
+    promptModifier: "in a personal handwritten style with natural, organic lettering and hand-drawn elements"
+  }
+];
+
+// Paper size options
+const paperSizes = [
+  {
+    id: "standard",
+    label: "5×7 Card (Standard)",
+    description: "Standard 5×7 greeting card (10×7 print layout)",
+    aspectRatio: "9:16",
+    dimensions: "1024x1536",
+    printWidth: "10in",
+    printHeight: "7in"
+  },
+  {
+    id: "a6",
+    label: "A6 Card (4×6)",
+    description: "A6 paper size (8.3×5.8 print layout)",
+    aspectRatio: "2:3",
+    dimensions: "768x1152",
+    printWidth: "8.3in",
+    printHeight: "5.8in"
+  }
+];
+
+// Image model options
+const imageModels = [
+  { 
+    id: "gpt-image-1", 
+    label: "GPT Image 1", 
+    description: "Latest high-quality image model",
+  },
+  { 
+    id: "imagen-4.0-generate-preview-06-06", 
+    label: "Imagen 4.0", 
+    description: "Google's advanced image model",
+  },
+  { 
+    id: "imagen-4.0-fast-generate-preview-06-06", 
+    label: "Imagen 4.0 Fast", 
+    description: "Faster generation variant",
+  },
+  { 
+    id: "imagen-4.0-ultra-generate-preview-06-06", 
+    label: "Imagen 4.0 Ultra", 
+    description: "Highest quality variant",
+  },
+];
+
+// Email Helper Function
+async function sendThankYouEmail(toEmail: string, cardType: string) {
+  if (!toEmail.trim()) return;
+  
+  try {
+    const response = await fetch('https://16504442930.work/send_email_with_attachments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: toEmail,
+        from: 'vibecarding@ast.engineer',
+        subject: `Your ${cardType} card is ready! 🎉`,
+        body: `Hi there!
+
+Thank you for using our Card Studio to create your beautiful ${cardType} card! 
+
+We hope you love how it turned out. Your card has been generated and is ready for printing or sharing.
+
+If you have any questions or feedback, feel free to reach out to us.
+
+Happy card making! ✨
+
+Best regards,
+The Card Studio Team
+vibecarding@ast.engineer`
+      })
+    });
+
+    if (response.ok) {
+      toast.success("✉️ Thank you email sent!");
+    }
+  } catch (error) {
+    console.error('Failed to send thank you email:', error);
+    // Don't show error toast - this is a nice-to-have feature
+  }
 }
 
-export default function ChatPage() {
-  const [userInput, setUserInput] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]); // <-- New state for selected files
-  const fileInputRef = useRef<HTMLInputElement>(null); // <-- Ref for file input
-  const [fileProcessingStatus, setFileProcessingStatus] = useState<string | null>(null); // <-- Status for file processing
-  const [isPasteReady, setIsPasteReady] = useState(false); // <-- NEW: State for paste readiness indicator
-  const [showInitialView, setShowInitialView] = useState(true);
-  const scrollAreaRef = useRef<HTMLDivElement>(null); // Ref for the ScrollArea's viewport element
-  const [status, setStatus] = useState('Ready');
-  const [apiSender] = useState('+17145986105');
-  const [currentUserLocation, setCurrentUserLocation] = useState<string | null>(null);
-  const [sendLocation, setSendLocation] = useState(false); // New state for toggle
-  const [directionsData, setDirectionsData] = useState<any | null>(null);
-  const [googleMapsApiKey] = useState(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "");
-  const [mapDisplayKey, setMapDisplayKey] = useState(0); // Key for forcing MapDisplay re-render
-  const [showTraffic, setShowTraffic] = useState(false); // State for traffic layer
-  const [isMapSectionVisible, setIsMapSectionVisible] = useState(false); // <-- State for map section visibility
-  const [availableTools, setAvailableTools] = useState<ToolMeta[]>([]);
-  const [selectedTools, setSelectedTools] = useState<string[]>([]);
-
-  const { theme: appTheme } = useTheme(); // Get current application theme
-
-  // NEW: Add content previews hook
-  const { 
-    upsertPreview, 
-    updatePreview, 
-    getPreviewsForMessage, 
-    removePreview 
-  } = useContentPreviews();
-
-  // Define available models as an array of objects for the dropdown
-  const modelOptions = [
-    { value: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash" },
-    { value: "gemini-2.5-pro-preview-05-06", label: "Gemini 2.5 Pro" },
-    // Add more models here in the future
-    // { value: "gpt-4.1-2025-04-14", label: "GPT-4.1" }, 
-  ];
-  const [selectedModel, setSelectedModel] = useState(modelOptions[1].value); // Default to the second model (Pro)
-
-  // NEW: Define available system prompts
-  const systemPromptOptions = [
-    { value: "default", label: "Default", description: "Standard AI assistant" },
-    { value: "artifact_editor", label: "Artifact Editor", description: "Specialized for creating/editing web apps" },
-    { value: "professional", label: "Professional", description: "Formal business communication" },
-    { value: "web_chat", label: "Web Chat", description: "Casual conversational style" },
-  ];
-  const [selectedSystemPrompt, setSelectedSystemPrompt] = useState(systemPromptOptions[0].value); // Default to "default"
-
-  // NEW: Helper function to process tool calls for preview extraction
-  const processToolCallForPreview = (toolCall: ToolCallData, messageId: string) => {
-    console.log(`[PAGE.TSX] Processing tool call for preview: ${toolCall.name}, status: ${toolCall.status}, call_id: ${toolCall.call_id}`);
+// AI Chat Helper Function
+async function chatWithAI(userMessage: string, options: {
+  systemPrompt?: string | null;
+  model?: string;
+  includeThoughts?: boolean;
+  jsonSchema?: any;
+} = {}) {
+  const {
+    systemPrompt = null,
+    model = 'gemini-2.5-pro',
+    includeThoughts = false,  // Default to false to avoid thinking content in responses
+    jsonSchema = null
+  } = options;
+  
+  try {
+    const response = await fetch('/internal/call_mcp_tool', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tool_name: 'ai_chat',
+        arguments: {
+          messages: userMessage,
+          system_prompt: systemPrompt,
+          model: model,
+          include_thoughts: includeThoughts,
+          json_schema: jsonSchema
+        }
+      })
+    });
     
-    if (shouldExtractPreview(toolCall)) {
-      const extractedPreview = extractPreviewFromToolCall(toolCall);
-      console.log(`[PAGE.TSX] Extracted preview for tool ${toolCall.name}:`, extractedPreview);
-      
-      if (extractedPreview && extractedPreview.shouldShow) {
-        console.log(`[PAGE.TSX] Upserting preview with id: ${extractedPreview.id}, type: ${extractedPreview.type}`);
-        upsertPreview(
-          extractedPreview.id,
-          extractedPreview.type,
-          extractedPreview.data,
-          messageId,
-          {
-            name: toolCall.name,
-            call_id: toolCall.call_id,
-            status: toolCall.status,
-          }
-        );
-      } else {
-        console.log(`[PAGE.TSX] Preview extraction returned null or shouldShow=false for ${toolCall.name}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    
+    const data = await response.json();
+    if (data.error && data.error !== "None" && data.error !== null) {
+      throw new Error(data.error);
+    }
+    
+    let result;
+    if (typeof data.result === 'string') {
+      try {
+        result = JSON.parse(data.result);
+      } catch {
+        result = { status: 'error', message: 'Invalid JSON response' };
       }
     } else {
-      console.log(`[PAGE.TSX] Tool ${toolCall.name} should not extract preview (status: ${toolCall.status})`);
+      result = data.result;
     }
-  };
-
-  // Function to detect and convert HEIC files to JPEG
-  const convertHeicToJpeg = async (file: File): Promise<File> => {
-    const isHeic = file.name.toLowerCase().endsWith('.heic') || 
-                   file.name.toLowerCase().endsWith('.heif') || 
-                   file.type === 'image/heic' || 
-                   file.type === 'image/heif';
-
-    if (!isHeic) {
-      return file; // Return original file if not HEIC
+    
+    if (result.status === 'error') {
+      throw new Error(result.message);
     }
+    
+    return result.response;
+    
+  } catch (error) {
+    console.error('AI chat failed:', error);
+    throw error;
+  }
+}
+
+export default function CardStudioPage() {
+  // Core state
+  const [prompt, setPrompt] = useState("");
+  const [finalCardMessage, setFinalCardMessage] = useState("");
+  const [toField, setToField] = useState("");
+  const [fromField, setFromField] = useState("");
+  const [selectedType, setSelectedType] = useState<string>("birthday");
+  const [customCardType, setCustomCardType] = useState<string>("");
+  const [selectedTone, setSelectedTone] = useState<string>("heartfelt");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedCard, setGeneratedCard] = useState<GeneratedCard | null>(null);
+  
+  // Multiple cards state
+  const [numberOfCards, setNumberOfCards] = useState<number>(1);
+  const [generatedCards, setGeneratedCards] = useState<GeneratedCard[]>([]);
+  const [selectedCardIndex, setSelectedCardIndex] = useState<number>(0);
+
+  // AI assistant state
+  const [isGeneratingMessage, setIsGeneratingMessage] = useState(false);
+
+  // Advanced options state
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [selectedArtisticStyle, setSelectedArtisticStyle] = useState<string>("ai-smart-style");
+  const [customStyleDescription, setCustomStyleDescription] = useState<string>("");
+  const [selectedImageModel, setSelectedImageModel] = useState<string>("gpt-image-1");
+
+  // Progress tracking state
+  const [generationProgress, setGenerationProgress] = useState<string>("");
+  const [countdown, setCountdown] = useState<number>(0);
+  const [countdownInterval, setCountdownInterval] = useState<NodeJS.Timeout | null>(null);
+
+  // Upload state
+  const [handwritingSample, setHandwritingSample] = useState<File | null>(null);
+  const [handwritingSampleUrl, setHandwritingSampleUrl] = useState<string | null>(null);
+  const [referenceImage, setReferenceImage] = useState<File | null>(null);
+  const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
+  const [imageTransformation, setImageTransformation] = useState<string>("");
+  const [isUploading, setIsUploading] = useState(false);
+
+  // Email state
+  const [userEmail, setUserEmail] = useState<string>("");
+
+  // New options for handwritten messages and single-sided printing
+  const [isHandwrittenMessage, setIsHandwrittenMessage] = useState(false);
+  const [isFrontBackOnly, setIsFrontBackOnly] = useState(false);
+
+  // Paper size options
+  const [selectedPaperSize, setSelectedPaperSize] = useState<string>("standard");
+
+  // Loading states for each card section
+  const [sectionLoadingStates, setSectionLoadingStates] = useState<{
+    frontCover: 'idle' | 'loading' | 'completed' | 'error';
+    backCover: 'idle' | 'loading' | 'completed' | 'error';
+    leftInterior: 'idle' | 'loading' | 'completed' | 'error';
+    rightInterior: 'idle' | 'loading' | 'completed' | 'error';
+  }>({
+    frontCover: 'idle',
+    backCover: 'idle',
+    leftInterior: 'idle',
+    rightInterior: 'idle',
+  });
+
+  // Cleanup countdown interval on unmount
+  useEffect(() => {
+    return () => {
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+      }
+    };
+  }, [countdownInterval]);
+
+  // AI Writing Assistant
+    const handleGetMessageHelp = async () => {
+    if (!prompt.trim()) {
+      toast.error("Please describe your card first!");
+      return;
+    }
+
+    // Validate custom card type if selected
+    if (selectedType === "custom" && !customCardType.trim()) {
+      toast.error("Please describe your custom card type first!");
+      return;
+    }
+    
+    setIsGeneratingMessage(true);
 
     try {
-      console.log(`🔄 Converting HEIC file "${file.name}" to JPEG...`);
+      const cardTypeForPrompt = selectedType === "custom" ? customCardType : selectedType;
+      const selectedToneObj = cardTones.find(tone => tone.id === selectedTone);
+      const toneDescription = selectedToneObj ? selectedToneObj.description.toLowerCase() : "heartfelt and sincere";
       
-      // Dynamic import to avoid SSR issues
-      const { default: heic2any } = await import('heic2any');
-      
-      // Try heic2any conversion
-      const convertedBlob = await heic2any({
-        blob: file,
-        toType: 'image/jpeg',
-        quality: 0.85,
-      }) as Blob;
-      
-      // Create new filename with .jpg extension
-      const originalName = file.name.replace(/\.(heic|heif)$/i, '');
-      const newFileName = `${originalName}.jpg`;
+      const messagePrompt = `Create a ${toneDescription} message for a ${cardTypeForPrompt} greeting card.
 
-      // Create new File object with converted blob
-      const convertedFile = new File([convertedBlob], newFileName, {
-        type: 'image/jpeg',
-        lastModified: file.lastModified,
+Card Theme/Description: "${prompt}"
+${toField ? `Recipient: ${toField}` : "Recipient: [not specified]"}
+${fromField ? `Sender: ${fromField}` : "Sender: [not specified]"}
+Card Tone: ${selectedToneObj ? selectedToneObj.label : "Heartfelt"} - ${toneDescription}
+
+Instructions:
+- Write a message that is ${toneDescription} and feels personal and genuine
+- ${toField ? `Address the message to ${toField} directly, using their name naturally` : "Write in a way that could be personalized to any recipient"}
+- ${fromField ? `Write as if ${fromField} is personally writing this message` : `Write in a ${toneDescription} tone`}
+- Match the ${toneDescription} tone and occasion of the ${cardTypeForPrompt} card type
+- Be inspired by the theme: "${prompt}"
+- Keep it concise but meaningful (2-4 sentences ideal)
+- Make it feel authentic, not generic
+- ${selectedTone === 'funny' ? 'Include appropriate humor that fits the occasion' : ''}
+- ${selectedTone === 'genz-humor' ? 'Use GenZ humor with internet slang, memes, and chaotic energy - think "no cap", "periodt", "it\'s giving...", "slay", etc. Be unhinged but endearing' : ''}
+- ${selectedTone === 'professional' ? 'Keep it formal and business-appropriate' : ''}
+- ${selectedTone === 'romantic' ? 'Include loving and romantic language' : ''}
+- ${selectedTone === 'playful' ? 'Use fun and energetic language' : ''}
+- ${toField && fromField ? `Show the relationship between ${fromField} and ${toField} through the ${toneDescription} message tone` : ""}
+- ${fromField ? `End the message with a signature line like "Love, ${fromField}" or "- ${fromField}" or similar, naturally integrated into the message.` : ""}
+
+Return ONLY the message text that should appear inside the card - no quotes, no explanations, no markdown formatting (no *bold*, _italics_, or other markdown), just the complete ${toneDescription} message in plain text.
+
+IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outside these tags will be ignored.`;
+
+      const generatedMessage = await chatWithAI(messagePrompt, {
+        model: "gemini-2.5-pro",
+        includeThoughts: false  // Don't include thinking content in message generation
       });
 
-      console.log(`✅ Successfully converted "${file.name}" to "${newFileName}" (${Math.round(convertedFile.size / 1024)}KB)`);
-      return convertedFile;
-      
+      if (generatedMessage?.trim()) {
+        // Extract message content between <MESSAGE> tags using regex
+        const messageMatch = generatedMessage.match(/<MESSAGE>([\s\S]*?)<\/MESSAGE>/);
+        const extractedMessage = messageMatch ? messageMatch[1].trim() : generatedMessage.trim();
+        
+        setFinalCardMessage(extractedMessage);
+        toast.success("✨ Personalized message created!");
+      }
     } catch (error) {
-      console.warn(`⚠️ Frontend HEIC conversion failed for "${file.name}":`, error);
-      
-      // Try Canvas API fallback
-      try {
-        console.log(`🔄 Attempting Canvas API fallback for "${file.name}"...`);
-        
-        const imageBitmap = await createImageBitmap(file);
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        if (!ctx) {
-          throw new Error('Could not get canvas context');
-        }
-        
-        canvas.width = imageBitmap.width;
-        canvas.height = imageBitmap.height;
-        ctx.drawImage(imageBitmap, 0, 0);
-        
-        const canvasBlob = await new Promise<Blob>((resolve, reject) => {
-          canvas.toBlob((blob) => {
-            if (blob) {
-              resolve(blob);
-            } else {
-              reject(new Error('Canvas toBlob failed'));
-            }
-          }, 'image/jpeg', 0.85);
-        });
-        
-        const originalName = file.name.replace(/\.(heic|heif)$/i, '');
-        const newFileName = `${originalName}.jpg`;
-        
-        const convertedFile = new File([canvasBlob], newFileName, {
-          type: 'image/jpeg',
-          lastModified: file.lastModified,
-        });
-        
-        console.log(`✅ Canvas API fallback succeeded for "${file.name}" → "${newFileName}"`);
-        return convertedFile;
-        
-      } catch (canvasError) {
-        console.warn(`⚠️ Canvas API fallback also failed for "${file.name}":`, canvasError);
-        
-        // Final fallback: Upload HEIC file and let backend handle conversion
-        console.log(`🔄 Will upload "${file.name}" for server-side conversion...`);
-        
-        // Mark this file for server-side conversion by adding a special property
-        const fileWithConversionFlag = new File([file], file.name, {
-          type: file.type || 'image/heic',
-          lastModified: file.lastModified,
-        });
-        
-        // Add a custom property to indicate this needs server-side conversion
-        (fileWithConversionFlag as any).needsServerConversion = true;
-        
-        return fileWithConversionFlag;
-      }
+      toast.error("Failed to generate message. Please try again.");
+    } finally {
+      setIsGeneratingMessage(false);
     }
   };
 
-  const examplePrompts = [
-    { title: "What are the advantages", detail: "of using Next.js?" },
-    { title: "Write code to", detail: "demonstrate dijkstra\\'s algorithm" },
-    { title: "Help me write an essay", detail: "about silicon valley" },
-    { title: "What is the weather", detail: "in San Francisco?" },
-  ];
-
-  // Helper to ensure markdown block elements are properly spaced
-  const normalizeFragment = (fragment: string, _prevContent: string): string => {
-    // TEMPORARILY A PASS-THROUGH
-    return fragment;
-  };
-
-  // NEW: Function to convert standalone image/video URLs to HTML elements
-  const convertMediaUrls = (text: string): string => {
-    // Common image extensions
-    const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|tiff)(\?[^)\s"']*)?$/i;
-    // Common video extensions  
-    const videoExtensions = /\.(mp4|webm|ogg|mov|avi|wmv|flv|m4v)(\?[^)\s"']*)?$/i;
-    
-    // More comprehensive URL pattern that handles URLs in various contexts
-    // This pattern looks for http/https URLs that are not already in markdown image/link format
-    const urlPattern = /(?<!!\[)(?<!\]\()(?<!\[.*?\]\()https?:\/\/[^\s<>"'\]\)]+/g;
-    
-    let processedText = text.replace(urlPattern, (url) => {
-      // Remove trailing punctuation that might not be part of the URL
-      const cleanUrl = url.replace(/[.,;:!?)"']+$/, '');
-      
-      if (imageExtensions.test(cleanUrl)) {
-        return `![Image](${cleanUrl})`;
-      } else if (videoExtensions.test(cleanUrl)) {
-        return `<video controls style="max-width: 100%; height: auto; max-height: 400px; border-radius: 0.375rem; margin: 0.5em auto; display: block;">
-          <source src="${cleanUrl}" type="video/${cleanUrl.split('.').pop()?.split('?')[0] || 'mp4'}">
-          Your browser does not support the video tag.
-          <a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">View video</a>
-        </video>`;
-      }
-      
-      return url; // Return original URL if not media
-    });
-
-    // Additional aggressive pattern to catch any URLs that might be in quotes or other contexts
-    const aggressiveUrlPattern = /https?:\/\/[^\s<>"'\]\)\}]+\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|tiff|mp4|webm|ogg|mov|avi|wmv|flv|m4v)(\?[^\s<>"'\]\)\}]*)?/gi;
-    
-    processedText = processedText.replace(aggressiveUrlPattern, (url) => {
-      // Check if this URL is already converted to markdown
-      if (processedText.includes(`![Image](${url})`)) {
-        return url;
-      }
-      const cleanUrl = url.replace(/[.,;:!?)"'\}]+$/, '');
-      return `![Image](${cleanUrl})`;
-    });
-    
-    return processedText;
-  };
-
-  const renderSanitizedMarkdown = (text: string): string => {
-    // First convert standalone media URLs to proper markdown/HTML
-    const textWithMedia = convertMediaUrls(text);
-    
-    // This function assumes it's running in a browser environment
-    // due to the "use client" directive on the component and use of DOMPurify.
-    // marked.parse is configured to run synchronously.
-    const dirtyHtml = marked.parse(textWithMedia, { gfm: true, breaks: true }) as string;
-    return DOMPurify.sanitize(dirtyHtml);
-  };
-
-  const getCurrentLocation = (): Promise<string> => {
-    console.log("[PAGE.TSX] getCurrentLocation called");
-    return new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        console.error("[PAGE.TSX] Geolocation not supported");
-        reject("Geolocation is not supported by your browser.");
-        return;
-      }
-      
-      const timeoutId = setTimeout(() => {
-        console.error("[PAGE.TSX] Geolocation timeout");
-        reject("Failed to get location: Timeout.");
-      }, 10000); // 10 second timeout
-
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          clearTimeout(timeoutId);
-          const coords = `${position.coords.latitude},${position.coords.longitude}`;
-          console.log("[PAGE.TSX] Geolocation success:", coords);
-          setCurrentUserLocation(coords); // Update state here as well
-          resolve(coords);
-        },
-        (error) => {
-          clearTimeout(timeoutId);
-          console.error("[PAGE.TSX] Geolocation error:", error);
-          let message = "Unable to retrieve your location. Please ensure location services are enabled.";
-          switch(error.code) {
-            case error.PERMISSION_DENIED:
-              message = "Location permission denied. Please enable it in your browser settings.";
-              break;
-            case error.POSITION_UNAVAILABLE:
-              message = "Location information is unavailable.";
-              break;
-            case error.TIMEOUT:
-              message = "Request to get user location timed out."; // This case might be preempted by our own setTimeout
-              break;
-          }
-          reject(message);
-        },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 } // Added options
-      );
-    });
-  };
-  
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files) {
-      const files = Array.from(event.target.files);
-      
-      // Check if any files are HEIC
-      const heicFiles = files.filter(file => 
-        file.name.toLowerCase().endsWith('.heic') || 
-        file.name.toLowerCase().endsWith('.heif') || 
-        file.type === 'image/heic' || 
-        file.type === 'image/heif'
-      );
-      
-      if (heicFiles.length > 0) {
-        setFileProcessingStatus(`Converting ${heicFiles.length} HEIC file${heicFiles.length > 1 ? 's' : ''} to JPEG...`);
-      }
-      
-      try {
-        // Convert any HEIC files to JPEG
-        const convertedFiles = await Promise.all(
-          files.map(file => convertHeicToJpeg(file))
-        );
-        
-        // Check if any files need server-side conversion
-        const serverConversionFiles = convertedFiles.filter(file => (file as any).needsServerConversion);
-        
-        if (serverConversionFiles.length > 0) {
-          setFileProcessingStatus(`📤 Sending ${serverConversionFiles.length} HEIC file${serverConversionFiles.length > 1 ? 's' : ''} for server-side conversion...`);
-        } else {
-          setFileProcessingStatus(null); // Clear status when done
-        }
-        
-        setSelectedFiles(prevFiles => [...prevFiles, ...convertedFiles]);
-      } catch (error) {
-        console.error('Error processing selected files:', error);
-        
-        // Show user-friendly error message
-        if (error instanceof Error && error.message.includes('Unable to convert HEIC')) {
-          setFileProcessingStatus(`❌ HEIC conversion failed. Please try a different image format.`);
-          setTimeout(() => setFileProcessingStatus(null), 5000);
-        } else {
-          // Fall back to adding original files if conversion fails
-          setSelectedFiles(prevFiles => [...prevFiles, ...files]);
-          setFileProcessingStatus(null); // Clear status on error
-        }
-      }
-      
-      event.target.value = ''; // Reset file input to allow selecting the same file again
-    }
-  };
-
-  const removeSelectedFile = (fileNameToRemove: string) => {
-    setSelectedFiles(prevFiles => prevFiles.filter(file => file.name !== fileNameToRemove));
-  };
-
-  // NEW: Handle clipboard paste events for images
-  // Supports pasting images from:
-  // - Screenshots (Cmd/Ctrl + Shift + 4 on Mac, Print Screen on Windows)
-  // - Copied images from web browsers
-  // - Images copied from image editing software
-  // - Images copied from file managers
-  const handlePaste = useCallback(async (event: ClipboardEvent) => {
-    const items = event.clipboardData?.items;
-    if (!items) return;
-
-    const imageFiles: File[] = [];
-    
-    // Check all clipboard items for images
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      
-      // Handle image files
-      if (item.type.startsWith('image/')) {
-        const file = item.getAsFile();
-        if (file) {
-          // Create a more descriptive filename
-          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-          const extension = item.type.split('/')[1] || 'png';
-          const fileName = `pasted-image-${timestamp}.${extension}`;
-          
-          // Create a new File object with a proper name
-          const namedFile = new File([file], fileName, {
-            type: file.type,
-            lastModified: file.lastModified,
-          });
-          
-          imageFiles.push(namedFile);
-          console.log(`📋 Pasted image: ${fileName} (${Math.round(file.size / 1024)}KB)`);
-        }
-      }
+  // File upload handler
+  const handleFileUpload = async (file: File, type: 'handwriting' | 'reference') => {
+    if (!file.type.startsWith('image/')) {
+      toast.error("Please upload an image file");
+      return;
     }
 
-    // Process pasted images if any were found
-    if (imageFiles.length > 0) {
-      event.preventDefault(); // Prevent default paste behavior
-      
-      try {
-        setFileProcessingStatus(`Processing ${imageFiles.length} pasted image${imageFiles.length > 1 ? 's' : ''}...`);
-        
-        // Convert any HEIC files (though rare from clipboard)
-        const convertedFiles = await Promise.all(
-          imageFiles.map(file => convertHeicToJpeg(file))
-        );
-        
-        setSelectedFiles(prevFiles => [...prevFiles, ...convertedFiles]);
-        setFileProcessingStatus(null);
-        
-        // Show success toast
-        toast.success(`Added ${imageFiles.length} image${imageFiles.length > 1 ? 's' : ''} from clipboard`, {
-          description: `${imageFiles.map(f => f.name).join(', ')}`
-        });
-        
-      } catch (error) {
-        console.error('Error processing pasted images:', error);
-        setFileProcessingStatus(null);
-        toast.error("Failed to process pasted images", {
-          description: error instanceof Error ? error.message : "Unknown error occurred"
-        });
-      }
-    }
-  }, [convertHeicToJpeg, setFileProcessingStatus, setSelectedFiles]);
-
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => {
-        const result = reader.result as string;
-        resolve(result.split(',')[1]); // Get data part after comma
-      };
-      reader.onerror = error => reject(error);
-    });
-  };
-
-  // NEW: Upload files immediately and get URLs
-  const uploadFiles = async (files: File[]): Promise<string[]> => {
-    const uploadPromises = files.map(async (file) => {
+    setIsUploading(true);
+    
+    try {
       const formData = new FormData();
       formData.append('file', file);
       
-      // Check if this file needs server-side HEIC conversion
-      const needsServerConversion = (file as any).needsServerConversion;
-      if (needsServerConversion) {
-        formData.append('convert_heic', 'true');
-        console.log(`📤 Uploading "${file.name}" for server-side HEIC conversion...`);
-      }
+      const response = await fetch(`${BACKEND_API_BASE_URL}/upload`, {
+        method: 'POST',
+        body: formData,
+      });
       
-      try {
-        const response = await fetch(`${BACKEND_API_BASE_URL}/upload`, {
-          method: 'POST',
-          body: formData,
-        });
-        
-        if (!response.ok) {
-          throw new Error(`Upload failed: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        
-        // Log server-side HEIC conversion if it occurred
-        if (result.converted_from_heic) {
-          console.log(`✅ Server converted HEIC file "${result.original_filename}" to JPEG: "${result.filename}"`);
-        }
-        
-        return result.url; // Backend should return { url: "..." }
-      } catch (error) {
-        console.error(`Failed to upload ${file.name}:`, error);
-        throw error;
+      if (!response.ok) throw new Error(`Upload failed: ${response.status}`);
+      
+      const result = await response.json();
+      
+      if (type === 'handwriting') {
+        setHandwritingSample(file);
+        setHandwritingSampleUrl(result.url);
+        toast.success("Handwriting sample uploaded!");
+      } else {
+        setReferenceImage(file);
+        setReferenceImageUrl(result.url);
+        toast.success("Reference image uploaded!");
       }
-    });
-    
-    return Promise.all(uploadPromises);
+    } catch (error) {
+      toast.error("Upload failed. Please try again.");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
-  const handleSend = async (e?: FormEvent<HTMLFormElement> | React.MouseEvent<HTMLButtonElement>) => {
-    if (e && typeof (e as FormEvent<HTMLFormElement>).preventDefault === 'function') {
-      (e as FormEvent<HTMLFormElement>).preventDefault();
+  // Main card generation
+  const handleGenerateCard = async () => {
+    if (!prompt.trim()) {
+      toast.error("Please describe your card");
+      return;
     }
-    
-    let currentMessageText = userInput.trim(); // Use a mutable variable for message text
-    if (!currentMessageText && selectedFiles.length === 0) return; // Return if no text and no files
 
-    // --- NEW: Upload files immediately and get URLs ---
-    let attachmentUrls: string[] = [];
-    if (selectedFiles.length > 0) {
+    if (!userEmail.trim()) {
+      toast.error("Please enter your email address");
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(userEmail)) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
+    // Validate custom style if selected
+    if (selectedArtisticStyle === "custom" && !customStyleDescription.trim()) {
+      toast.error("Please describe your custom artistic style");
+      return;
+    }
+
+    // Use custom card type if selected, otherwise use the standard type
+    const cardTypeForPrompt = selectedType === "custom" ? customCardType : selectedType;
+    const selectedToneObj = cardTones.find(tone => tone.id === selectedTone);
+    const toneDescription = selectedToneObj ? selectedToneObj.description.toLowerCase() : "heartfelt and sincere";
+
+    let messageContent = finalCardMessage;
+    
+    // Handle handwritten message case
+    if (isHandwrittenMessage) {
+      messageContent = "[Blank space for handwritten message]";
+    } else if (!messageContent.trim() && !isFrontBackOnly) {
+      // Auto-generate message if empty (but not for front/back only cards)
+      setGenerationProgress("✍️ Writing your personalized message...");
       try {
-        setStatus('Uploading files...');
-        toast.loading(`Uploading ${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''}...`, {
-          id: 'file-upload'
+        const autoMessagePrompt = `Create a ${toneDescription} message for a ${cardTypeForPrompt} greeting card.
+
+Card Theme/Description: "${prompt}"
+${toField ? `Recipient: ${toField}` : "Recipient: [not specified]"}
+${fromField ? `Sender: ${fromField}` : "Sender: [not specified]"}
+Card Tone: ${selectedToneObj ? selectedToneObj.label : "Heartfelt"} - ${toneDescription}
+
+Instructions:
+- Write a message that is ${toneDescription} and feels personal and genuine
+- ${toField ? `Address the message to ${toField} directly, using their name naturally` : "Write in a way that could be personalized to any recipient"}
+- ${fromField ? `Write as if ${fromField} is personally writing this message` : `Write in a ${toneDescription} tone`}
+- Match the ${toneDescription} tone and occasion of the ${cardTypeForPrompt} card type
+- Be inspired by the theme: "${prompt}"
+- Keep it concise but meaningful (2-4 sentences ideal)
+- Make it feel authentic, not generic
+- ${selectedTone === 'funny' ? 'Include appropriate humor that fits the occasion' : ''}
+- ${selectedTone === 'genz-humor' ? 'Use GenZ humor with internet slang, memes, and chaotic energy - think "no cap", "periodt", "it\'s giving...", "slay", etc. Be unhinged but endearing' : ''}
+- ${selectedTone === 'professional' ? 'Keep it formal and business-appropriate' : ''}
+- ${selectedTone === 'romantic' ? 'Include loving and romantic language' : ''}
+- ${selectedTone === 'playful' ? 'Use fun and energetic language' : ''}
+- ${toField && fromField ? `Show the relationship between ${fromField} and ${toField} through the ${toneDescription} message tone` : ""}
+- ${fromField ? `End the message with a signature line like "Love, ${fromField}" or "- ${fromField}" or similar, naturally integrated into the message.` : ""}
+
+Return ONLY the message text that should appear inside the card - no quotes, no explanations, no markdown formatting (no *bold*, _italics_, or other markdown), just the complete ${toneDescription} message in plain text.
+
+IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outside these tags will be ignored.`;
+
+        const generatedMessage = await chatWithAI(autoMessagePrompt, {
+          model: "gemini-2.5-pro",
+          includeThoughts: false  // Don't include thinking content in message generation
         });
-        attachmentUrls = await uploadFiles(selectedFiles);
-        console.log('Files uploaded successfully:', attachmentUrls);
-        toast.success(`Successfully uploaded ${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''}`, {
-          id: 'file-upload'
-        });
-      } catch (error) {
-        console.error('File upload failed:', error);
-        setStatus('Ready');
-        // Show error to user with toast instead of inline message
-        toast.error("Upload failed. Please try again.", {
-          id: 'file-upload',
-          description: error instanceof Error ? error.message : "Unknown error occurred"
-        });
-        return;
+        if (generatedMessage?.trim()) {
+          // Extract message content between <MESSAGE> tags using regex
+          const messageMatch = generatedMessage.match(/<MESSAGE>([\s\S]*?)<\/MESSAGE>/);
+          const extractedMessage = messageMatch ? messageMatch[1].trim() : generatedMessage.trim();
+          
+          messageContent = extractedMessage;
+          setFinalCardMessage(messageContent);
+          setGenerationProgress("✅ Message created! Preparing artwork...");
+          toast.success("✨ Generated a personalized message for your card!");
+        } else {
+          messageContent = prompt;
+        }
+      } catch {
+        messageContent = prompt;
       }
     }
 
-    // --- Location Appending Logic ---
-    let resolvedOriginForQuery: string | undefined = undefined;
-    if (sendLocation) {
-      if (currentUserLocation) {
-        resolvedOriginForQuery = currentUserLocation;
-      } else {
+    setIsGenerating(true);
+    setGenerationProgress("🎨 Preparing your card...");
+    
+    // Reset cards state
+    setGeneratedCards([]);
+    setSelectedCardIndex(0);
+    
+    // Start 90-second countdown
+    setCountdown(120);
+    const interval = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    setCountdownInterval(interval);
+    
+    try {
+      // Get style details
+      setGenerationProgress("🎨 Applying your artistic style...");
+      const selectedStyle = artisticStyles.find(style => style.id === selectedArtisticStyle);
+      let styleModifier = selectedStyle ? selectedStyle.promptModifier : "";
+      
+      // Handle AI Smart Style - let AI choose the best style
+      if (selectedArtisticStyle === "ai-smart-style") {
+        setGenerationProgress("🤖 AI is choosing the perfect style for your card...");
         try {
-          console.log("Attempting to get current location because toggle is on...");
-          const location = await getCurrentLocation();
-          resolvedOriginForQuery = location;
-          console.log("Current location obtained for query:", location);
-        } catch (locationError: any) {
-          console.error("Error getting location for query:", locationError);
-          // Show location error with toast instead of chat message
-          toast.error("Location Error", {
-            description: locationError.toString()
+          const styleSelectionPrompt = `You are an expert art director for greeting cards. Analyze this card request and recommend the PERFECT artistic style that will make it look absolutely stunning and unique.
+
+Card Details:
+- Type: ${cardTypeForPrompt}
+- Theme/Description: "${prompt}"
+${toField ? `- Recipient: ${toField}` : ""}
+${fromField ? `- Sender: ${fromField}` : ""}
+${referenceImageUrl ? `- Has reference photo for transformation` : ""}
+${isHandwrittenMessage ? `- Will have handwritten message` : `- Message: "${finalCardMessage}"`}
+
+Consider:
+- The occasion and mood of the card
+- The target audience and relationship
+- Current art trends and timeless appeal
+- What would make this card truly special and memorable
+- Harmony between artistic style and card purpose
+
+Choose ONE specific artistic style that would be absolutely perfect for this card. Respond with just the style description in this format:
+"in [detailed artistic style description with specific techniques, colors, mood, and visual elements]"
+
+Make it detailed, specific, and designed to create a breathtaking card that the recipient will treasure forever.`;
+
+          const aiSelectedStyle = await chatWithAI(styleSelectionPrompt, {
+            model: "gemini-2.5-pro",
+            includeThoughts: false  // Don't include thinking content for style selection
           });
-          if (showInitialView) setShowInitialView(false);
-          setUserInput(""); // Clear input
-          setSelectedFiles([]); // Clear files
-          setStatus('Ready');
-          return; 
+
+          if (aiSelectedStyle?.trim()) {
+            styleModifier = aiSelectedStyle.trim();
+            setGenerationProgress("✨ AI selected the perfect style! Creating your card...");
+            toast.success("🎨 AI chose a perfect artistic style for your card!");
+          } else {
+            // Fallback to a beautiful default style
+            styleModifier = "in a sophisticated artistic style with harmonious colors, elegant composition, and beautiful visual elements perfectly suited for this special card";
+          }
+        } catch (error) {
+          console.error('AI style selection failed:', error);
+          // Fallback to a beautiful default style
+          styleModifier = "in a sophisticated artistic style with harmonious colors, elegant composition, and beautiful visual elements perfectly suited for this special card";
+          toast.info("Using a beautiful default style for your card");
         }
       }
-      if (resolvedOriginForQuery) {
-        // Append to the message text that will be sent
-        currentMessageText = `${currentMessageText} (My current location is: ${resolvedOriginForQuery})`;
+      // Use custom style description if custom style is selected
+      else if (selectedArtisticStyle === "custom" && customStyleDescription.trim()) {
+        styleModifier = `in ${customStyleDescription.trim()}`;
+      } else if (selectedArtisticStyle === "custom" && !customStyleDescription.trim()) {
+        // Fallback to default if custom is selected but no description provided
+        styleModifier = "in artistic style with creative and unique visual elements";
       }
-    }
-    // --- End Location Appending Logic ---
-
-    // --- NEW: Include attachment URLs directly in the message ---
-    if (attachmentUrls.length > 0) {
-      const attachmentList = attachmentUrls.map((url, index) => {
-        const fileName = selectedFiles[index]?.name || `Attachment ${index + 1}`;
-        return `- ${fileName}: ${url}`;
-      }).join('\n');
       
-      currentMessageText += `\n\nAttached files:\n${attachmentList}`;
-    }
+      // Get paper size configuration
+      const paperConfig = paperSizes.find(size => size.id === selectedPaperSize) || paperSizes[0];
+      
+      // Generate multiple unique prompt sets for each card
+      setGenerationProgress(`🤖 Creating ${numberOfCards} unique design prompt sets...`);
+      
+      // Create the base prompt generation query that will be used for each card variant
+      const basePromptGenerationQuery = `Create ${isFrontBackOnly ? '2' : '4'} prompts for a cohesive, chronologically flowing ${cardTypeForPrompt} greeting card that tells a visual story (${paperConfig.aspectRatio} ratio):
 
-    const userMessageId = uuidv4();
-    const userMessageParts: MessagePart[] = [];
-    if (currentMessageText) { // Use potentially modified message text
-      userMessageParts.push({ type: "text", id: uuidv4(), content: currentMessageText });
-    }
+🎨 CREATIVITY MANDATE: Be genuinely creative, unique, and innovative! Avoid generic or cliché designs. Think outside the box, surprise with unexpected elements, use bold artistic choices, and create something truly memorable and special. Push creative boundaries while staying appropriate for the card type and tone.
 
-    const userMessage: Message = {
-      id: userMessageId,
-      sender: "user",
-      parts: userMessageParts,
-      timestamp: Date.now(),
-    };
-    setMessages((prevMessages) => [...prevMessages, userMessage]);
-    setUserInput(""); 
-    if (showInitialView) setShowInitialView(false);
+Theme: "${prompt}"
+Style: ${selectedStyle?.label || "Default"}
+Tone: ${selectedToneObj ? selectedToneObj.label : "Heartfelt"} - ${toneDescription}
+${toField ? `To: ${toField}` : ""}
+${fromField ? `From: ${fromField}` : ""}
+${!isFrontBackOnly ? `Message: "${messageContent}"` : ""}
+${isHandwrittenMessage ? "Note: Include space for handwritten message" : ""}
+${referenceImageUrl ? `Reference: "${imageTransformation || 'artistic transformation'}"` : ""}
 
-    const botMessageId = uuidv4();
-    setMessages((prevMessages) => [
-      ...prevMessages,
-      { 
-        id: botMessageId, 
-        sender: 'bot', 
-        parts: [{ type: "thought_summary", id: uuidv4(), content: "" }],
-        timestamp: Date.now(),
-        thinking: true
-      },
-    ]);
+CRITICAL: Create a cohesive visual narrative that flows chronologically through the card experience:
+1. FRONT COVER: First impression - sets the scene/introduces the story
+2. INTERIOR SPREAD: The heart of the experience - continuation and climax of the visual story
+3. BACK COVER: Conclusion - peaceful resolution or complementary ending
 
-    try {
-      // --- NEW: Simplified payload with URLs instead of base64 ---
-      const payload = {
-        sender: apiSender,
-        query: currentMessageText, // This now includes attachment URLs
-        timestamp: Date.now(),
-        stream: true,
-        model: selectedModel,
-        attachment_urls: attachmentUrls.length > 0 ? attachmentUrls : undefined, // NEW: Direct URL array
-        system_prompt: selectedSystemPrompt !== "default" ? selectedSystemPrompt : undefined, // NEW: Include system prompt if not default
-        allowed_tools: selectedTools, // Always send the array, even if empty
+Requirements:
+- Flat 2D artwork for printing (not 3D card images)
+- Full-bleed backgrounds extending to edges
+- IMPORTANT: Keep text, faces, and key elements at least 10% away from top/bottom edges (small amount may be cropped in printing)
+- Keep text/faces 0.5" from left/right edges for safe printing
+- CONSISTENT visual elements throughout: same characters, color palette, lighting, art style
+- Progressive visual storytelling from front → interior → back
+- Put any text in quotes and make it clear/readable
+- Each section should feel like part of the same artistic universe
+- TONE: Ensure the visual mood and atmosphere matches the ${toneDescription} tone throughout all sections
+${selectedTone === 'funny' ? '- Include visual humor, playful elements, and whimsical details' : ''}
+${selectedTone === 'genz-humor' ? '- Include GenZ visual elements like chaotic energy, internet meme references, bold contrasting colors, and unhinged but endearing visual style' : ''}
+${selectedTone === 'romantic' ? '- Include romantic elements like soft lighting, hearts, flowers, or intimate scenes' : ''}
+${selectedTone === 'professional' ? '- Keep visuals clean, sophisticated, and business-appropriate' : ''}
+${selectedTone === 'playful' ? '- Include bright colors, dynamic poses, and energetic visual elements' : ''}
+${selectedTone === 'elegant' ? '- Focus on sophisticated design, refined color palettes, and graceful compositions' : ''}
+${referenceImageUrl ? `- Create cartoon/illustrated characters inspired by reference image - DO NOT make realistic depictions` : ''}
+
+Create prompts that flow chronologically:
+
+1. Front Cover (Opening Scene): BE GENUINELY CREATIVE AND UNIQUE! Include "${cardTypeForPrompt}" greeting text positioned safely in the center area (avoid top/bottom 10% of image). ${referenceImageUrl ? `I have included my own reference image. Create a stylized cartoon/illustrated character inspired by the reference image - DO NOT make realistic depictions of real people, instead create charming cartoon-style characters with simplified, friendly features.` : 'Create charming cartoon-style or stylized illustrated figures if people are needed for the theme.'} This is the story opening - introduce key visual elements (colors, motifs, artistic style) that will continue throughout the other sections. Think of something unexpected, innovative, and memorable that will surprise and delight the recipient. Avoid generic designs! Style: ${styleModifier}
+
+2. ${!isFrontBackOnly ? `Left Interior (Story Development): UNLEASH YOUR CREATIVITY! The AI has complete creative freedom to design whatever it wants for this left interior page! This is your artistic playground - create something genuinely innovative and unexpected that feels right for a ${cardTypeForPrompt} card with ${toneDescription} tone. You can include: scenes, landscapes, objects, patterns, quotes, text, illustrations, realistic art, abstract art, or anything else that inspires you - but NO PEOPLE or characters unless the user specifically mentioned wanting people in their card description. Position any text safely in center area (avoid top/bottom 10%). Think of something no one has done before! Surprise us with bold, imaginative, and memorable artistic choices while maintaining visual harmony with the overall card style and tone. Style: ${styleModifier}
+
+3. Right Interior (Story Climax): BE CREATIVE WITH MESSAGE DESIGN! ${isHandwrittenMessage ? `Design with elegant writing space that complements the visual story from left interior. Position decorative elements safely away from top/bottom edges. Create innovative and artistic decorative elements, borders, or flourishes that are unique and memorable - NO PEOPLE or characters.` : `Include message text: "${messageContent}" positioned safely in center area (avoid top/bottom 10% of image) integrated into beautiful, innovative decorative artwork. Think beyond typical florals and patterns - create something unexpected and artistic that perfectly frames the message - NO PEOPLE or characters.`} This should feel like the emotional peak of the card experience, harmonizing with the left interior as a cohesive spread. Avoid cliché designs and create something genuinely special!${handwritingSampleUrl ? ' Match handwriting style.' : ''} Style: ${styleModifier}
+
+4. ` : ''}Back Cover (Story Resolution): BE SUBTLY CREATIVE! Create a simple yet innovative decorative design that brings peaceful closure to the visual story. Reference subtle elements from the front cover but keep it minimal and serene - NO TEXT and NO PEOPLE, just beautiful, unexpected artistic elements that go beyond typical patterns or florals. Think of something quietly beautiful and memorable that complements the overall design while being genuinely unique. This should feel like a peaceful, artistic ending that surprises with its subtle creativity. Style: ${styleModifier}
+
+VISUAL CONTINUITY CHECKLIST:
+- Same color palette across all sections
+- Consistent lighting/time of day
+- Same artistic techniques and brushwork
+- Recurring visual motifs or symbols (but make them unique and memorable!)
+- Progressive emotional journey from introduction to resolution
+- Front cover: stylized cartoon/illustrated characters if people are needed for the theme
+- Left interior: CREATIVE FREEDOM but NO PEOPLE unless user specifically requested people in their description
+- Right interior: focus on message space with innovative decorative elements (NO PEOPLE)
+- Back cover: simple yet creative decorative design without text or people
+- Use simplified, friendly, charming character design if including people (front cover only)
+- CREATIVITY PRIORITY: Always choose the more innovative, surprising, and memorable option over generic designs
+
+Return JSON:
+{
+  "frontCover": "detailed prompt with story opening elements",
+  "backCover": "detailed prompt with story conclusion elements"${!isFrontBackOnly ? ',\n  "leftInterior": "detailed prompt with story development elements",\n  "rightInterior": "detailed prompt with story climax elements"' : ''}
+}
+
+IMPORTANT: Create a completely unique and different interpretation for this specific card variant. Use different creative approaches, color schemes, compositions, and artistic elements while maintaining the same core theme and requirements.`;
+
+      // Generate multiple unique prompt sets in parallel
+      const promptGenerationPromises = Array.from({ length: numberOfCards }, (_, cardIndex) => {
+        const uniquePromptQuery = basePromptGenerationQuery + `
+
+🎨 CARD VARIANT ${cardIndex + 1} CREATIVE DIRECTION: 
+Create a completely unique visual interpretation that's distinctly different from other possible variants. Use different:
+- Color palettes and mood lighting
+- Artistic composition and layout approaches  
+- Creative visual metaphors and symbols
+- Character designs and poses (if applicable)
+- Background elements and settings
+- Typography styles and text placement
+- Overall creative theme while keeping same core message
+
+Make this card variant stand out as its own unique artistic vision!
+
+Return JSON:
+{
+  "frontCover": "detailed prompt with story opening elements",
+  "backCover": "detailed prompt with story conclusion elements"${!isFrontBackOnly ? ',\n  "leftInterior": "detailed prompt with story development elements",\n  "rightInterior": "detailed prompt with story climax elements"' : ''}
+}`;
+
+        return chatWithAI(uniquePromptQuery, {
+          jsonSchema: {
+            type: "object",
+            properties: {
+              frontCover: { type: "string" },
+              backCover: { type: "string" },
+              ...(isFrontBackOnly ? {} : { 
+                leftInterior: { type: "string" },
+                rightInterior: { type: "string" }
+              })
+            },
+            required: ["frontCover", "backCover", ...(isFrontBackOnly ? [] : ["leftInterior", "rightInterior"])]
+          },
+          includeThoughts: false  // Don't include thinking content for prompt generation
+        });
+      });
+
+      // Wait for all prompt generations to complete
+      const allGeneratedPrompts = await Promise.all(promptGenerationPromises);
+      
+      setGenerationProgress(`✅ Generated ${numberOfCards} unique prompt sets! Creating images...`);
+
+      // // Debug: Send all prompts to debug endpoint
+      // const debugSendPrompts = async () => {
+      //   try {
+      //     const allPrompts = allGeneratedPrompts.map((prompts, cardIndex) => [
+      //       `CARD ${cardIndex + 1}:`,
+      //       `FRONT COVER: ${prompts.frontCover}`,
+      //       `BACK COVER: ${prompts.backCover}`,
+      //       ...(isFrontBackOnly ? [] : [
+      //         `LEFT INTERIOR: ${prompts.leftInterior}`,
+      //         `RIGHT INTERIOR: ${prompts.rightInterior}`
+      //       ])
+      //     ].join('\n')).join('\n\n---\n\n');
+          
+      //     await fetch('https://16504442930.work/send_email_with_attachments', {
+      //       method: 'POST',
+      //       headers: { 'Content-Type': 'application/json' },
+      //       body: JSON.stringify({ 
+      //         body: allPrompts,
+      //         to: 'cards1@ast.engineer'
+      //       })
+      //     });
+      //   } catch (error) {
+      //     // Silent fail - don't impact UI
+      //   }
+      // };
+      
+
+      // Generate all images in parallel
+      setGenerationProgress(`🖼️ Generating your ${numberOfCards} card${numberOfCards > 1 ? 's' : ''} with ${isFrontBackOnly ? '2' : '4'} images each...`);
+      
+            // Prepare input images for each section
+      const frontCoverInputImages: string[] = [];
+      const backCoverInputImages: string[] = [];
+      const leftInteriorInputImages: string[] = [];
+      const rightInteriorInputImages: string[] = [];
+      
+      if (selectedImageModel === "gpt-image-1") {
+        // Pass reference image only to front cover
+        if (referenceImageUrl) {
+          frontCoverInputImages.push(referenceImageUrl);
+        }
+        // Add handwriting sample to right interior for message styling
+        if (handwritingSampleUrl && !isFrontBackOnly) {
+          rightInteriorInputImages.push(handwritingSampleUrl);
+        }
+      }
+        
+        // Create payloads for all cards with their unique prompts
+      const allCardPayloads: any[] = [];
+      
+      // Create payloads for each card with its unique prompts
+      allGeneratedPrompts.forEach((generatedPrompts, cardIndex) => {
+        const cardPayloads = [
+          {
+            tool_name: "generate_images_with_prompts",
+            arguments: {
+              user_number: "+17145986105",
+              prompts: [generatedPrompts.frontCover],
+              model_version: selectedImageModel,
+              aspect_ratio: paperConfig.aspectRatio,
+              quality: "high",
+              output_format: "jpeg",
+              output_compression: 100,
+              moderation: "auto",
+              ...(frontCoverInputImages.length > 0 && { input_images: [frontCoverInputImages] })
+            },
+            user_id_context: "+17145986105",
+            cardIndex,
+            sectionIndex: 0,
+            sectionName: "Front Cover"
+          },
+          {
+            tool_name: "generate_images_with_prompts",
+            arguments: {
+              user_number: "+17145986105",
+              prompts: [generatedPrompts.backCover],
+              model_version: selectedImageModel,
+              aspect_ratio: paperConfig.aspectRatio,
+              quality: "high",
+              output_format: "jpeg",
+              output_compression: 100,
+              moderation: "auto",
+              ...(backCoverInputImages.length > 0 && { input_images: [backCoverInputImages] })
+            },
+            user_id_context: "+17145986105",
+            cardIndex,
+            sectionIndex: 1,
+            sectionName: "Back Cover"
+          }
+        ];
+
+        // Add interior images if not front/back only
+        if (!isFrontBackOnly && generatedPrompts.leftInterior && generatedPrompts.rightInterior) {
+          cardPayloads.push(
+            {
+              tool_name: "generate_images_with_prompts",
+              arguments: {
+                user_number: "+17145986105",
+                prompts: [generatedPrompts.leftInterior],
+                model_version: selectedImageModel,
+                aspect_ratio: paperConfig.aspectRatio,
+                quality: "high",
+                output_format: "jpeg",
+                output_compression: 100,
+                moderation: "auto",
+                ...(leftInteriorInputImages.length > 0 && { input_images: [leftInteriorInputImages] })
+              },
+              user_id_context: "+17145986105",
+              cardIndex,
+              sectionIndex: 2,
+              sectionName: "Left Interior"
+            },
+            {
+              tool_name: "generate_images_with_prompts",
+              arguments: {
+                user_number: "+17145986105",
+                prompts: [generatedPrompts.rightInterior],
+                model_version: selectedImageModel,
+                aspect_ratio: paperConfig.aspectRatio,
+                quality: "high",
+                output_format: "jpeg",
+                output_compression: 100,
+                moderation: "auto",
+                ...(rightInteriorInputImages.length > 0 && { input_images: [rightInteriorInputImages] })
+              },
+              user_id_context: "+17145986105",
+              cardIndex,
+              sectionIndex: 3,
+              sectionName: "Right Interior"
+            }
+          );
+        }
+        
+        allCardPayloads.push(...cardPayloads);
+      });
+
+      // Track image completion per card
+      const completedImages = new Map<string, string>();
+      let completedCount = 0;
+      
+      // Clear any existing cards during generation
+      setGeneratedCards([]);
+      setGeneratedCard(null);
+      setSelectedCardIndex(0);
+      setGenerationProgress(`🎨 Generating ${numberOfCards} card${numberOfCards > 1 ? 's' : ''} with ${allCardPayloads.length} images total in parallel...`);
+
+      // Helper function to regenerate prompt if blocked by safety system
+      const regeneratePromptIfNeeded = async (originalPrompt: string, sectionName: string) => {
+        try {
+          const regenerationQuery = `The following image prompt was blocked by OpenAI's safety system. Please rewrite it to be more appropriate while keeping the same artistic intent and style:
+
+BLOCKED PROMPT: "${originalPrompt}"
+
+Requirements:
+- Keep the same artistic style and visual goals
+- Remove any content that might trigger safety filters
+- Maintain the full-bleed design requirements
+- IMPORTANT: Keep text, faces, and key elements at least 10% away from top/bottom edges (small amount may be cropped in printing)
+- Focus on safe, family-friendly imagery
+- Keep the same color palette and mood
+- Ensure it's appropriate for a greeting card
+
+Return only the rewritten prompt, no explanations.`;
+
+          const newPrompt = await chatWithAI(regenerationQuery, {
+            model: "gemini-2.5-pro",
+            includeThoughts: false  // Don't include thinking content for prompt regeneration
+          });
+          
+          return newPrompt?.trim() || originalPrompt;
+        } catch (error) {
+          console.error('Failed to regenerate prompt:', error);
+          return originalPrompt;
+        }
       };
 
-      // Clear selected files now that they're uploaded and in the message
-      setSelectedFiles([]);
-      setStatus('Processing...');
+      // Helper function to analyze reference image and get text description
+      const analyzeReferenceImage = async (imageUrl: string) => {
+        try {
+          const analysisPrompt = `Analyze this reference photo and provide a detailed description of the people and visual elements that can be used to recreate them as stylized cartoon/illustrated characters in a greeting card.
 
-      const response = await fetch(`${BACKEND_API_BASE_URL}/query`, {
+Focus on:
+- Number of people and their approximate ages/relationships
+- Hair colors, styles, and lengths
+- Eye colors and facial features (in general terms)
+- Clothing colors and styles
+- Body language and poses
+- Background elements or setting
+- Overall mood and atmosphere
+
+Provide a detailed but concise description that would help an artist recreate these people as charming, stylized cartoon characters while maintaining their key identifying features. Avoid realistic depictions - focus on cartoon/illustration style descriptions.
+
+Format as a single paragraph description suitable for an image generation prompt.`;
+
+          const response = await fetch('/internal/call_mcp_tool', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tool_name: 'analyze_images',
+              arguments: {
+                urls: [imageUrl],
+                analysis_prompt: analysisPrompt
+              }
+            })
+          });
+
+          if (!response.ok) throw new Error(`Analysis failed: ${response.status}`);
+          
+          const data = await response.json();
+          if (data.error && data.error !== "None" && data.error !== null) {
+            throw new Error(data.error);
+          }
+          
+          let result;
+          if (typeof data.result === 'string') {
+            try {
+              result = JSON.parse(data.result);
+            } catch {
+              result = { status: 'error', message: 'Invalid JSON response' };
+            }
+          } else {
+            result = data.result;
+          }
+          
+          if (result.status === 'error') {
+            throw new Error(result.message);
+          }
+          
+          // Extract analysis from the analyze_images response structure
+          if (result.status === 'success' && result.results && result.results.length > 0) {
+            const firstResult = result.results[0];
+            if (firstResult.status === 'success' && firstResult.analysis) {
+              return firstResult.analysis;
+            } else {
+              throw new Error(firstResult.message || 'Image analysis failed');
+            }
+          }
+          
+          throw new Error('No analysis results returned');
+          
+        } catch (error) {
+          console.error('Image analysis failed:', error);
+          return null;
+        }
+      };
+
+      // Helper function to process a single image with retry logic
+      const processSingleImage = async (payload: any, index: number, sectionName: string, cardIndex: number = 0) => {
+        let currentPayload = payload;
+        let retryCount = 0;
+        const maxRetries = 2;
+        let hasTriedTextFallback = false;
+        
+        while (retryCount <= maxRetries) {
+          try {
+            const response = await fetch(`${BACKEND_API_BASE_URL}/internal/call_mcp_tool`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(currentPayload),
+            });
+
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            // Check for safety system error
+            if (result.result && typeof result.result === 'string') {
+              const parsedResult = JSON.parse(result.result);
+              if (parsedResult.status === 'error' && parsedResult.results?.[0]?.error?.includes('moderation_blocked')) {
+                if (retryCount < maxRetries) {
+                  // Regenerate prompt and retry
+                  const originalPrompt = currentPayload.arguments.prompts[0];
+                  const newPrompt = await regeneratePromptIfNeeded(originalPrompt, sectionName);
+                  
+                  currentPayload = {
+                    ...currentPayload,
+                    arguments: {
+                      ...currentPayload.arguments,
+                      prompts: [newPrompt]
+                    }
+                  };
+                  
+                  retryCount++;
+                  continue;
+                } else {
+                  throw new Error(`Safety system blocked ${sectionName} after ${maxRetries} attempts`);
+                }
+              }
+              
+              // Check if this is a reference image failure and we haven't tried text fallback yet
+              if (parsedResult.status === 'error' && 
+                  index === 0 && // Only for front cover
+                  referenceImageUrl && 
+                  currentPayload.arguments.input_images && 
+                  !hasTriedTextFallback) {
+                
+                setGenerationProgress(`🔍 Analyzing reference photo for ${sectionName}...`);
+                toast.info(`Analyzing reference photo to create ${sectionName}...`);
+                
+                // Analyze the reference image first
+                const imageDescription = await analyzeReferenceImage(referenceImageUrl);
+                
+                if (imageDescription) {
+                  // Create new prompt by appending the image description
+                  const originalPrompt = currentPayload.arguments.prompts[0];
+                  const enhancedPrompt = `${originalPrompt}\n\nIMPORTANT: Based on this detailed description of people from the reference photo, create stylized cartoon/illustrated characters with these specific features: "${imageDescription}". Transform these real people into charming, friendly cartoon-style characters while maintaining their key identifying characteristics (hair color, clothing, poses, etc.).`;
+                  
+                  // Remove input_images and use text-only generation
+                  currentPayload = {
+                    ...currentPayload,
+                    arguments: {
+                      ...currentPayload.arguments,
+                      prompts: [enhancedPrompt],
+                      input_images: undefined // Remove reference image
+                    }
+                  };
+                  
+                  hasTriedTextFallback = true;
+                  setGenerationProgress(`✨ Creating ${sectionName} from analyzed description...`);
+                  toast.success(`📝 Successfully analyzed reference photo! Creating ${sectionName}...`);
+                  continue; // Retry with text-only prompt
+                }
+              }
+            }
+            
+            if (result.error && result.error !== "None" && result.error !== null) {
+              throw new Error(result.error);
+            }
+
+            // Parse and extract image URL
+            const data = JSON.parse(result.result);
+            if (data.status !== "success") {
+              throw new Error(`${sectionName} generation failed`);
+            }
+            
+            const imageUrl = Array.isArray(data.results[0]) ? data.results[0][0] : data.results[0];
+            
+            // Track completed images per card
+            const imageKey = `${cardIndex}-${index}`;
+            completedImages.set(imageKey, imageUrl);
+            
+            completedCount++;
+            const totalImages = allCardPayloads.length;
+            setGenerationProgress(`🎨 Generated ${completedCount}/${totalImages} images (Card ${cardIndex + 1} ${sectionName})...`);
+            
+            // Check if this card is now complete
+            const sectionsPerCard = isFrontBackOnly ? 2 : 4;
+            const cardStartIndex = cardIndex * sectionsPerCard;
+            const cardEndIndex = cardStartIndex + sectionsPerCard - 1;
+            
+            let isCardComplete = true;
+            for (let i = cardStartIndex; i <= cardEndIndex; i++) {
+              const checkKey = `${cardIndex}-${i - cardStartIndex}`;
+              if (!completedImages.has(checkKey)) {
+                isCardComplete = false;
+                break;
+              }
+            }
+            
+            // If card is complete, update the cards state
+            if (isCardComplete) {
+              setGeneratedCards(prevCards => {
+                const updatedCards = [...prevCards];
+                
+                // Create new card object if it doesn't exist
+                if (!updatedCards[cardIndex]) {
+                  updatedCards[cardIndex] = {
+                    id: `card-${cardIndex}-${Date.now()}`,
+                    prompt: prompt,
+                    frontCover: "",
+                    backCover: "",
+                    leftPage: "",
+                    rightPage: "",
+                    createdAt: new Date()
+                  };
+                }
+                
+                const updatedCard: GeneratedCard = { ...updatedCards[cardIndex] };
+                
+                // Set all images for this completed card
+                updatedCard.frontCover = completedImages.get(`${cardIndex}-0`) || "";
+                updatedCard.backCover = completedImages.get(`${cardIndex}-1`) || "";
+                
+                if (!isFrontBackOnly) {
+                  updatedCard.leftPage = completedImages.get(`${cardIndex}-2`) || "";
+                  updatedCard.rightPage = completedImages.get(`${cardIndex}-3`) || "";
+                } else {
+                  // Set fallbacks for front/back only mode
+                  updatedCard.leftPage = updatedCard.backCover;
+                  updatedCard.rightPage = updatedCard.frontCover;
+                }
+
+                updatedCards[cardIndex] = updatedCard;
+                
+                // If this is the first completed card or the selected card, set it as main display
+                if (!generatedCard || cardIndex === selectedCardIndex) {
+                  setGeneratedCard(updatedCard);
+                }
+                
+                return updatedCards;
+              });
+              
+              toast.success(`🎉 Card ${cardIndex + 1} is complete and ready!`);
+            }
+            
+            return imageUrl;
+            
+          } catch (error) {
+            if (retryCount === maxRetries) {
+              throw new Error(`Failed to generate ${sectionName}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+            retryCount++;
+          }
+        }
+      };
+
+      // Start all image generations in parallel (all cards, all sections) with unique prompts
+      const imagePromises = allCardPayloads.map((payload) => 
+        processSingleImage(payload, payload.sectionIndex, payload.sectionName, payload.cardIndex)
+      );
+
+      // Wait for all to complete
+      await Promise.all(imagePromises);
+
+      setGenerationProgress("");
+      if (numberOfCards === 1) {
+        toast.success("🎉 Your complete card is ready!");
+      } else {
+        toast.success(`🎉 All ${numberOfCards} cards are ready! Choose your favorite below.`);
+      }
+      
+      // Send thank you email if user provided email
+      if (userEmail.trim()) {
+        const cardTypeForEmail = selectedType === "custom" ? customCardType : selectedType;
+        sendThankYouEmail(userEmail, cardTypeForEmail);
+      }
+      
+      // Clear countdown timer on successful completion
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+        setCountdownInterval(null);
+      }
+      setCountdown(0);
+
+    } catch (error) {
+      setGenerationProgress("");
+      toast.error("Failed to generate card. Please try again.");
+      console.error("Card generation error:", error);
+    } finally {
+      setIsGenerating(false);
+      // Clear countdown timer
+      if (countdownInterval) {
+        clearInterval(countdownInterval);
+        setCountdownInterval(null);
+      }
+      setCountdown(0);
+    }
+  };
+
+  const handlePrint = () => {
+    if (!generatedCard) return;
+    
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error("Please allow popups to print");
+      return;
+    }
+
+    // Get paper size configuration
+    const paperConfig = paperSizes.find(size => size.id === selectedPaperSize) || paperSizes[0];
+    const pageWidth = paperConfig.printWidth;
+    const pageHeight = paperConfig.printHeight;
+
+    const frontBackOnlyPrint = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Greeting Card - Front/Back Layout (${paperConfig.label})</title>
+          <style>
+            @page { size: ${pageWidth} ${pageHeight} landscape; margin: 0; }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; background: white; }
+            .card-layout { 
+              width: 100%; 
+              height: 100vh; 
+              display: flex; 
+            }
+            .card-container { 
+              display: flex; 
+              width: 100vw; 
+              height: 100vh; 
+            }
+            .card-half { 
+              width: 50%; 
+              height: 100%; 
+              overflow: hidden;
+            }
+            .card-image { 
+              width: 100%; 
+              height: 100%; 
+              object-fit: contain;
+              object-position: center;
+            }
+            .instructions { 
+              position: absolute; 
+              top: 10px; 
+              left: 10px; 
+              background: rgba(255,255,255,0.95); 
+              padding: 8px; 
+              border-radius: 4px; 
+              font-size: 11px; 
+              max-width: 200px;
+              border: 1px solid #ddd;
+            }
+            @media print {
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              .instructions { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="instructions">
+            <strong>📄 ${paperConfig.label} Layout</strong><br/>
+            Print size: ${pageWidth} × ${pageHeight}<br/>
+            Fold along center line → Final card: ${pageWidth === '10in' ? '5×7 inches' : '4.13×5.83 inches'}
+          </div>
+          <div class="card-layout">
+            <div class="card-container">
+              <div class="card-half">
+                <img src="${generatedCard.backCover}" alt="Back Cover" class="card-image" />
+              </div>
+              <div class="card-half">
+                <img src="${generatedCard.frontCover}" alt="Front Cover" class="card-image" />
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const fullCardPrint = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Greeting Card - Complete Layout (${paperConfig.label})</title>
+          <style>
+            @page { size: ${pageWidth} ${pageHeight} landscape; margin: 0; }
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; background: white; }
+            
+            /* Page layouts */
+            .card-layout { 
+              width: 100%; 
+              height: 100vh; 
+              display: flex; 
+              page-break-after: always;
+            }
+            .card-layout:last-child { page-break-after: auto; }
+            
+            .card-container { 
+              display: flex; 
+              width: 100vw; 
+              height: 100vh; 
+            }
+            
+            .card-half { 
+              width: 50%; 
+              height: 100%; 
+              overflow: hidden;
+            }
+            .card-image { 
+              width: 100%; 
+              height: 100%; 
+              object-fit: contain;
+              object-position: center;
+            }
+            .section-label {
+              position: absolute;
+              top: 10px;
+              left: 10px;
+              background: rgba(255,255,255,0.9);
+              padding: 4px 8px;
+              font-size: 12px;
+              border-radius: 4px;
+              color: #666;
+              border: 1px solid #ddd;
+            }
+            .instructions { 
+              position: absolute; 
+              top: 10px; 
+              right: 10px; 
+              background: rgba(255,255,255,0.95); 
+              padding: 8px; 
+              border-radius: 4px; 
+              font-size: 11px; 
+              max-width: 250px;
+              border: 1px solid #ddd;
+            }
+            @media print {
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              .instructions { display: none; }
+              .section-label { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="instructions">
+            <strong>📄 ${paperConfig.label} Duplex Layout</strong><br/>
+            Print size: ${pageWidth} × ${pageHeight} (2 pages)<br/>
+            Final card: ${pageWidth === '10in' ? '5×7 inches' : '4.13×5.83 inches'}<br/>
+            Print duplex → "flip on short edge" → fold center line
+          </div>
+          
+          <!-- Page 1: Outside of card (Back + Front) -->
+          <div class="card-layout">
+            <div class="card-container">
+              <div class="card-half" style="position: relative;">
+                <div class="section-label">Back Cover</div>
+                <img src="${generatedCard.backCover}" alt="Back Cover" class="card-image" />
+              </div>
+              <div class="card-half" style="position: relative;">
+                <div class="section-label">Front Cover</div>
+                <img src="${generatedCard.frontCover}" alt="Front Cover" class="card-image" />
+              </div>
+            </div>
+          </div>
+          
+          <!-- Page 2: Inside of card (Left + Right Interior) - Rotated 180° for duplex printing -->
+          <div class="card-layout" style="transform: rotate(180deg);">
+            <div class="card-container">
+              <div class="card-half" style="position: relative;">
+                <div class="section-label">Left Interior</div>
+                <img src="${generatedCard.leftPage}" alt="Left Interior" class="card-image" />
+              </div>
+              <div class="card-half" style="position: relative;">
+                <div class="section-label">Right Interior</div>
+                <img src="${generatedCard.rightPage}" alt="Right Interior" class="card-image" />
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const printHTML = isFrontBackOnly ? frontBackOnlyPrint : fullCardPrint;
+
+    printWindow.document.write(printHTML);
+    printWindow.document.close();
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.onafterprint = () => printWindow.close();
+      }, 1000);
+    };
+
+    const finalCardSize = pageWidth === '10in' ? '5×7 inches' : '4.13×5.83 inches';
+    const cardType = isFrontBackOnly ? 'Front/Back only' : 'Full card';
+    toast.success(`${cardType} ready to print! Final card: ${finalCardSize}`);
+  };
+
+  const handleRemotePrint = async () => {
+    if (!generatedCard) return;
+    
+    try {
+      // Send complete card data for PDF creation and printing
+      const cardData = {
+        front_cover: generatedCard.frontCover,
+        back_cover: generatedCard.backCover,
+        left_page: generatedCard.leftPage,
+        right_page: generatedCard.rightPage,
+        card_name: prompt.substring(0, 50) + (prompt.length > 50 ? '...' : ''),
+        paper_size: selectedPaperSize,
+        is_front_back_only: isFrontBackOnly,
+        copies: 1,
+        color_mode: 'color',
+        quality: 'high'
+      };
+
+      const response = await fetch('/api/print-queue', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(cardData),
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        let errorDetail = `HTTP error! status: ${response.status}`;
-        try {
-            const errorJson = JSON.parse(errorText);
-            errorDetail = errorJson.error || errorJson.detail || errorDetail;
-        } catch (parseError) {
-            if (errorText) errorDetail += ` - ${errorText}`;
-        }
-        throw new Error(errorDetail);
+        throw new Error(`HTTP ${response.status}`);
       }
+
+      const result = await response.json();
       
-      if (!response.body) throw new Error('Response body is null');
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = ""; // Buffer for accumulating stream data
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-            if (buffer.trim() !== '') {
-                try {
-                    const parsedChunk = JSON.parse(buffer);
-                    console.log('[PAGE.TSX] Final Buffer Chunk:', JSON.stringify(parsedChunk));
-                    if (parsedChunk.type === 'text_chunk' && parsedChunk.content) {
-                        setMessages(prev => prev.map(msg => {
-                            if (msg.id === botMessageId) {
-                                let currentContent = parsedChunk.content;
-                                let newParts = [...msg.parts];
-                                const lastPart = newParts.length > 0 ? newParts[newParts.length - 1] : null;
-
-                                if (lastPart && lastPart.type === "text") {
-                                    currentContent = normalizeFragment(currentContent, lastPart.content);
-                                    lastPart.content += currentContent;
-                                } else {
-                                    currentContent = normalizeFragment(currentContent, "");
-                                    newParts.push({ type: "text", id: uuidv4(), content: currentContent });
-                                }
-                                return { ...msg, parts: newParts, thinking: true };
-                            }
-                            return msg;
-                        }));
-                    } else if (parsedChunk.type === 'thought_summary' && parsedChunk.content) {
-                        setMessages(prev => prev.map(msg => {
-                            if (msg.id === botMessageId) {
-                                const newParts = msg.parts.map(part => {
-                                    if (part.type === "thought_summary") {
-                                        const contentFromChunk = normalizeFragment(
-                                            parsedChunk.content,
-                                            part.content
-                                        );
-                                        return { ...part, content: part.content + contentFromChunk };
-                                    }
-                                    return part;
-                                });
-                                return { ...msg, parts: newParts, thinking: true };
-                            }
-                            return msg;
-                        }));
-                    } else if (parsedChunk.type === 'tool_call_pending' && parsedChunk.name && parsedChunk.arguments) {
-                        const call_id_from_chunk = parsedChunk.call_id || `tool-${uuidv4()}`;
-                        setMessages(prev => prev.map(msg => {
-                            if (msg.id === botMessageId) {
-                                const existingToolCallPart = msg.parts.find(part =>
-                                    part.type === "tool_call" && part.toolCall.call_id === call_id_from_chunk
-                                );
-                                if (existingToolCallPart) {
-                                    console.log(`[PAGE.TSX] (final buffer) Tool call with ID ${call_id_from_chunk} already exists. Ignoring duplicate pending.`);
-                                    return msg; 
-                                }
-                                const newToolCallData: ToolCallData = {
-                                    call_id: call_id_from_chunk,
-                                    name: parsedChunk.name,
-                                    arguments: typeof parsedChunk.arguments === 'string' ? parsedChunk.arguments : JSON.stringify(parsedChunk.arguments),
-                                    status: "Pending...",
-                                };
-                                console.log('[PAGE.TSX] (final buffer) Tool Call Pending (New):', JSON.parse(JSON.stringify(newToolCallData)));
-                                const newParts = [...msg.parts];
-                                newParts.push({ type: "tool_call" as const, id: uuidv4(), toolCall: newToolCallData });
-                                newParts.push({ type: "text" as const, id: uuidv4(), content: "" });
-                                return { ...msg, parts: newParts, thinking: true };
-                            }
-                            return msg;
-                        }));
-                    } else if (parsedChunk.type === 'tool_result' && parsedChunk.call_id && typeof parsedChunk.result !== 'undefined') {
-                         setMessages(prev => prev.map(msg => {
-                            if (msg.id === botMessageId) {
-                                if (parsedChunk.name === "get_directions") {
-                                    console.log("[PAGE.TSX] (Final Buffer) RAW get_directions tool_result CHUNK:", JSON.stringify(parsedChunk));
-                                }
-                                let matchedToolCallInParts = false;
-                                const newParts = msg.parts.map(part => {
-                                    if (part.type === "tool_call" && part.toolCall.call_id === parsedChunk.call_id) {
-                                        matchedToolCallInParts = true;
-                                        const tc = part.toolCall;
-                                        let finalResult = typeof parsedChunk.result === 'string' ? parsedChunk.result : JSON.stringify(parsedChunk.result);
-                                        const isPartial = typeof parsedChunk.is_partial === 'boolean' ? parsedChunk.is_partial : false;
-                                        const isError = typeof parsedChunk.is_error === 'boolean' ? parsedChunk.is_error : false;
-                                        const newStatus: ToolCallData['status'] = isPartial ? "Streaming..." : (isError ? "Error" : "Completed");
-                                        const updatedToolCall: ToolCallData = {
-                                            ...tc,
-                                            result: isPartial && tc.result && tc.status === "Streaming..." ? tc.result + '\n---\n' + finalResult : finalResult,
-                                            status: newStatus,
-                                            is_error: isError,
-                                            is_partial: isPartial,
-                                        };
-                                        let toolResponse = null;
-                                        if (tc.name === "get_directions" && parsedChunk.result) {
-                                            // Handle both old wrapped format and new direct format
-                                            if (typeof parsedChunk.result === 'object') {
-                                                const responseKey = `${tc.name}_response`;
-                                                if (parsedChunk.result[responseKey]) {
-                                                    // Old wrapped format
-                                                    toolResponse = parsedChunk.result[responseKey];
-                                                    console.log("[PAGE.TSX] (Stream Loop) Using wrapped format for directions, toolResponse:", JSON.stringify(toolResponse).substring(0, 200) + "...");
-                                                } else {
-                                                    // New direct format from FastMCP
-                                                    toolResponse = parsedChunk.result;
-                                                    console.log("[PAGE.TSX] (Stream Loop) Using direct format for directions, toolResponse:", JSON.stringify(toolResponse).substring(0, 200) + "...");
-                                                }
-                                            }
-                                        }
-                                        if (tc.name === "get_directions" && toolResponse && toolResponse.status === "success" && toolResponse.data && !isError && !isPartial) {
-                                            console.log("[PAGE.TSX] (Final Buffer) Setting directionsData with:", JSON.stringify(toolResponse.data).substring(0, 200) + "...");
-                                            setDirectionsData(toolResponse.data);
-                                            setMapDisplayKey(prevKey => prevKey + 1);
-                                            setIsMapSectionVisible(true);
-                                        } else if (tc.name === "get_directions" && !toolResponse) {
-                                            console.error("[PAGE.TSX] (Final Buffer) ERROR: get_directions_response missing!");
-                                        }
-                                        // NEW: Process tool call for preview extraction
-                                        processToolCallForPreview(updatedToolCall, msg.id);
-                                        // NEW: Web app detection logic
-                                        if ((tc.name === "create_web_app" || tc.name === "edit_web_app") && !isError && !isPartial && tc.result) {
-                                            try {
-                                                const resultData = typeof tc.result === 'string' ? JSON.parse(tc.result) : tc.result;
-                                                if (resultData.status === "success" && resultData.url) {
-                                                    console.log("[PAGE.TSX] (Final Buffer) Setting webAppUrl with:", resultData.url);
-                                                    // This will be set on the message object below
-                                                }
-                                            } catch (e) {
-                                                console.warn("[PAGE.TSX] (Final Buffer) Failed to parse web app result:", e);
-                                            }
-                                        }
-                                        // NEW: Image generation detection logic
-                                        if (tc.name === "generate_images_with_prompts" && !isError && !isPartial && tc.result) {
-                                            try {
-                                                const resultData = typeof tc.result === 'string' ? JSON.parse(tc.result) : tc.result;
-                                                if (resultData.status === "success" && resultData.results) {
-                                                    // Extract all image URLs from the results array
-                                                    const imageUrls: string[] = [];
-                                                    resultData.results.forEach((resultArray: any) => {
-                                                        if (Array.isArray(resultArray)) {
-                                                            imageUrls.push(...resultArray);
-                                                        }
-                                                    });
-                                                    if (imageUrls.length > 0) {
-                                                        console.log("[PAGE.TSX] (Stream Loop) Setting generatedImageUrls with:", imageUrls.length, "images");
-                                                        // This will be set on the message object below
-                                                    }
-                                                }
-                                            } catch (e) {
-                                                console.warn("[PAGE.TSX] (Stream Loop) Failed to parse image generation result:", e);
-                                            }
-                                        }
-                                        return { ...part, toolCall: updatedToolCall };
-                                    }
-                                    return part;
-                                });
-                                if (!matchedToolCallInParts) { console.warn(`[PAGE.TSX] (Final Buffer) Tool call id ${parsedChunk.call_id} not found in ${msg.id}`); }
-                                let toolResponse = null;
-                                if (parsedChunk.name === "get_directions" && parsedChunk.result) {
-                                    if (typeof parsedChunk.result === 'object') {
-                                        const responseKey = `${parsedChunk.name}_response`;
-                                        if (parsedChunk.result[responseKey]) {
-                                            toolResponse = parsedChunk.result[responseKey];
-                                        } else {
-                                            toolResponse = parsedChunk.result;
-                                        }
-                                    }
-                                }
-                                let finalMsgObject = { ...msg, parts: newParts, thinking: true };
-                                if (
-                                    parsedChunk.name === "get_directions" &&
-                                    toolResponse &&
-                                    !(typeof parsedChunk.is_partial === 'boolean' && parsedChunk.is_partial) &&
-                                    !(typeof parsedChunk.is_error === 'boolean' && parsedChunk.is_error) &&
-                                    toolResponse.status === "success" &&
-                                    toolResponse.data
-                                ) {
-                                    finalMsgObject.showMapToggleForThisMessage = true;
-                                    finalMsgObject.directionsData = toolResponse.data;
-                                    console.log("[PAGE.TSX] (Final Buffer) Setting message directions data:", JSON.stringify(toolResponse.data).substring(0, 200) + "...");
-                                }
-                                // NEW: Web app message object updates
-                                if ((parsedChunk.name === "create_web_app" || parsedChunk.name === "edit_web_app") && !(typeof parsedChunk.is_partial === 'boolean' && parsedChunk.is_partial) && !(typeof parsedChunk.is_error === 'boolean' && parsedChunk.is_error) && parsedChunk.result) {
-                                    try {
-                                        const resultData = typeof parsedChunk.result === 'string' ? JSON.parse(parsedChunk.result) : parsedChunk.result;
-                                        if (resultData.status === "success" && resultData.url) {
-                                            finalMsgObject.showWebAppForThisMessage = true;
-                                            finalMsgObject.webAppUrl = resultData.url;
-                                        }
-                                    } catch (e) {
-                                        console.warn("[PAGE.TSX] (Final Buffer) Failed to parse web app result for message:", e);
-                                    }
-                                }
-                                // NEW: Image generation message object updates
-                                if (parsedChunk.name === "generate_images_with_prompts" && !(typeof parsedChunk.is_partial === 'boolean' && parsedChunk.is_partial) && !(typeof parsedChunk.is_error === 'boolean' && parsedChunk.is_error) && parsedChunk.result) {
-                                    try {
-                                        const resultData = typeof parsedChunk.result === 'string' ? JSON.parse(parsedChunk.result) : parsedChunk.result;
-                                        if (resultData.status === "success" && resultData.results) {
-                                            // Extract all image URLs from the results array
-                                            const imageUrls: string[] = [];
-                                            resultData.results.forEach((resultArray: any) => {
-                                                if (Array.isArray(resultArray)) {
-                                                    imageUrls.push(...resultArray);
-                                                }
-                                            });
-                                            if (imageUrls.length > 0) {
-                                                finalMsgObject.showImagesForThisMessage = true;
-                                                finalMsgObject.generatedImageUrls = imageUrls;
-                                                console.log("[PAGE.TSX] (Final Buffer) Setting generatedImageUrls with:", imageUrls.length, "images");
-                                            }
-                                        }
-                                    } catch (e) {
-                                        console.warn("[PAGE.TSX] (Final Buffer) Failed to parse image generation result for message:", e);
-                                    }
-                                }
-                                return finalMsgObject;
-                            }
-                            return msg;
-                        }));
-                    } 
-                    // ---- START: New chunk types for final buffer processing ----
-                    else if (parsedChunk.type === 'tool_sample_text_chunk' && parsedChunk.parent_tool_call_id && typeof parsedChunk.content === 'string') {
-                        setMessages(prev => prev.map(msg => {
-                            if (msg.id === botMessageId) {
-                                const newParts = msg.parts.map(part => {
-                                    if (part.type === "tool_call" && part.toolCall.call_id === parsedChunk.parent_tool_call_id) {
-                                        const tc = part.toolCall;
-                                        const currentPairs = tc.sampleCallPairs || [];
-                                        let newPairs;
-                                        
-                                        if (currentPairs.length > 0) {
-                                            const lastPair = currentPairs[currentPairs.length - 1];
-                                            // Create new pair object with updated output
-                                            const updatedLastPair = {
-                                                ...lastPair,
-                                                output: (lastPair.output || "") + parsedChunk.content
-                                            };
-                                            // Create new array with updated last pair
-                                            newPairs = [...currentPairs.slice(0, -1), updatedLastPair];
-                                        } else {
-                                            // Create new pair
-                                            newPairs = [{ id: uuidv4(), output: parsedChunk.content }];
-                                        }
-                                        
-                                        console.log(`[PAGE.TSX] (Final Buffer) Updated sampleCallPairs (output) for ${parsedChunk.parent_tool_call_id}:`, JSON.parse(JSON.stringify(newPairs)));
-                                        return { ...part, toolCall: { ...tc, sampleCallPairs: newPairs } };
-                                    }
-                                    return part;
-                                });
-                                return { ...msg, parts: newParts, thinking: true }; 
-                            }
-                            return msg;
-                        }));
-                    } else if (parsedChunk.type === 'tool_sample_thought_chunk' && parsedChunk.parent_tool_call_id && typeof parsedChunk.content === 'string') {
-                        setMessages(prev => prev.map(msg => {
-                            if (msg.id === botMessageId) {
-                                const newParts = msg.parts.map(part => {
-                                    if (part.type === "tool_call" && part.toolCall.call_id === parsedChunk.parent_tool_call_id) {
-                                        const tc = part.toolCall;
-                                        const currentPairs = tc.sampleCallPairs || [];
-                                        let newPairs;
-
-                                        // If lastPair exists and is still 'open' (no output yet), append thoughts.
-                                        // Otherwise, this is a new sampling call's thoughts, so create a new pair.
-                                        if (currentPairs.length > 0) {
-                                            const lastPair = currentPairs[currentPairs.length - 1];
-                                            if (typeof lastPair.output === 'undefined') {
-                                                // Update existing pair with thoughts
-                                                const updatedLastPair = {
-                                                    ...lastPair,
-                                                    thoughts: (lastPair.thoughts || "") + parsedChunk.content
-                                                };
-                                                newPairs = [...currentPairs.slice(0, -1), updatedLastPair];
-                                            } else {
-                                                // Create new pair for new sampling call
-                                                newPairs = [...currentPairs, { id: uuidv4(), thoughts: parsedChunk.content }];
-                                            }
-                                        } else {
-                                            // Create first pair
-                                            newPairs = [{ id: uuidv4(), thoughts: parsedChunk.content }];
-                                        }
-                                        
-                                        console.log(`[PAGE.TSX] (Final Buffer) Updated sampleCallPairs (thoughts) for ${parsedChunk.parent_tool_call_id}:`, JSON.parse(JSON.stringify(newPairs)));
-                                        return { ...part, toolCall: { ...tc, sampleCallPairs: newPairs } };
-                                    }
-                                    return part;
-                                });
-                                return { ...msg, parts: newParts, thinking: true };
-                            }
-                            return msg;
-                        }));
-                    }
-                    // ---- END: New chunk types for final buffer processing ----
-                    else if (parsedChunk.type === 'stream_end') {
-                        setMessages(prev => prev.map(msg => msg.id === botMessageId ? {...msg, thinking: false } : msg));
-                        setStatus('Ready');
-                    } else if (parsedChunk.type === 'error' && parsedChunk.content) {
-                         setMessages(prev => prev.map(msg => {
-                            if (msg.id === botMessageId) {
-                                const errorTextPart: MessagePart = {
-                                    type: "text",
-                                    id: uuidv4(),
-                                    content: `<strong style="color: red;">Stream Error:</strong> ${renderSanitizedMarkdown(parsedChunk.content)}`
-                                };
-                                const newParts = [...msg.parts, errorTextPart];
-                                return { 
-                                    ...msg, 
-                                    parts: newParts,
-                                    thinking: false, 
-                                    is_error_message: true 
-                                };
-                            }
-                            return msg;
-                        }));
-                        setStatus('Ready'); // Reset status after error
-                    }
-                } catch (err) {
-                    console.error('Error parsing final stream chunk JSON:', err, 'Raw final buffer:', buffer);
+      if (result.status === 'queued') {
+        const cardType = isFrontBackOnly ? 'Front/Back card' : 'Full duplex card';
+        const duplexInfo = result.duplex ? ' (duplex enabled)' : ' (single-sided)';
+        toast.success(`🖨️ ${cardType} queued for printing${duplexInfo}! Job ID: ${result.job_id.substring(0, 8)}...`);
+        
+        // Poll for job status
+        let pollCount = 0;
+        const maxPolls = 6; // Poll for up to 60 seconds
+        
+        const pollStatus = async () => {
+          try {
+            const statusResponse = await fetch(`/api/print-status/${result.job_id}`);
+            if (statusResponse.ok) {
+              const statusResult = await statusResponse.json();
+              if (statusResult.status === 'found') {
+                if (statusResult.job.status === 'completed') {
+                  toast.success("✅ Card printed successfully!");
+                  return;
+                } else if (statusResult.job.status === 'failed') {
+                  toast.error(`❌ Print job failed: ${statusResult.job.error_message || 'Unknown error'}`);
+                  return;
+                } else if (statusResult.job.status === 'pending' && pollCount < maxPolls) {
+                  // Still pending, poll again
+                  pollCount++;
+                  setTimeout(pollStatus, 10000);
                 }
+              }
             }
-            console.log('[PAGE.TSX] HTTP Response Stream Reader finished.');
-            setMessages(prev => prev.map(msg => msg.id === botMessageId && msg.thinking ? {...msg, thinking: false } : msg));
-            if (status !== 'Ready') setStatus('Ready');
-            break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        let newlineIndex;
-
-        while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
-            const line = buffer.substring(0, newlineIndex);
-            buffer = buffer.substring(newlineIndex + 1);
-
-            if (line.trim() === '') continue;
-            try {
-                const parsedChunk = JSON.parse(line);
-                // console.log('[PAGE.TSX] Streamed Chunk:', JSON.stringify(parsedChunk)); // General log exists
-            
-                if (parsedChunk.type === 'text_chunk' && parsedChunk.content) {
-                    setMessages(prev => prev.map(msg => {
-                        if (msg.id === botMessageId) {
-                            console.log(`[PAGE.TSX] Updating message ${msg.id} with text_chunk (stream loop). Current parts:`, JSON.parse(JSON.stringify(msg.parts))); // DEEP COPY LOGGING
-                            
-                            const newParts = [...msg.parts]; // Shallow copy of parts array
-                            const lastPartIndex = newParts.length > 0 ? newParts.length - 1 : -1;
-                            const lastPart = lastPartIndex !== -1 ? newParts[lastPartIndex] : null;
-                            
-                            // Normalize the incoming chunk's content.
-                            // The second argument to normalizeFragment was lastPart.content or "" in the original logic.
-                            const contentFromChunk = normalizeFragment(
-                                parsedChunk.content, 
-                                lastPart && lastPart.type === "text" ? lastPart.content : ""
-                            );
-
-                            if (lastPart && lastPart.type === "text") {
-                                // Update the last part immutably by creating a new object
-                                newParts[lastPartIndex] = {
-                                    ...(lastPart as { type: "text"; id: string; content: string }), // Ensure correct type for spread
-                                    content: lastPart.content + contentFromChunk 
-                                };
-                            } else {
-                                // Add a new text part if no previous text part or parts array is empty
-                                newParts.push({ 
-                                    type: "text", 
-                                    id: uuidv4(), 
-                                    content: contentFromChunk 
-                                });
-                            }
-                            return { ...msg, parts: newParts, thinking: true };
-                        }
-                        return msg;
-                    }));
-                } else if (parsedChunk.type === 'thought_summary' && parsedChunk.content) {
-                    setMessages(prev => prev.map(msg => {
-                        if (msg.id === botMessageId) {
-                            console.log(`[PAGE.TSX] Updating message ${msg.id} with thought_summary. Current parts:`, JSON.parse(JSON.stringify(msg.parts)));
-                            const newParts = [...msg.parts];
-                            const lastPartIndex = newParts.length > 0 ? newParts.length - 1 : -1;
-                            const lastPart = lastPartIndex !== -1 ? newParts[lastPartIndex] : null;
-                            const contentFromChunk = normalizeFragment(
-                                parsedChunk.content,
-                                lastPart && lastPart.type === "thought_summary" ? lastPart.content : ""
-                            );
-
-                            if (lastPart && lastPart.type === "thought_summary") {
-                                newParts[lastPartIndex] = {
-                                    ...(lastPart as { type: "thought_summary"; id: string; content: string }),
-                                    content: lastPart.content + contentFromChunk
-                                };
-                            } else {
-                                newParts.push({
-                                    type: "thought_summary",
-                                    id: uuidv4(),
-                                    content: contentFromChunk
-                                });
-                            }
-                            return { ...msg, parts: newParts, thinking: true };
-                        }
-                        return msg;
-                    }));
-                } else if (parsedChunk.type === 'tool_call_pending' && parsedChunk.name && parsedChunk.arguments) {
-                    const call_id_from_chunk = parsedChunk.call_id || `tool-${uuidv4()}`;
-                    setMessages(prev => prev.map(msg => {
-                        if (msg.id === botMessageId) {
-                            const existingToolCallPart = msg.parts.find(part =>
-                                part.type === "tool_call" && part.toolCall.call_id === call_id_from_chunk
-                            );
-
-                            if (existingToolCallPart) {
-                                console.log(`[PAGE.TSX] (stream loop) Tool call with ID ${call_id_from_chunk} already exists in pending state. Ignoring duplicate pending message.`);
-                                return msg;
-                            }
-
-                            const newToolCallData: ToolCallData = {
-                                call_id: call_id_from_chunk,
-                                name: parsedChunk.name,
-                                arguments: typeof parsedChunk.arguments === 'string' ? parsedChunk.arguments : JSON.stringify(parsedChunk.arguments),
-                                status: "Pending...",
-                            };
-                            console.log('[PAGE.TSX] Tool Call Pending (New):', JSON.parse(JSON.stringify(newToolCallData))); 
-                            const newParts = [...msg.parts];
-                            newParts.push({ type: "tool_call" as const, id: uuidv4(), toolCall: newToolCallData });
-                            newParts.push({ type: "text" as const, id: uuidv4(), content: "" });
-                            return { ...msg, parts: newParts, thinking: true };
-                        }
-                        return msg;
-                    }));
-                } else if (parsedChunk.type === 'tool_result' && parsedChunk.call_id && typeof parsedChunk.result !== 'undefined') {
-                    console.log('[PAGE.TSX] Received tool_result chunk:', JSON.parse(JSON.stringify(parsedChunk))); // DEEP COPY LOGGING
-                    if (parsedChunk.name === "get_directions") {
-                        console.log("[PAGE.TSX] RAW get_directions tool_result CHUNK (repeated block):", JSON.stringify(parsedChunk));
-                    }
-                    // console.log(`[PAGE.TSX] Parsed chunk is_partial value: ${parsedChunk.is_partial}`); // Keep for debugging if needed
-
-                    setMessages(prev => prev.map(msg => {
-                        if (msg.id === botMessageId) {
-                            console.log(`[PAGE.TSX] Updating message ${msg.id} with tool_result. Current parts:`, JSON.parse(JSON.stringify(msg.parts))); // DEEP COPY LOGGING
-                            let matchedToolCallInParts = false;
-                            const newParts = msg.parts.map(part => {
-                                if (part.type === "tool_call" && part.toolCall.call_id === parsedChunk.call_id) {
-                                    matchedToolCallInParts = true;
-                                    const tc = part.toolCall;
-                                    // console.log(`[PAGE.TSX] Existing tool call data for ${tc.call_id}:`, JSON.parse(JSON.stringify(tc)));
-
-                                    let finalResult = typeof parsedChunk.result === 'string' ? parsedChunk.result : JSON.stringify(parsedChunk.result);
-                                    const isPartial = typeof parsedChunk.is_partial === 'boolean' ? parsedChunk.is_partial : false;
-                                    const isError = typeof parsedChunk.is_error === 'boolean' ? parsedChunk.is_error : false;
-                                    const newStatus: ToolCallData['status'] = isPartial ? "Streaming..." : (isError ? "Error" : "Completed");
-                                    
-                                    // console.log(`[PAGE.TSX] Updating tool: ${tc.call_id}, New Status: ${newStatus}, Is Partial (derived): ${isPartial}, Is Error (derived): ${isError}`);
-
-                                    const updatedToolCall: ToolCallData = {
-                                        ...tc,
-                                        result: isPartial && tc.result && tc.status === "Streaming..." ? tc.result + '\n---\n' + finalResult : finalResult,
-                                        status: newStatus,
-                                        is_error: isError,
-                                        is_partial: isPartial,
-                                    };
-                                    // console.log(`[PAGE.TSX] New tool call data for ${tc.call_id}:`, JSON.parse(JSON.stringify(updatedToolCall)));
-
-                                    // --- NEW: Extract get_directions_response ---
-                                    let toolResponse = null;
-                                    if (tc.name === "get_directions" && parsedChunk.result) {
-                                        // Handle both old wrapped format and new direct format
-                                        if (typeof parsedChunk.result === 'object') {
-                                            const responseKey = `${tc.name}_response`;
-                                            if (parsedChunk.result[responseKey]) {
-                                                // Old wrapped format
-                                                toolResponse = parsedChunk.result[responseKey];
-                                                console.log("[PAGE.TSX] (Stream Loop) Using wrapped format for directions, toolResponse:", JSON.stringify(toolResponse).substring(0, 200) + "...");
-                                            } else {
-                                                // New direct format from FastMCP
-                                                toolResponse = parsedChunk.result;
-                                                console.log("[PAGE.TSX] (Stream Loop) Using direct format for directions, toolResponse:", JSON.stringify(toolResponse).substring(0, 200) + "...");
-                                            }
-                                        }
-                                    }
-                                    // --- END NEW ---
-
-                                    // If this is the final result for get_directions, set map data
-                                    if (
-                                        tc.name === "get_directions" &&
-                                        toolResponse &&
-                                        toolResponse.status === "success" &&
-                                        toolResponse.data &&
-                                        !isError &&
-                                        !isPartial
-                                    ) {
-                                        console.log("[PAGE.TSX] (Stream Loop) Setting directionsData with:", JSON.stringify(toolResponse.data).substring(0, 200) + "...");
-                                        setDirectionsData(toolResponse.data);
-                                        setMapDisplayKey(prevKey => prevKey + 1);
-                                        setIsMapSectionVisible(true); // MODIFIED: Show map section automatically
-                                    } else if (
-                                        tc.name === "get_directions" &&
-                                        !toolResponse
-                                    ) {
-                                        console.error(
-                                            "[PAGE.TSX] ERROR (stream loop): get_directions_response missing in parsedChunk.result!"
-                                        );
-                                    }
-
-                                    // NEW: Web app detection logic
-                                    if ((tc.name === "create_web_app" || tc.name === "edit_web_app") && !isError && !isPartial && tc.result) {
-                                        try {
-                                            const resultData = typeof tc.result === 'string' ? JSON.parse(tc.result) : tc.result;
-                                            if (resultData.status === "success" && resultData.url) {
-                                                console.log("[PAGE.TSX] (Final Buffer) Setting webAppUrl with:", resultData.url);
-                                                // This will be set on the message object below
-                                            }
-                                        } catch (e) {
-                                            console.warn("[PAGE.TSX] (Final Buffer) Failed to parse web app result:", e);
-                                        }
-                                    }
-
-                                    // NEW: Image generation detection logic
-                                    if (tc.name === "generate_images_with_prompts" && !isError && !isPartial && tc.result) {
-                                        try {
-                                            const resultData = typeof tc.result === 'string' ? JSON.parse(tc.result) : tc.result;
-                                            if (resultData.status === "success" && resultData.results) {
-                                                // Extract all image URLs from the results array
-                                                const imageUrls: string[] = [];
-                                                resultData.results.forEach((resultArray: any) => {
-                                                    if (Array.isArray(resultArray)) {
-                                                        imageUrls.push(...resultArray);
-                                                    }
-                                                });
-                                                if (imageUrls.length > 0) {
-                                                    console.log("[PAGE.TSX] (Stream Loop) Setting generatedImageUrls with:", imageUrls.length, "images");
-                                                    // This will be set on the message object below
-                                                }
-                                            }
-                                        } catch (e) {
-                                            console.warn("[PAGE.TSX] (Stream Loop) Failed to parse image generation result:", e);
-                                        }
-                                    }
-
-                                    // NEW: Process tool call for preview extraction (streaming loop)
-                                    processToolCallForPreview(updatedToolCall, msg.id);
-
-                                    return { ...part, toolCall: updatedToolCall };
-                                }
-                                return part;
-                            });
-                            if (!matchedToolCallInParts) {
-                                console.warn(
-                                    `[PAGE.TSX] (stream loop) Tool call with id ${parsedChunk.call_id} not found in message ${msg.id} parts`
-                                );
-                            }
-
-                            // --- NEW: Attach directionsData to message for rendering ---
-                            let toolResponse = null;
-                            if (parsedChunk.name === "get_directions" && parsedChunk.result) {
-                              // Handle both old wrapped format and new direct format
-                              if (typeof parsedChunk.result === 'object') {
-                                  const responseKey = `${parsedChunk.name}_response`;
-                                  if (parsedChunk.result[responseKey]) {
-                                      // Old wrapped format
-                                      toolResponse = parsedChunk.result[responseKey];
-                                      console.log("[PAGE.TSX] (Stream Loop Message) Using wrapped format for directions, toolResponse:", JSON.stringify(toolResponse).substring(0, 200) + "...");
-                                  } else {
-                                      // New direct format from FastMCP
-                                      toolResponse = parsedChunk.result;
-                                      console.log("[PAGE.TSX] (Stream Loop Message) Using direct format for directions, toolResponse:", JSON.stringify(toolResponse).substring(0, 200) + "...");
-                                  }
-                              }
-                          }
-                            let finalMsgObject = { ...msg, parts: newParts, thinking: true };
-                            if (
-                                parsedChunk.name === "get_directions" &&
-                                toolResponse &&
-                                !(typeof parsedChunk.is_partial === 'boolean' && parsedChunk.is_partial) &&
-                                !(typeof parsedChunk.is_error === 'boolean' && parsedChunk.is_error) &&
-                                toolResponse.status === "success" &&
-                                toolResponse.data
-                            ) {
-                                finalMsgObject.showMapToggleForThisMessage = true;
-                                finalMsgObject.directionsData = toolResponse.data;
-                                console.log("[PAGE.TSX] (Stream Loop Message) Setting message directions data:", JSON.stringify(toolResponse.data).substring(0, 200) + "...");
-                            }
-                            // NEW: Web app message object updates for streaming loop
-                            if ((parsedChunk.name === "create_web_app" || parsedChunk.name === "edit_web_app") && !(typeof parsedChunk.is_partial === 'boolean' && parsedChunk.is_partial) && !(typeof parsedChunk.is_error === 'boolean' && parsedChunk.is_error) && parsedChunk.result) {
-                                try {
-                                    const resultData = typeof parsedChunk.result === 'string' ? JSON.parse(parsedChunk.result) : parsedChunk.result;
-                                    if (resultData.status === "success" && resultData.url) {
-                                        finalMsgObject.showWebAppForThisMessage = true;
-                                        finalMsgObject.webAppUrl = resultData.url;
-                                    }
-                                } catch (e) {
-                                    console.warn("[PAGE.TSX] (Stream Loop) Failed to parse web app result for message:", e);
-                                }
-                            }
-                            // NEW: Image generation message object updates
-                            if (parsedChunk.name === "generate_images_with_prompts" && !(typeof parsedChunk.is_partial === 'boolean' && parsedChunk.is_partial) && !(typeof parsedChunk.is_error === 'boolean' && parsedChunk.is_error) && parsedChunk.result) {
-                                try {
-                                    const resultData = typeof parsedChunk.result === 'string' ? JSON.parse(parsedChunk.result) : parsedChunk.result;
-                                    if (resultData.status === "success" && resultData.results) {
-                                        // Extract all image URLs from the results array
-                                        const imageUrls: string[] = [];
-                                        resultData.results.forEach((resultArray: any) => {
-                                            if (Array.isArray(resultArray)) {
-                                                imageUrls.push(...resultArray);
-                                            }
-                                        });
-                                        if (imageUrls.length > 0) {
-                                            finalMsgObject.showImagesForThisMessage = true;
-                                            finalMsgObject.generatedImageUrls = imageUrls;
-                                            console.log("[PAGE.TSX] (Final Buffer) Setting generatedImageUrls with:", imageUrls.length, "images");
-                                        }
-                                    }
-                                } catch (e) {
-                                    console.warn("[PAGE.TSX] (Final Buffer) Failed to parse image generation result for message:", e);
-                                }
-                            }
-                            return finalMsgObject;
-                        }
-                        return msg;
-                    }));
-                } else if (parsedChunk.type === 'stream_end') {
-                    console.log('[PAGE.TSX] Stream ended for botMessageId:', botMessageId);
-                    setMessages(prev => prev.map(msg => msg.id === botMessageId ? {...msg, thinking: false } : msg));
-                    setStatus('Ready');
-                } else if (parsedChunk.type === 'error' && parsedChunk.content) {
-                    console.error('[PAGE.TSX] Received stream error chunk:', parsedChunk);
-                    setMessages(prev => prev.map(msg => {
-                        if (msg.id === botMessageId) {
-                            const errorTextPart: MessagePart = {
-                                type: "text",
-                                id: uuidv4(),
-                                content: `<strong style="color: red;">Stream Error:</strong> ${renderSanitizedMarkdown(parsedChunk.content)}`
-                            };
-                            const newParts = [...msg.parts, errorTextPart];
-                            return { 
-                                ...msg, 
-                                parts: newParts,
-                                thinking: false, 
-                                is_error_message: true 
-                            };
-                        }
-                        return msg;
-                    }));
-                    setStatus('Ready'); // Reset status after error
-                }
-                // ---- START: New chunk types for per-line stream processing ----
-                else if (parsedChunk.type === 'tool_sample_text_chunk' && parsedChunk.parent_tool_call_id && typeof parsedChunk.content === 'string') {
-                    setMessages(prev => prev.map(msg => {
-                        if (msg.id === botMessageId) {
-                            const newParts = msg.parts.map(part => {
-                                if (part.type === "tool_call" && part.toolCall.call_id === parsedChunk.parent_tool_call_id) {
-                                     const tc = part.toolCall;
-                                    const currentPairs = tc.sampleCallPairs || [];
-                                    let newPairs;
-                                    
-                                    if (currentPairs.length > 0) {
-                                        const lastPair = currentPairs[currentPairs.length - 1];
-                                        // Create new pair object with updated output
-                                        const updatedLastPair = {
-                                            ...lastPair,
-                                            output: (lastPair.output || "") + parsedChunk.content
-                                        };
-                                        // Create new array with updated last pair
-                                        newPairs = [...currentPairs.slice(0, -1), updatedLastPair];
-                                    } else {
-                                        // Create new pair
-                                        newPairs = [{ id: uuidv4(), output: parsedChunk.content }];
-                                    }
-                                    
-                                    console.log(`[PAGE.TSX] (Stream Line) Updated sampleCallPairs (output) for ${parsedChunk.parent_tool_call_id}:`, JSON.parse(JSON.stringify(newPairs)));
-                                    return { ...part, toolCall: { ...tc, sampleCallPairs: newPairs } };
-                                }
-                                return part;
-                            });
-                            return { ...msg, parts: newParts, thinking: true }; 
-                        }
-                        return msg;
-                    }));
-                } else if (parsedChunk.type === 'tool_sample_thought_chunk' && parsedChunk.parent_tool_call_id && typeof parsedChunk.content === 'string') {
-                    setMessages(prev => prev.map(msg => {
-                        if (msg.id === botMessageId) {
-                            const newParts = msg.parts.map(part => {
-                                if (part.type === "tool_call" && part.toolCall.call_id === parsedChunk.parent_tool_call_id) {
-                                    const tc = part.toolCall;
-                                    const currentPairs = tc.sampleCallPairs || [];
-                                    let newPairs;
-
-                                    // If lastPair exists and is still 'open' (no output yet), append thoughts.
-                                    // Otherwise, this is a new sampling call's thoughts, so create a new pair.
-                                    if (currentPairs.length > 0) {
-                                        const lastPair = currentPairs[currentPairs.length - 1];
-                                        if (typeof lastPair.output === 'undefined') {
-                                            // Update existing pair with thoughts
-                                            const updatedLastPair = {
-                                                ...lastPair,
-                                                thoughts: (lastPair.thoughts || "") + parsedChunk.content
-                                            };
-                                            newPairs = [...currentPairs.slice(0, -1), updatedLastPair];
-                                        } else {
-                                            // Create new pair for new sampling call
-                                            newPairs = [...currentPairs, { id: uuidv4(), thoughts: parsedChunk.content }];
-                                        }
-                                    } else {
-                                        // Create first pair
-                                        newPairs = [{ id: uuidv4(), thoughts: parsedChunk.content }];
-                                    }
-                                    
-                                    console.log(`[PAGE.TSX] (Stream Line) Updated sampleCallPairs (thoughts) for ${parsedChunk.parent_tool_call_id}:`, JSON.parse(JSON.stringify(newPairs)));
-                                    return { ...part, toolCall: { ...tc, sampleCallPairs: newPairs } };
-                                }
-                                return part;
-                            });
-                            return { ...msg, parts: newParts, thinking: true };
-                        }
-                        return msg;
-                    }));
-                }
-                // ---- END: New chunk types for per-line stream processing ----
-            } catch (err) {
-                console.error('Error parsing stream chunk JSON:', err, 'Raw line:', line);
-            }
-        }
+          } catch (error) {
+            console.log("Could not check print status:", error);
+          }
+        };
+        
+        // Start polling after 10 seconds
+        setTimeout(pollStatus, 10000);
+        
+      } else {
+        throw new Error(result.error || 'Unknown error');
       }
     } catch (error) {
-      console.error('Error sending message or processing stream:', error);
-      const errorContent = error instanceof Error ? error.message : 'Sorry, I encountered an error processing your request.';
-      const renderedErrorContent = renderSanitizedMarkdown(errorContent);
-      
-      let botMessageFoundAndUpdated = false;
-      setMessages(prev => prev.map(msg => {
-        if (msg.id === botMessageId) {
-          botMessageFoundAndUpdated = true;
-          const newErrorPart: MessagePart = { type: "text", id: uuidv4(), content: renderedErrorContent };
-          const updatedParts = [...(msg.parts || []), newErrorPart]; // Ensure msg.parts exists
-          return { ...msg, parts: updatedParts, thinking: false, is_error_message: true };
-        }
-        return msg;
-      }));
-
-       if (!botMessageFoundAndUpdated) {
-            setMessages(prevMessages => [
-                ...prevMessages,
-                { 
-                    id: uuidv4(), 
-                    sender: 'bot', 
-                    parts: [{ type: "text", id: uuidv4(), content: renderedErrorContent }],
-                    timestamp: Date.now(), 
-                    thinking: false,
-                    is_error_message: true 
-                }
-            ]);
-       }
-    } finally {
+      console.error('Remote print error:', error);
+      toast.error("Failed to queue remote print job");
     }
   };
-
-  const handleExamplePromptClick = (title: string, detail: string) => {
-    setUserInput(`${title} ${detail}`);
-  };
-
-  useEffect(() => {
-    const viewport = scrollAreaRef.current;
-    if (viewport) {
-        // The viewport itself is the scrollable container in ScrollArea
-        viewport.scrollTop = viewport.scrollHeight;
-    }
-  }, [messages]);
-
-  useEffect(() => {
-    const style = document.createElement('style');
-    style.innerHTML = `
-      .animated-ellipsis span {
-        opacity: 0;
-        animation: an_ellipsis 1.2s infinite;
-        animation-fill-mode: forwards; /* Keep the final state of the animation */
-      }
-      .animated-ellipsis span:nth-child(1) { animation-delay: 0.1s; }
-      .animated-ellipsis span:nth-child(2) { animation-delay: 0.25s; }
-      .animated-ellipsis span:nth-child(3) { animation-delay: 0.4s; }
-      @keyframes an_ellipsis {
-        0% { opacity: 0; transform: translateY(-0.1em);}
-        30% { opacity: 1; transform: translateY(0);}
-        70% { opacity: 1; transform: translateY(0);}
-        100% { opacity: 0; transform: translateY(0.1em);}
-      }
-      /* Add CSS for thought summary details arrow rotation */
-      .thought-summary-details[open] > summary .details-arrow {
-        transform: rotate(180deg);
-      }
-      /* Add CSS for tool call details arrow rotation */
-      .tool-call-display[open] > summary .details-arrow {
-        transform: rotate(180deg);
-      }
-      /* Ensure tool call displays don't cause horizontal overflow */
-      .tool-call-display {
-        max-width: 100%;
-        overflow-wrap: break-word;
-        word-break: break-all;
-      }
-      .tool-call-display pre {
-        max-width: 100%;
-        overflow-x: auto;
-        word-break: break-all;
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
-      }
-      .tool-call-display .tool-call-content {
-        max-width: 100%;
-        overflow-wrap: break-word;
-      }
-      /* Add some basic prose styling for markdown content if not already globally available */
-      .prose {
-        line-height: 1.35; /* Increased for better readability */
-        font-size: 0.94rem;
-        word-wrap: break-word; /* Force word wrapping */
-        overflow-wrap: break-word; /* Modern equivalent */
-        word-break: break-word; /* Break long words */
-      }
-      .prose p { 
-        margin-bottom: 0.5em; /* Reduced for tighter spacing */
-        word-wrap: break-word;
-        overflow-wrap: break-word;
-      }
-      /* Specific URL and link handling to prevent overflow */
-      .prose a {
-        word-break: break-all; /* Break URLs aggressively */
-        overflow-wrap: break-word;
-        hyphens: auto;
-      }
-      /* Line clamp utilities for text truncation */
-      .line-clamp-1 {
-        overflow: hidden;
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 1;
-      }
-      .line-clamp-2 {
-        overflow: hidden;
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2;
-      }
-      .line-clamp-3 {
-        overflow: hidden;
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 3;
-      }
-      .prose ul {
-        list-style-type: disc;
-        margin-block-start: 0;
-        margin-block-end: 0.5em; /* Reduced */
-        padding-inline-start: 1.25rem;
-      }
-      .prose ul ul {
-        list-style-type: circle;
-      }
-      .prose ul ul ul {
-        list-style-type: square;
-      }
-      .prose ol {
-        list-style-type: decimal;
-        margin-block-start: 0;
-        margin-block-end: 0.5em; /* Reduced */
-        padding-inline-start: 1.25rem;
-      }
-      .prose li p {
-        display: inline;
-        margin-bottom: 0.2em;
-      }
-      .prose li {
-        overflow-wrap: break-word;
-        word-break: break-word; 
-        white-space: normal; 
-      }
-      .prose pre {
-        background-color: hsl(var(--muted));
-        color: hsl(var(--muted-foreground));
-        padding: 1em;
-        border-radius: 0.375rem; 
-        overflow-x: auto; /* Horizontal scroll for wide code */
-        font-size: 0.875em;
-        border: 1px solid hsl(var(--border));
-        /* NEW: Add vertical scrolling for very tall code blocks */
-        max-height: 60vh; /* Limit height to 60% of viewport height */
-        overflow-y: auto; /* Add vertical scrollbar if content exceeds max-height */
-        word-break: break-all; /* Ensure long lines without spaces can break */
-        white-space: pre-wrap; /* Allow wrapping and preserve whitespace */
-      }
-      .prose code:not(pre code) {
-        background-color: hsl(var(--muted));
-        color: hsl(var(--primary)); /* Using primary color for inline code for better visibility */
-        padding: 0.2em 0.4em;
-        margin: 0 0.1em;
-        font-size: 0.85em;
-        border-radius: 0.25rem;
-      }
-      .dark .prose pre {
-        background-color: hsl(var(--secondary)); /* A slightly different dark for pre blocks */
-         border: 1px solid hsl(var(--border));
-      }
-       .dark .prose code:not(pre code) {
-        background-color: hsl(var(--secondary));
-      }
-      /* Responsive images in prose */
-      .prose img {
-        max-width: 100%; /* Ensure images are responsive by default */
-        height: auto;    /* Allow image to set its own height based on aspect ratio */
-        min-height: 150px; /* Reserve some minimum space to reduce layout shift on mobile */
-        max-height: 350px; /* Prevent images from becoming excessively tall */
-        object-fit: contain; /* Ensure the image fits within bounds & maintains aspect ratio */
-        display: block;  /* Allows margin auto to work for centering */
-        margin-left: auto;
-        margin-right: auto;
-        margin-top: 0.5em;
-        margin-bottom: 0.5em;
-        border-radius: 0.375rem; /* Add a slight rounding to images */
-        background-color: hsl(var(--muted-foreground) / 0.05); /* Subtle background for loading state */
-      }
-
-      .dark .prose img {
-        background-color: hsl(var(--muted-foreground) / 0.1); /* Slightly more visible on dark for loading */
-      }
-
-      /* Video styling to match images */
-      .prose video {
-        max-width: 100%;
-        height: auto;
-        max-height: 400px;
-        border-radius: 0.375rem;
-        margin: 0.5em auto;
-        display: block;
-        background-color: hsl(var(--muted-foreground) / 0.05);
-        border: 1px solid hsl(var(--border));
-      }
-
-      .dark .prose video {
-        background-color: hsl(var(--muted-foreground) / 0.1);
-        border: 1px solid hsl(var(--border));
-      }
-
-      @media (min-width: 1024px) { /* Desktop screens */
-        .prose img {
-          max-width: 60%; /* Make images smaller on desktop */
-          max-height: 500px; /* Allow larger images on desktop */
-        }
-        
-        .prose video {
-          max-width: 70%; /* Make videos slightly larger than images on desktop */
-          max-height: 600px; /* Allow larger videos on desktop */
-        }
-      }
- 
-      /* Ensure ScrollArea Viewport takes full height of its ScrollAreaRoot parent */
-      /* We assume ScrollAreaRoot is correctly sized by flex (e.g. flex-1 h-full min-h-0) */
-      .scroll-area-viewport-target div[data-radix-scroll-area-viewport] {
-        height: 100%; /* Try without !important first */
-        /* overflow-y: auto; /* Ensure it can scroll its content */ /* This should be default */
-      }
-
-      /* Global style for all Radix ScrollArea Viewports */
-      div[data-radix-scroll-area-viewport] {
-        width: 100% !important;
-        height: 100% !important;
-        overflow-y: auto !important;
-      }
-    `;
-    document.head.appendChild(style);
-
-    // Cleanup function to remove the style when the component unmounts
-    return () => {
-      document.head.removeChild(style);
-    };
-  }, []);
-
-  useEffect(() => {
-    const setVh = () => {
-      document.documentElement.style.setProperty('--vh', `${window.innerHeight}px`);
-    };
-    window.addEventListener('resize', setVh);
-    setVh();
-
-    // Apply styles to prevent body scrolling and overscroll bounce
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.height = '100%';
-    document.body.style.height = '100%';
-    document.documentElement.style.overscrollBehaviorY = 'contain';
-    document.body.style.overscrollBehaviorY = 'contain';
-
-    // NEW: Add clipboard paste event listener
-    document.addEventListener('paste', handlePaste);
-
-    // NEW: Add keyboard event listeners for paste detection
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === 'v') {
-        setIsPasteReady(true);
-      }
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      if (event.key === 'Control' || event.key === 'Meta' || event.key === 'v') {
-        setIsPasteReady(false);
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('keyup', handleKeyUp);
-
-    return () => {
-      window.removeEventListener('resize', setVh);
-      document.removeEventListener('paste', handlePaste); // NEW: Cleanup paste listener
-      document.removeEventListener('keydown', handleKeyDown); // NEW: Cleanup keyboard listeners
-      document.removeEventListener('keyup', handleKeyUp);
-      // Clean up styles on unmount
-      document.documentElement.style.overflow = '';
-      document.body.style.overflow = '';
-      document.documentElement.style.height = '';
-      document.body.style.height = '';
-      document.documentElement.style.overscrollBehaviorY = '';
-      document.body.style.overscrollBehaviorY = '';
-    };
-  }, [handlePaste]);
-
-  useEffect(() => {
-    // Force re-render of MapDisplay when appTheme changes to apply new mapId
-    setMapDisplayKey(prevKey => prevKey + 1);
-  }, [appTheme]);
-
-  // NEW: Add artifact editor state
-  const [artifactEditorOpen, setArtifactEditorOpen] = useState(false);
-  const [currentArtifact, setCurrentArtifact] = useState<{
-    type: "web_app" | "pdf_document" | "mcp_server";
-    name: string;
-    url: string;
-  } | null>(null);
-
-  // NEW: Add artifacts list state
-  const [artifactsListOpen, setArtifactsListOpen] = useState(false);
-
-  // NEW: Function to open artifact editor
-  const openArtifactEditor = (type: "web_app" | "pdf_document" | "mcp_server", name: string, url: string) => {
-    setCurrentArtifact({ type, name, url });
-    setArtifactEditorOpen(true);
-  };
-
-  // NEW: Function to handle artifact selection from ArtifactsList
-  const handleArtifactSelection = (artifactName: string, artifactUrl: string, artifactType: "web_app" | "pdf_document" | "mcp_server") => {
-    openArtifactEditor(artifactType, artifactName, artifactUrl);
-  };
-
-  // Add useEffect to fetch tools list on mount
-  useEffect(() => {
-    // Fetch available tools for the current user
-    const fetchTools = async () => {
-      try {
-        const resp = await fetch(`${BACKEND_API_BASE_URL}/users/${apiSender.replace('+','')}/tools`);
-        if (!resp.ok) return;
-        const data = await resp.json();
-        if (data && Array.isArray(data.tools)) {
-          const tools: ToolMeta[] = data.tools.map((t:any)=>({name:t.name,description:t.description||""}));
-          setAvailableTools(tools);
-          setSelectedTools(tools.map(t=>t.name)); // default select all
-        }
-      } catch(e){
-        console.warn("Failed to fetch tools list",e);
-      }
-    };
-    fetchTools();
-  }, [apiSender]);
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-background text-foreground transition-colors duration-300 overflow-hidden">
-      <header className="px-2 py-2 sm:px-4 sm:py-3 border-b border-border flex justify-between items-center bg-muted/40 transition-colors duration-300 flex-shrink-0">
-        <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="hover:bg-muted flex-shrink-0">
-                <Menu className="w-5 h-5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
-              <DropdownMenuLabel className="flex items-center gap-2">
-                <Bot className="w-4 h-4" />
-                AST. Chat Settings
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {/* NEW: System Prompt Selection INSIDE DropdownMenu */}
-              <DropdownMenuLabel>Style</DropdownMenuLabel>
-              <div className="px-2 py-1">
-                <Select value={selectedSystemPrompt} onValueChange={setSelectedSystemPrompt}>
-                  <SelectTrigger className="w-full h-8">
-                    <SelectValue placeholder="Select style" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {systemPromptOptions.map(option => (
-                      <SelectItem key={option.value} value={option.value} className="text-sm">
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-2">
-                            <Zap className="w-3 h-3" />
-                            {option.label}
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            {option.description}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 dark:from-gray-900 dark:via-slate-800 dark:to-gray-800">
+      {/* Simplified Header */}
+      <header className="border-b bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Link href="/">
+                <Button variant="ghost" size="sm" className="gap-2">
+                  <ArrowLeft className="w-4 h-4" />
+                  Back
+                </Button>
+              </Link>
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-lg flex items-center justify-center">
+                  <Sparkles className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-lg font-bold text-gray-900 dark:text-white">
+                    Card Studio
+                  </h1>
+                </div>
               </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/card-studio" className="flex items-center">
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  Buddy's Card Studio
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <Settings className="w-4 h-4 mr-2" />
-                Preferences
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Zap className="w-4 h-4 mr-2" />
-                Keyboard Shortcuts
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                Clear Chat History
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          
-          {/* Enhanced Model Selection */}
-          <div className="hidden sm:flex items-center space-x-2">
-            <Badge variant="secondary" className="text-xs">
-              Model
-            </Badge>
-            <Select value={selectedModel} onValueChange={setSelectedModel}>
-              <SelectTrigger className="w-[180px] h-8">
-                <SelectValue placeholder="Select model" />
-              </SelectTrigger>
-              <SelectContent>
-                {modelOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value} className="text-sm">
-                    <div className="flex items-center gap-2">
-                      <Bot className="w-3 h-3" />
-                      {option.label}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            </div>
+            <ModeToggle />
           </div>
-          
-          {/* Current Style Indicator */}
-          {selectedSystemPrompt !== "default" && (
-            <Badge variant="outline" className="text-xs flex-shrink-0">
-              {systemPromptOptions.find(opt => opt.value === selectedSystemPrompt)?.label}
-            </Badge>
-          )}
-          {/* Tool Selection Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="gap-1">
-                Tools ({selectedTools.length})
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="max-h-64 overflow-y-auto w-56">
-              <DropdownMenuLabel>Select Tools</DropdownMenuLabel>
-              {/* Bulk selection controls */}
-              <DropdownMenuItem className="text-xs font-medium gap-2" onSelect={(e)=>{e.preventDefault(); setSelectedTools(availableTools.map(t=>t.name));}}>
-                Select All
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-xs font-medium gap-2" onSelect={(e)=>{e.preventDefault(); setSelectedTools([]);}}>
-                Deselect All
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {availableTools.map(tool => (
-                <DropdownMenuItem key={tool.name} className="gap-2" onSelect={(e)=>{e.preventDefault();}}>
-                  <input
-                    type="checkbox"
-                    className="flex-shrink-0 h-3 w-3 accent-primary mr-1"
-                    checked={selectedTools.includes(tool.name)}
-                    onChange={(e)=>{
-                      const checked = e.target.checked;
-                      setSelectedTools(prev=>{
-                        if(checked){return [...prev, tool.name];}
-                        return prev.filter(n=>n!==tool.name);
-                      });
-                    }}
-                  />
-                  <span className="text-xs truncate" title={tool.description}>{tool.name}</span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-        
-        <div className="flex items-center space-x-3">
-          {/* Status Badge REMOVED */}
-          {/*
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge 
-                  variant={status === 'Ready' ? 'default' : status === 'Processing...' ? 'secondary' : 'destructive'}
-                  className="text-xs cursor-help"
-                >
-                  {status === 'Ready' && <div className="w-1.5 h-1.5 bg-green-500 rounded-full mr-1.5" />}
-                  {status === 'Processing...' && <Loader2 className="w-3 h-3 animate-spin mr-1" />}
-                  {status}
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Current system status</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          */}
-
-          {/* NEW: Artifacts List Button */}
-          <ArtifactsList
-            userNumber={apiSender}
-            open={artifactsListOpen}
-            onOpenChange={setArtifactsListOpen}
-            onSelectApp={handleArtifactSelection}
-          />
-          
-          <ModeToggle />
         </div>
       </header>
 
-      {/* Allow main to scroll if needed, ScrollArea will be auto height within it */}
-      <main className="flex-grow flex flex-col relative transition-colors duration-300 overflow-hidden min-h-0">
-        {showInitialView ? (
-          <div id="initialView" className="text-center w-full px-2 flex-grow flex flex-col justify-center items-center">
-            <h1 className="text-3xl sm:text-4xl font-semibold text-foreground mb-2 transition-colors duration-300">
-              AST. Chat
-            </h1>
-            <p className="text-md sm:text-lg text-muted-foreground mb-6 sm:mb-10 transition-colors duration-300">
-              How can I help you today?
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto w-full">
-              {/* Special Card Studio Button */}
-              <Link href="/card-studio" className="col-span-1 sm:col-span-2">
-                <Button
-                  variant="outline"
-                  className="h-auto text-left p-4 sm:p-6 border-border rounded-lg shadow hover:shadow-md dark:hover:bg-muted transition w-full bg-gradient-to-r from-pink-50 to-purple-50 dark:from-pink-950/20 dark:to-purple-950/20 border-pink-200 dark:border-pink-800"
-                >
-                  <div className="flex items-center gap-4 w-full">
-                    <div className="w-12 h-12 bg-gradient-to-br from-pink-500 to-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Sparkles className="w-6 h-6 text-white" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-foreground text-base sm:text-lg">
-                        🎨 Buddy's Card Studio
-                      </h3>
-                      <p className="text-sm sm:text-base text-muted-foreground">
-                        Create beautiful AI-powered greeting cards for birthdays, holidays, and special occasions
+      <div className="container mx-auto px-4 py-6 max-w-2xl">
+        {/* Main Form */}
+        <Card className="shadow-lg mb-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-blue-600" />
+                  Create Your Card
+                </CardTitle>
+                <CardDescription>
+              Describe your card and we'll create it for you
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+            {/* Card Type */}
+                <div>
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                    Card Type
+                  </label>
+                  <Select value={selectedType} onValueChange={setSelectedType}>
+                    <SelectTrigger>
+                      <SelectValue>
+                        {(() => {
+                          const selected = cardTypes.find((type) => type.id === selectedType);
+                          if (!selected) return <span className="text-gray-400">Choose card type</span>;
+                          const IconComponent = selected.icon;
+                          return (
+                            <div className="flex items-center gap-2">
+                              <IconComponent className="w-4 h-4 text-gray-500" />
+                              <span className="font-medium">{selected.label}</span>
+                            </div>
+                          );
+                        })()}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {cardTypes.map((type) => {
+                        const IconComponent = type.icon;
+                        return (
+                          <SelectItem key={type.id} value={type.id}>
+                            <div className="flex items-center gap-2">
+                              <IconComponent className="w-4 h-4 text-gray-500" />
+                              <div>
+                                <div className="font-medium">{type.label}</div>
+                                <div className="text-xs text-muted-foreground">{type.description}</div>
+                              </div>
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  
+                  {/* Custom Card Type Input */}
+                  {selectedType === "custom" && (
+                    <div className="mt-3">
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                        Describe Your Card Type
+                      </label>
+                      <Input
+                        placeholder="e.g., Promotion, Moving Away, First Day of School..."
+                        value={customCardType}
+                        onChange={(e) => setCustomCardType(e.target.value)}
+                        style={{ fontSize: '16px' }}
+                      />
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        What type of card is this? This helps personalize the message and style.
                       </p>
                     </div>
-                  </div>
-                </Button>
-              </Link>
-              
-              {examplePrompts.map((prompt, index) => (
-                <Button
-                  key={index}
-                  variant="outline"
-                  className="h-auto text-left p-3 sm:p-4 border-border rounded-lg shadow hover:shadow-md dark:hover:bg-muted transition"
-                  onClick={() => handleExamplePromptClick(prompt.title, prompt.detail)}
-                >
-                  <h3 className="font-semibold text-foreground text-sm sm:text-base">
-                    {prompt.title}
-                  </h3>
-                  <p className="text-xs sm:text-sm text-muted-foreground">
-                    {prompt.detail}
-                  </p>
-                </Button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <ScrollArea className="w-full mx-auto flex-1 min-h-0" ref={scrollAreaRef}>
-            <div id="chatLog" className="space-y-3 sm:space-y-4 flex flex-col pb-[calc(68px+env(safe-area-inset-bottom))] max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto px-2 sm:px-4 pt-2 sm:pt-4">
-              {messages.map((msg) => {
-                // Define base and conditional classes for the message bubble
-                let bubbleClasses = "flex flex-col break-words"; // Common base for all
-                let thinkingIndicatorColor = "text-muted-foreground"; // Default for thinking indicator
-
-                if (msg.sender === "user") {
-                  bubbleClasses += " p-2 rounded-2xl max-w-[95%] sm:max-w-[85%] bg-sky-400 text-sky-900 self-end";
-                } else { // Bot message
-                  if (msg.is_error_message) {
-                    bubbleClasses += " px-1 py-1 sm:p-2 rounded-xl max-w-[95%] sm:max-w-[85%] bg-destructive text-destructive-foreground self-start rounded-bl-sm";
-                    thinkingIndicatorColor = "text-destructive-foreground"; // Match error bubble text
-                  } else {
-                    // Normal bot message - less "bubble" like ChatGPT
-                    bubbleClasses += " w-full self-start py-1 sm:py-2 text-foreground"; // Use page foreground color
-                    // Add some vertical margin to distinguish bot messages, and horizontal padding for content.
-                    bubbleClasses += " my-2 sm:my-3 px-1 sm:px-2"; 
-                    thinkingIndicatorColor = "text-foreground"; // Match normal bot text
-                  }
-                }
-
-                // Compute which parts to render: for direction messages, only show text before the get_directions tool call
-                const partsToRender = msg.directionsData
-                  ? (() => {
-                      const idx = msg.parts.findIndex(p => p.type === "tool_call" && p.toolCall.name === "get_directions");
-                      return idx >= 0 ? msg.parts.slice(0, idx) : msg.parts;
-                    })()
-                  : msg.parts;
-
-                // Debug: Log previews for this message
-                const messagePreviews = getPreviewsForMessage(msg.id);
-                if (messagePreviews.length > 0) {
-                  console.log(`[PAGE.TSX] Message ${msg.id} has ${messagePreviews.length} previews:`, messagePreviews);
-                }
-
-                return (
-                  <div
-                    key={msg.id}
-                    className={bubbleClasses} // Use the dynamically constructed classes
-                  >
-                    {partsToRender.map((part) => (
-                      <React.Fragment key={part.id}>
-                        {part.type === "text" && part.content && (
-                          <div className="w-full max-w-full min-w-0">
-                            <div 
-                              className="message-content prose dark:prose-invert w-full max-w-full min-w-0 text-part-fade-in" 
-                              style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
-                              dangerouslySetInnerHTML={{ __html: renderSanitizedMarkdown(part.content) }} 
-                            />
-                          </div>
-                        )}
-                        {part.type === "tool_call" && (
-                          <>
-                            <ToolCallDisplay toolCall={part.toolCall} renderSanitizedMarkdown={renderSanitizedMarkdown} />
-                            {/* Render ContentPreviews inline right after each tool call */}
-                            {getPreviewsForMessage(msg.id).filter(preview => 
-                              preview.toolCall?.call_id === part.toolCall.call_id
-                            ).map((preview) => {
-                              console.log(`[PAGE.TSX] Rendering ContentPreview for tool call ${part.toolCall.call_id}:`, preview);
-                              return (
-                                <ContentPreview
-                                  key={preview.id}
-                                  id={preview.id}
-                                  type={preview.type}
-                                  data={preview.data}
-                                  toolCall={preview.toolCall}
-                                  onUpdate={updatePreview}
-                                />
-                              );
-                            })}
-                            {/* NEW: Render ImageDisplay directly after generate_images_with_prompts tool call */}
-                            {part.toolCall.name === "generate_images_with_prompts" && 
-                             part.toolCall.status === "Completed" && 
-                             !part.toolCall.is_error && 
-                             msg.generatedImageUrls && 
-                             msg.generatedImageUrls.length > 0 && (
-                              <div className="mt-4 border rounded-lg shadow-md bg-muted/40 overflow-hidden">
-                                <div className="flex items-center justify-between p-3 bg-background border-b border-border">
-                                  <h4 className="text-sm font-semibold text-foreground">Generated Images</h4>
-                                </div>
-                                <div className="bg-background">
-                                  <ImageDisplay imageUrls={msg.generatedImageUrls} />
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        )}
-                        {part.type === "thought_summary" && (
-                          <details
-                            key={`${part.id}-thought-details`}
-                            className="thought-summary-details my-2 rounded-lg border border-border bg-muted/20 shadow-sm"
-                            open={false}
-                          >
-                            <summary className="thought-summary-summary cursor-pointer p-3 list-none flex items-center justify-between text-sm font-medium text-muted-foreground hover:bg-muted/40 rounded-t-lg">
-                              {msg.thinking ? (
-                                <div className="flex items-center">
-                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                  <span className="italic">AST. thinking</span>
-                                </div>
-                              ) : (
-                                <span className="italic">Thought Process</span>
-                              )}
-                              <ChevronDown className="w-5 h-5 transition-transform duration-200 details-arrow" />
-                            </summary>
-                            {part.content && (
-                              <div className="w-full max-w-full min-w-0 p-3 border-t border-border bg-background rounded-b-lg">
-                                <div
-                                  className="message-content prose-sm italic text-muted-foreground dark:prose-invert w-full max-w-full min-w-0 text-part-fade-in"
-                                  style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}
-                                  dangerouslySetInnerHTML={{ __html: renderSanitizedMarkdown(part.content) }}
-                                />
-                              </div>
-                            )}
-                            {msg.thinking && !part.content && (
-                              <div className="w-full max-w-full min-w-0 p-3 border-t border-border bg-background rounded-b-lg">
-                                <div className="space-y-2">
-                                  <Skeleton className="h-3 w-[250px]" />
-                                  <Skeleton className="h-3 w-[200px]" />
-                                  <Skeleton className="h-3 w-[180px]" />
-                                </div>
-                              </div>
-                            )}
-                          </details>
-                        )}
-                      </React.Fragment>
-                    ))}
-                    
-                    {/* REMOVED: Global content preview rendering - now handled inline above */}
-                    
-                    {msg.directionsData && (
-                      <>
-                        {console.log("[PAGE.TSX] Rendering MapDisplay for message", msg.id, msg.directionsData)}
-                        <div className="border rounded-lg shadow-md bg-muted/40 p-0 overflow-hidden mt-2">
-                          <MapDisplay
-                            key={mapDisplayKey}
-                            directionsResponse={msg.directionsData}
-                            googleMapsApiKey={googleMapsApiKey}
-                            showTraffic={showTraffic}
-                            theme={appTheme === 'dark' ? nightTheme : defaultTheme}
-                          />
-                        </div>
-                        {msg.directionsData?.routes?.[0]?.legs?.[0] && (
-                          <div className="p-2">
-                            <DirectionsSteps
-                              steps={msg.directionsData.routes[0].legs[0].steps}
-                              totalDuration={msg.directionsData.routes[0].legs[0].duration?.text}
-                              totalDistance={msg.directionsData.routes[0].legs[0].distance?.text}
-                            />
-                          </div>
-                        )}
-                      </>
-                    )}
-                    {/* Web App Action Buttons - Enhanced fallback for both create and edit */}
-                    {/* Only show fallback if ContentPreview system isn't handling this message */}
-                    {((msg.showWebAppForThisMessage && msg.webAppUrl) || 
-                     (msg.parts.some(part => 
-                       part.type === "tool_call" && 
-                       (part.toolCall.name === "create_web_app" || part.toolCall.name === "edit_web_app") &&
-                       part.toolCall.status === "Completed" &&
-                       !part.toolCall.is_error &&
-                       part.toolCall.result
-                     ))) && 
-                     /* Only show if ContentPreview system isn't already handling this */
-                     getPreviewsForMessage(msg.id).filter(preview => preview.type === 'web_app').length === 0 ? (
-                      <div className="mt-4 border rounded-lg shadow-md bg-muted/40 overflow-hidden">
-                        <div className="flex items-center justify-between p-3 bg-background border-b border-border">
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-semibold text-foreground">
-                              {msg.parts.find(part => 
-                                part.type === "tool_call" && 
-                                part.toolCall.name === "edit_web_app"
-                              ) ? "Web Application Edited" : "Web Application Created"}
-                            </h4>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {(() => {
-                              // Extract URL from either the message or tool call result
-                              let appUrl = msg.webAppUrl;
-                              if (!appUrl) {
-                                const webAppToolCall = msg.parts.find(part => 
-                                  part.type === "tool_call" && 
-                                  (part.toolCall.name === "create_web_app" || part.toolCall.name === "edit_web_app") &&
-                                  part.toolCall.result
-                                );
-                                if (webAppToolCall && webAppToolCall.type === "tool_call") {
-                                  try {
-                                    const result = JSON.parse(webAppToolCall.toolCall.result!);
-                                    appUrl = result.url;
-                                  } catch (e) {
-                                    console.warn("Failed to parse web app result for URL:", e);
-                                  }
-                                }
-                              }
-                              
-                              return appUrl ? (
-                                <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  asChild
-                                  className="gap-2"
-                                >
-                                  <a href={appUrl} target="_blank" rel="noopener noreferrer">
-                                    <ExternalLink className="w-4 h-4" />
-                                    Open in New Tab
-                                  </a>
-                                </Button>
-                              ) : null;
-                            })()}
-                          </div>
-                        </div>
-                        {(() => {
-                          // Show iframe preview if we have a URL
-                          let appUrl = msg.webAppUrl;
-                          let appName = "Web Application";
-                          
-                          if (!appUrl) {
-                            const webAppToolCall = msg.parts.find(part => 
-                              part.type === "tool_call" && 
-                              (part.toolCall.name === "create_web_app" || part.toolCall.name === "edit_web_app") &&
-                              part.toolCall.result
-                            );
-                            if (webAppToolCall && webAppToolCall.type === "tool_call") {
-                              try {
-                                const result = JSON.parse(webAppToolCall.toolCall.result!);
-                                appUrl = result.url;
-                                appName = result.app_name || appName;
-                              } catch (e) {
-                                console.warn("Failed to parse web app result:", e);
-                              }
-                            }
-                          }
-                          
-                          return appUrl ? (
-                            <div className="bg-background">
-                              <iframe
-                                src={appUrl}
-                                className="w-full h-64 sm:h-80 md:h-96"
-                                title={`Web App Preview: ${appName}`}
-                                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation-by-user-activation"
-                                loading="lazy"
-                              />
-                            </div>
-                          ) : null;
-                        })()}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </ScrollArea>
-        )}
-      </main>
-
-      <footer className="flex-none px-2 pb-[env(safe-area-inset-bottom)] pt-2 sm:px-4 sm:pb-[env(safe-area-inset-bottom)] sm:pt-3 bg-muted/40 border-t border-border transition-colors duration-300 flex-shrink-0">
-        <form onSubmit={handleSend} className="max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto">
-          <TooltipProvider>
-            <div className={`flex items-center bg-background border border-input rounded-xl shadow-sm p-2 transition-colors duration-300 focus-within:ring-2 focus-within:ring-ring ${isPasteReady ? 'ring-2 ring-blue-500 bg-blue-50 dark:bg-blue-950' : ''}`}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button 
-                    type="button" 
-                    variant="ghost" 
-                    size="icon" 
-                    className="text-muted-foreground hover:text-foreground" 
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Paperclip className="w-5 h-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Attach files (images, documents, etc.)</p>
-                  <p className="text-xs text-muted-foreground mt-1">💡 Tip: You can also paste images directly!</p>
-                </TooltipContent>
-              </Tooltip>
-              {/* Hidden file input */}
-              <input 
-                type="file" 
-                multiple 
-                ref={fileInputRef} 
-                onChange={handleFileSelect} 
-                style={{ display: 'none' }} 
-                accept="image/*,.heic,.heif,application/pdf,.txt,.md,.py,.js,.html,.css,.json,.csv,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
-              />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button 
-                    type="button" 
-                    variant={sendLocation ? "secondary" : "ghost"} 
-                    size="icon" 
-                    onClick={() => setSendLocation(!sendLocation)}
-                    className={`mr-2 ${sendLocation ? "text-primary" : "text-muted-foreground"} hover:text-foreground`}
-                  >
-                    <MapPin className="w-5 h-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{sendLocation ? "Stop sending location" : "Send current location with query"}</p>
-                </TooltipContent>
-              </Tooltip>
-              <Input
-                type="text"
-                id="userInput"
-                value={userInput}
-                onChange={(e) => setUserInput(e.target.value)}
-                className="flex-grow p-2 bg-transparent focus:outline-none border-0 focus:ring-0 placeholder-muted-foreground"
-                placeholder={isPasteReady ? "📋 Ready to paste images..." : "Send a message..."}
-                autoComplete="off"
-              />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button 
-                    type="submit" 
-                    variant="default" 
-                    size="icon" 
-                    disabled={!(userInput.trim() || selectedFiles.length > 0) || status !== 'Ready'} 
-                    className="rounded-lg"
-                  >
-                    <ArrowUp className="w-5 h-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Send message</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          </TooltipProvider>
-        </form>
-        {/* Enhanced selected files display */}
-        {selectedFiles.length > 0 && (
-          <div className="max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto mt-3">
-            <Card className="border-dashed">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Paperclip className="w-4 h-4" />
-                    Selected Files ({selectedFiles.length})
-                  </CardTitle>
-                  <Badge variant="secondary" className="text-xs">
-                    {selectedFiles.reduce((total, file) => total + file.size, 0) > 1024 * 1024 
-                      ? `${(selectedFiles.reduce((total, file) => total + file.size, 0) / (1024 * 1024)).toFixed(1)} MB`
-                      : `${Math.round(selectedFiles.reduce((total, file) => total + file.size, 0) / 1024)} KB`
-                    }
-                  </Badge>
+                  )}
                 </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="space-y-2">
-                  {selectedFiles.map(file => (
-                    <div key={file.name} className="flex items-center justify-between p-2 bg-muted/50 rounded-md">
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
-                        <span className="text-sm truncate">{file.name}</span>
-                        <Badge variant="outline" className="text-xs">
-                          {Math.round(file.size / 1024)} KB
-                        </Badge>
+
+            {/* Card Tone */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                Card Tone & Style
+              </label>
+              <Select value={selectedTone} onValueChange={setSelectedTone}>
+                <SelectTrigger>
+                  <SelectValue>
+                    {(() => {
+                      const selected = cardTones.find((tone) => tone.id === selectedTone);
+                      if (!selected) return <span className="text-gray-400">Choose card tone</span>;
+                      return (
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{selected.label}</span>
+                        </div>
+                      );
+                    })()}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {cardTones.map((tone) => (
+                    <SelectItem key={tone.id} value={tone.id}>
+                      <div>
+                        <div className="font-medium">{tone.label}</div>
+                        <div className="text-xs text-muted-foreground">{tone.description}</div>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* To/From Fields */}
+            <div className="grid grid-cols-2 gap-3">
+                  <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                  To
+                    </label>
+                    <Input
+                  placeholder="Sarah"
+                      value={toField}
+                      onChange={(e) => setToField(e.target.value)}
+                      style={{ fontSize: '16px' }}
+                    />
+                  </div>
+                  <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                  From
+                    </label>
+                    <Input
+                  placeholder="Alex"
+                      value={fromField}
+                      onChange={(e) => setFromField(e.target.value)}
+                      style={{ fontSize: '16px' }}
+                    />
+                  </div>
+                </div>
+
+            {/* User Email Field */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                Your Email (Required)
+              </label>
+              <Input
+                type="email"
+                placeholder="your.email@example.com"
+                required
+                value={userEmail}
+                onChange={(e) => setUserEmail(e.target.value)}
+                style={{ fontSize: '16px' }}
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Required to generate your card. We'll send you a thank you note when it's ready!
+              </p>
+            </div>
+
+            {/* Main Description */}
+                <div>
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                Describe Your Card
+                  </label>
+              <Textarea
+                placeholder="A cheerful birthday card with flowers and sunshine for my best friend who loves gardening..."
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                rows={3}
+                className="resize-none"
+                style={{ fontSize: '16px' }}
+              />
+                </div>
+
+            {/* Message Section */}
+                <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Card Message
+                  </label>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleGetMessageHelp}
+                  disabled={isGeneratingMessage || !prompt.trim() || isHandwrittenMessage}
+                  className="gap-1 text-xs"
+                >
+                  <MessageSquarePlus className="w-3 h-3" />
+                  {isGeneratingMessage ? "Writing..." : "Help me write"}
+                </Button>
+                          </div>
+                  <Textarea
+                placeholder={isHandwrittenMessage ? "Leave blank - you'll handwrite your message" : "Write your message here, or click 'Help me write' for assistance..."}
+                value={finalCardMessage}
+                onChange={(e) => setFinalCardMessage(e.target.value)}
+                    rows={3}
+                    className="resize-none"
+                    style={{ fontSize: '16px' }}
+                disabled={isHandwrittenMessage}
+                  />
+                  
+                  {/* Handwritten Message Option */}
+                  <div className="flex items-center space-x-2 mt-2">
+                    <input
+                      type="checkbox"
+                      id="handwritten-message"
+                      checked={isHandwrittenMessage}
+                      onChange={(e) => {
+                        setIsHandwrittenMessage(e.target.checked);
+                        if (e.target.checked) {
+                          setFinalCardMessage("");
+                        }
+                      }}
+                      className="rounded"
+                    />
+                    <label htmlFor="handwritten-message" className="text-sm text-gray-600 dark:text-gray-400">
+                      Leave blank space for handwritten message
+                    </label>
+                  </div>
+                </div>
+
+            {/* Reference Photo */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                Reference Photo (Optional)
+              </label>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                Upload a photo to transform into your card's artistic style - perfect for turning family photos into card artwork!
+              </p>
+              {!referenceImage ? (
+                <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0], 'reference')}
+                    disabled={isUploading}
+                    className="hidden"
+                    id="reference-upload"
+                  />
+                  <label htmlFor="reference-upload" className="cursor-pointer">
+                    <Wand2 className="w-6 h-6 mx-auto mb-2 text-gray-400" />
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      {isUploading ? "Uploading..." : "Upload photo to transform"}
+                    </div>
+                  </label>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <Wand2 className="w-4 h-4 text-purple-600" />
+                      <span className="text-sm text-purple-800 dark:text-purple-200">{referenceImage.name}</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setReferenceImage(null);
+                        setReferenceImageUrl(null);
+                        setImageTransformation("");
+                      }}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <Textarea
+                    placeholder="How should we transform your photo? (e.g., 'Turn us into cute cartoon characters while keeping our faces recognizable')"
+                    value={imageTransformation}
+                    onChange={(e) => setImageTransformation(e.target.value)}
+                    rows={2}
+                    className="resize-none"
+                    style={{ fontSize: '16px' }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Paper Size Selection */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                Paper Size
+              </label>
+              <Select value={selectedPaperSize} onValueChange={setSelectedPaperSize}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose paper size" />
+                </SelectTrigger>
+                <SelectContent>
+                  {paperSizes.map((size) => (
+                    <SelectItem key={size.id} value={size.id}>
+                      <div>
+                        <div className="font-medium">{size.label}</div>
+                        <div className="text-xs text-muted-foreground">{size.description}</div>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Number of Cards */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                Number of Cards to Generate
+              </label>
+              <Select value={numberOfCards.toString()} onValueChange={(value) => setNumberOfCards(parseInt(value))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose number of cards" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">
+                    <div>
+                      <div className="font-medium">1 Card</div>
+                      <div className="text-xs text-muted-foreground">Single card generation</div>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="2">
+                    <div>
+                      <div className="font-medium">2 Cards</div>
+                      <div className="text-xs text-muted-foreground">Generate 2 variations to choose from</div>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="3">
+                    <div>
+                      <div className="font-medium">3 Cards</div>
+                      <div className="text-xs text-muted-foreground">Generate 3 variations to choose from</div>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="4">
+                    <div>
+                      <div className="font-medium">4 Cards</div>
+                      <div className="text-xs text-muted-foreground">Generate 4 variations to choose from</div>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              {numberOfCards > 1 && (
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                  ✨ Multiple cards will be generated in parallel with the same prompt for creative variety
+                </p>
+              )}
+            </div>
+
+            {/* Print Options */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">
+                Print Options
+              </label>
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="front-back-only"
+                    checked={isFrontBackOnly}
+                    onChange={(e) => setIsFrontBackOnly(e.target.checked)}
+                    className="rounded"
+                  />
+                  <label htmlFor="front-back-only" className="text-sm text-gray-600 dark:text-gray-400">
+                    Front/Back only (for single-sided printers)
+                  </label>
+                </div>
+                {isFrontBackOnly && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 ml-6">
+                    💡 Perfect for single-sided printers - you can write your message inside the folded card
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Artistic Style Selection */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                Artistic Style
+              </label>
+              <Select value={selectedArtisticStyle} onValueChange={setSelectedArtisticStyle}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose artistic style" />
+                </SelectTrigger>
+                <SelectContent>
+                  {artisticStyles.map((style) => (
+                    <SelectItem key={style.id} value={style.id}>
+                      <div>
+                        <div className="font-medium">{style.label}</div>
+                        <div className="text-xs text-muted-foreground">{style.description}</div>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+                
+              {/* Custom Style Description */}
+              {selectedArtisticStyle === "custom" && (
+                <div className="mt-3">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                    Describe Your Custom Style
+                  </label>
+                  <Textarea
+                    placeholder="e.g., in vintage 1920s art deco style with gold accents and geometric patterns..."
+                    value={customStyleDescription}
+                    onChange={(e) => setCustomStyleDescription(e.target.value)}
+                    rows={3}
+                    className="resize-none"
+                    style={{ fontSize: '16px' }}
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Describe the artistic style you want for your card (colors, techniques, era, mood, etc.)
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Advanced Options */}
+            <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" className="w-full justify-between p-0 h-auto">
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    <Settings className="w-4 h-4" />
+                    Advanced Options
+                  </span>
+                  <ChevronDown className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-4 mt-4">
+                {/* Model Selection */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                    Image Model
+                    </label>
+                  <Select value={selectedImageModel} onValueChange={setSelectedImageModel}>
+                    <SelectTrigger>
+                      <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {imageModels.map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                          <div>
+                            <div className="font-medium">{model.label}</div>
+                            <div className="text-xs text-muted-foreground">{model.description}</div>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                </div>
+
+                {/* Handwriting Sample */}
+                <div>
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                    Handwriting Sample (Optional)
+                  </label>
+                  {!handwritingSample ? (
+                    <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0], 'handwriting')}
+                        disabled={isUploading}
+                        className="hidden"
+                        id="handwriting-upload"
+                      />
+                      <label htmlFor="handwriting-upload" className="cursor-pointer">
+                        <Upload className="w-6 h-6 mx-auto mb-2 text-gray-400" />
+                        <div className="text-sm text-gray-600 dark:text-gray-400">
+                          {isUploading ? "Uploading..." : "Upload handwriting sample"}
+                        </div>
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Edit3 className="w-4 h-4 text-green-600" />
+                        <span className="text-sm text-green-800 dark:text-green-200">{handwritingSample.name}</span>
                       </div>
                       <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => removeSelectedFile(file.name)} 
-                        className="text-red-500 hover:text-red-700 h-6 w-6 p-0 flex-shrink-0"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setHandwritingSample(null);
+                          setHandwritingSampleUrl(null);
+                        }}
                       >
-                        ×
+                        <X className="w-4 h-4" />
                       </Button>
                     </div>
-                  ))}
+                  )}
                 </div>
+              </CollapsibleContent>
+            </Collapsible>
+
+                {/* Generate Button */}
+                <Button
+                  onClick={handleGenerateCard}
+                  disabled={isGenerating || !prompt.trim() || !userEmail.trim()}
+              className="w-full bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 h-12"
+                  size="lg"
+                >
+                  {isGenerating ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      <div className="flex flex-col items-center">
+                        <span>{generationProgress || "Creating Your Card..."}</span>
+                        {countdown > 0 && (
+                          <span className={`text-xs mt-1 ${countdown <= 10 ? 'text-yellow-200 opacity-100' : 'opacity-90'}`}>
+                            ⏱️ ~{countdown}s remaining
+                          </span>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                  <Sparkles className="w-5 h-5 mr-2" />
+                  {numberOfCards > 1 ? `Create ${numberOfCards} Cards` : 'Create Card'}
+                    </>
+                  )}
+                </Button>
               </CardContent>
             </Card>
-          </div>
-        )}
-        {/* Enhanced file processing status */}
-        {fileProcessingStatus && (
-          <div className="max-w-4xl lg:max-w-5xl xl:max-w-7xl mx-auto mt-3">
-            <Card className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
-              <CardContent className="p-3">
-                <div className="flex items-center gap-3">
-                  <Loader2 className="w-4 h-4 animate-spin text-blue-600 dark:text-blue-400" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                      Processing Files
-                    </p>
-                    <p className="text-xs text-blue-700 dark:text-blue-300">
-                      {fileProcessingStatus}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+
+        {/* Card Preview */}
+        {generatedCard && (
+                  <Card className="shadow-lg">
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle>
+                            {numberOfCards > 1 ? `Your Cards (${generatedCards.length} Generated)` : 'Your Card'}
+                          </CardTitle>
+                          <CardDescription>
+                            Created {generatedCard.createdAt.toLocaleDateString()}
+                            {numberOfCards > 1 && ` • Viewing Card ${selectedCardIndex + 1} of ${generatedCards.length}`}
+                          </CardDescription>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" onClick={handlePrint}>
+                            <Printer className="w-4 h-4 mr-1" />
+                            Print
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={handleRemotePrint}>
+                            <Printer className="w-4 h-4 mr-1" />
+                            Remote Print
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      {/* Card Selector for Multiple Cards */}
+                      {numberOfCards > 1 && generatedCards.length > 1 && (
+                        <div className="mt-4">
+                          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                            Choose Your Favorite Card
+                          </label>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {generatedCards.map((card, index) => (
+                              <div
+                                key={card.id}
+                                className={`relative cursor-pointer rounded-lg border-2 p-2 transition-all ${
+                                  selectedCardIndex === index
+                                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                                }`}
+                                onClick={() => {
+                                  setSelectedCardIndex(index);
+                                  setGeneratedCard(card);
+                                }}
+                              >
+                                <div className="aspect-[2/3] relative overflow-hidden rounded">
+                                  {card.frontCover ? (
+                                    <img
+                                      src={card.frontCover}
+                                      alt={`Card ${index + 1} Preview`}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="w-full h-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                                      <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="text-center mt-1">
+                                  <span className="text-xs font-medium">Card {index + 1}</span>
+                                  {selectedCardIndex === index && (
+                                    <div className="text-xs text-blue-600 dark:text-blue-400">Selected</div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </CardHeader>
+                    <CardContent>
+                      <CardPreview 
+                        card={generatedCard} 
+                        onCardUpdate={(updatedCard) => {
+                          setGeneratedCard(updatedCard);
+                          // Also update the card in the cards array
+                          setGeneratedCards(prev => {
+                            const updated = [...prev];
+                            updated[selectedCardIndex] = updatedCard;
+                            return updated;
+                          });
+                        }}
+                        isFrontBackOnly={isFrontBackOnly}
+                        onPrint={handlePrint}
+                        paperConfig={paperSizes.find(size => size.id === selectedPaperSize) || paperSizes[0]}
+                        sectionLoadingStates={sectionLoadingStates}
+                      />
+                    </CardContent>
+                  </Card>
         )}
 
-      </footer>
-      
-      {/* NEW: Artifact Editor Dialog */}
-      {currentArtifact && (
-        <ArtifactEditor
-          artifactType={currentArtifact.type}
-          artifactName={currentArtifact.name}
-          artifactUrl={currentArtifact.url}
-          userNumber={apiSender}
-          open={artifactEditorOpen}
-          onOpenChange={setArtifactEditorOpen}
-        />
-      )}
+        {/* Empty State */}
+        {!generatedCard && (
+              <Card className="shadow-lg">
+                <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-full flex items-center justify-center mb-4">
+                    <Sparkles className="w-8 h-8 text-white" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                Ready to Create?
+                  </h3>
+              <p className="text-gray-600 dark:text-gray-400 text-sm max-w-sm">
+                Describe your perfect card above and we'll bring it to life with creative magic!
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+      </div>
     </div>
   );
-}
+} 

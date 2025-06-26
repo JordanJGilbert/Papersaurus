@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 mcp = FastMCP("Google Services Server")
 
 GMAIL_SERVICE_ACCOUNT_FILE = os.path.join(os.path.dirname(__file__), '../../utils/google_service_account.json')
-DELEGATED_ACCOUNT = 'f@ast.engineer'  # <-- Replace with the actual email to send from
+DELEGATED_ACCOUNT = 'jordan@ast.engineer'  # Changed from 'f@ast.engineer'
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
 
 def process_attachments(attachments):

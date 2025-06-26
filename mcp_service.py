@@ -529,6 +529,7 @@ class MCPManager:
                 supported_models = [
                     "gemini-2.5-flash-preview-05-20",
                     "gemini-2.5-pro-preview-05-06", 
+                    "gemini-2.5-flash-lite-preview-06-17",
                     "models/gemini-2.0-flash",
                     "gemini-2.0-flash",
                     "claude-3-7-sonnet-latest",

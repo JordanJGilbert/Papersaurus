@@ -33,6 +33,7 @@ pillow-heif
 weasyprint
 pdfkit
 python-docx
+reportlab
 
 # --- Data Science ---
 numpy
