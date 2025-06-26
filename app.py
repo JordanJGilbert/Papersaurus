@@ -11,7 +11,7 @@ import re
 import uuid
 from dotenv import load_dotenv
 from routes.signal_bot import signal_bp, init_signal_bot
-from database import read_data, write_data
+# Note: Using sync_read_data and sync_write_data defined in this file for Flask routes
 import anthropic
 import asyncio
 import threading
@@ -916,6 +916,14 @@ def fix_json(text):
         
     # Remove leading/trailing whitespace
     text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL) 
+    text = text.strip()
+    
+    # Remove leading non-JSON characters (like ! or other prefixes before {)
+    if text and not text.startswith('{'):
+        # Find the first { character
+        start_idx = text.find('{')
+        if start_idx > 0:
+            text = text[start_idx:]
     
     # First try to extract JSON from backticks if present
     extracted_text = extract_json_from_backticks(text)
@@ -4431,6 +4439,54 @@ def generate_friendly_card_id():
     card_id = adjective + color.capitalize() + animal.capitalize()
     return card_id
 
+def sync_write_data(key, value):
+    """Synchronous version of write_data for Flask routes"""
+    try:
+        timestamp = time.time()
+        data = {
+            'key': key,
+            'value': value,
+            'write_timestamp': timestamp,
+            'read_timestamp': None,
+            'read_count': 0
+        }
+        
+        # Save the main data using the same file path logic
+        file_path = get_file_path(key)
+        with open(file_path, 'w') as f:
+            f.write(json.dumps(data))
+        
+        return {
+            'status': 'success',
+            'key': key,
+        }
+    except Exception as e:
+        raise Exception(f"Error writing data: {str(e)}")
+
+def sync_read_data(key):
+    """Synchronous version of read_data for Flask routes"""
+    try:
+        file_path = get_file_path(key)
+        if not os.path.exists(file_path):
+            return None
+            
+        # Read the data
+        with open(file_path, 'r') as f:
+            content = f.read()
+            data = json.loads(content)
+            
+        # Update read timestamp and count
+        data['read_timestamp'] = time.time()
+        data['read_count'] = data.get('read_count', 0) + 1
+        
+        # Write back the updated metadata
+        with open(file_path, 'w') as f:
+            f.write(json.dumps(data))
+            
+        return data.get('value')
+    except Exception as e:
+        return None
+
 # Card sharing routes
 @app.route('/api/cards/store', methods=['POST'])
 def store_card():
@@ -4455,13 +4511,8 @@ def store_card():
             'expiresAt': time.time() + (30 * 24 * 60 * 60)  # 30 days from now
         }
         
-        # Use existing database write function
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(write_data(f"shared_card_{card_id}", card_data))
-        finally:
-            loop.close()
+        # Store card data using synchronous database function
+        sync_write_data(f"shared_card_{card_id}", card_data)
         
         # Return shareable URL
         domain = DOMAIN_FROM_ENV or 'vibecarding.com'
@@ -4485,13 +4536,8 @@ def store_card():
 def view_shared_card(card_id):
     """Serve standalone card viewer page"""
     try:
-        # Retrieve card data
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            card_data = loop.run_until_complete(read_data(f"shared_card_{card_id}"))
-        finally:
-            loop.close()
+        # Retrieve card data using synchronous database function
+        card_data = sync_read_data(f"shared_card_{card_id}")
         
         if not card_data:
             abort(404)

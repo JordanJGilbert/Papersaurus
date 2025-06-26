@@ -49,6 +49,25 @@ from utils.search_replace import (
 logging.basicConfig(stream=sys.stderr, level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+def clean_json_response(text):
+    """
+    Clean JSON response by removing leading non-JSON characters and other common issues.
+    """
+    if not text:
+        return text
+        
+    # Remove leading/trailing whitespace
+    text = text.strip()
+    
+    # Remove leading non-JSON characters (like ! or other prefixes before {)
+    if text and not text.startswith('{'):
+        # Find the first { character
+        start_idx = text.find('{')
+        if start_idx > 0:
+            text = text[start_idx:]
+    
+    return text
+
 mcp = FastMCP("Document Generation Server")
 
 # --- Supported LLM Models ---
@@ -3013,10 +3032,13 @@ async def ai_chat(
                 
                 if json_match:
                     json_text = json_match.group(1).strip()
+                    # Clean JSON text before parsing
+                    json_text = clean_json_response(json_text)
                     parsed_response = json.loads(json_text)
                 else:
                     # Fallback: try to parse the entire response as JSON (without code blocks)
-                    parsed_response = json.loads(ai_response.strip())
+                    cleaned_response = clean_json_response(ai_response.strip())
+                    parsed_response = json.loads(cleaned_response)
                 
                 # Basic schema validation (check if required fields exist)
                 if "properties" in json_schema and "required" in json_schema:
