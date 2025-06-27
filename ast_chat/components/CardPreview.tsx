@@ -5,10 +5,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, Play, Pause, RotateCcw, Maximize2, X, Edit3, Wand2, Loader2, Paintbrush, Printer, CheckCircle, AlertCircle, Share2, Mail, Copy } from "lucide-react";
+import { ChevronLeft, ChevronRight, Play, Pause, RotateCcw, Maximize2, X, Edit3, Wand2, Loader2, Printer, CheckCircle, AlertCircle, Share2, Mail, Copy } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import PaintMaskEditor from "./PaintMaskEditor";
 
 interface GeneratedCard {
   id: string;
@@ -18,6 +17,7 @@ interface GeneratedCard {
   leftPage: string;        // Portrait image - left interior (decorative art)
   rightPage: string;       // Portrait image - right interior (message area)
   createdAt: Date;
+  shareUrl?: string;       // Optional shareable URL for the card
 }
 
 interface PaperConfig {
@@ -81,10 +81,6 @@ export default function CardPreview({ card, onCardUpdate, isFrontBackOnly = fals
   const [editPrompt, setEditPrompt] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   
-  // Paint mask state
-  const [showPaintMask, setShowPaintMask] = useState(false);
-  const [paintMaskImageUrl, setPaintMaskImageUrl] = useState<string>("");
-  const [generatedMask, setGeneratedMask] = useState<string>("");
   
   // Version history state
   const [versionHistory, setVersionHistory] = useState<Record<string, string[]>>({});
@@ -95,6 +91,7 @@ export default function CardPreview({ card, onCardUpdate, isFrontBackOnly = fals
   const [shareUrl, setShareUrl] = useState<string>("");
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [emailAddress, setEmailAddress] = useState("");
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   // Helper function to get the current image (from version history if available, otherwise original)
   const getCurrentImage = (sectionId: string, originalImage: string) => {
@@ -186,17 +183,26 @@ export default function CardPreview({ card, onCardUpdate, isFrontBackOnly = fals
       editLabel: "Edit Front Cover",
     },
     {
-      id: "interior",
-      title: "Interior Pages",
-      subtitle: "When opened",
-      leftImage: getCurrentImage("left-interior", card.leftPage),
-      rightImage: getCurrentImage("right-interior", card.rightPage),
-      leftOriginalImage: card.leftPage,
-      rightOriginalImage: card.rightPage,
-      description: "How your card will look when opened - decorative artwork on the left and your message on the right.",
+      id: "left-interior",
+      title: "Left Interior",
+      subtitle: "Decorative page",
+      image: getCurrentImage("left-interior", card.leftPage),
+      originalImage: card.leftPage,
+      description: "The decorative left page when the card is opened.",
       color: "bg-emerald-500",
-      type: "double" as const,
-      editLabel: "Edit Interior",
+      type: "single" as const,
+      editLabel: "Edit Left Interior",
+    },
+    {
+      id: "right-interior",
+      title: "Right Interior", 
+      subtitle: "Message page",
+      image: getCurrentImage("right-interior", card.rightPage),
+      originalImage: card.rightPage,
+      description: "The right page with your message when the card is opened.",
+      color: "bg-emerald-600",
+      type: "single" as const,
+      editLabel: "Edit Right Interior",
     },
     {
       id: "back-cover",
@@ -213,7 +219,7 @@ export default function CardPreview({ card, onCardUpdate, isFrontBackOnly = fals
 
   // Filter slides based on isFrontBackOnly prop
   const slides = isFrontBackOnly 
-    ? allSlides.filter(slide => slide.id !== "interior")
+    ? allSlides.filter(slide => !slide.id.includes("interior"))
     : allSlides;
 
   const paginate = (newDirection: number) => {
@@ -289,158 +295,7 @@ export default function CardPreview({ card, onCardUpdate, isFrontBackOnly = fals
     setEditPrompt("");
   };
 
-  // Paint mask functionality
-  const handlePaintMaskEdit = (sectionId: string) => {
-    const sourceImageUrl = getSourceImageForEdit(sectionId);
-    if (!sourceImageUrl) {
-      toast.error("Could not find source image for masking");
-      return;
-    }
-    setPaintMaskImageUrl(sourceImageUrl);
-    setEditingSection(sectionId);
-    setShowPaintMask(true);
-  };
 
-  const handleMaskComplete = async (maskDataUrl: string) => {
-    if (!editingSection || !editPrompt.trim()) {
-      toast.error("Please enter an edit prompt first");
-      return;
-    }
-
-    setGeneratedMask(maskDataUrl);
-    setShowPaintMask(false);
-    
-    // Now proceed with the edit using the mask
-    await handleSubmitEditWithMask(maskDataUrl);
-  };
-
-  const handleSubmitEditWithMask = async (maskDataUrl: string) => {
-    if (!editingSection || !editPrompt.trim()) {
-      toast.error("Please enter an edit prompt");
-      return;
-    }
-
-    const sourceImageUrl = getSourceImageForEdit(editingSection);
-    if (!sourceImageUrl) {
-      toast.error("Could not find source image for editing");
-      return;
-    }
-
-    setIsEditing(true);
-
-    try {
-      // Enhanced edit prompt for masked editing
-      let finalEditPrompt = `CRITICAL: This is a greeting card ${editingSection.replace('-', ' ')} in portrait format with SELECTIVE EDITING using a mask.
-
-Your edit request: "${editPrompt}"
-
-MASK INSTRUCTIONS:
-- A mask has been provided showing exactly which areas to edit (white areas)
-- ONLY modify the white areas in the mask - leave black areas completely unchanged
-- The mask defines precise boundaries - respect them exactly
-- Blend edits seamlessly at mask edges
-
-IMPORTANT INSTRUCTIONS:
-- This is a portrait (vertical) image for a greeting card
-- You must PRESERVE the portrait format and dimensions
-- Only modify what was specifically requested in the edit AND within the masked areas
-- Keep the overall layout structure intact - do not crop or cut off any sections
-- Maintain the aspect ratio and size of the original image
-- Ensure the edited result is suitable for printing as part of a greeting card
-- Position any text elements safely away from edges with generous margins
-- The image should remain focused on its specific purpose: ${editingSection.replace('-', ' ')}
-
-Apply the requested changes ONLY within the masked areas while preserving the complete image structure and portrait format.`;
-
-      // Call the edit_images tool with mask
-      const response = await fetch('/internal/call_mcp_tool', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tool_name: 'edit_images',
-          arguments: {
-            images: [sourceImageUrl],
-            edit_prompt: finalEditPrompt,
-            user_number: "+17145986105",
-            model: "gpt-image-1",
-            mask: maskDataUrl, // Pass the mask data URL
-            output_format: "jpeg",
-            quality: "auto",
-            output_compression: 100,
-            size: paperConfig?.dimensions || "1024x1536", // Use paper config dimensions
-            n: 1
-          }
-        })
-      });
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const data = await response.json();
-      if (data.error && data.error !== "None" && data.error !== null) {
-        throw new Error(data.error);
-      }
-
-      let result;
-      if (typeof data.result === 'string') {
-        try {
-          result = JSON.parse(data.result);
-        } catch {
-          throw new Error('Invalid JSON response');
-        }
-      } else {
-        result = data.result;
-      }
-
-      if (result.status === 'error') {
-        throw new Error(result.message);
-      }
-
-      // Extract the edited image URL
-      const editResult = result.results[0];
-      if (editResult.status === 'error') {
-        throw new Error(editResult.message);
-      }
-
-      const editedImageUrl = editResult.edited_url;
-      if (!editedImageUrl) {
-        throw new Error('No edited image URL returned');
-      }
-
-      // Add to version history
-      addToVersionHistory(editingSection, editedImageUrl);
-
-      // Update the card object if callback provided
-      if (onCardUpdate) {
-        const updatedCard = { ...card };
-        switch (editingSection) {
-          case "front-cover":
-            updatedCard.frontCover = editedImageUrl;
-            break;
-          case "back-cover":
-            updatedCard.backCover = editedImageUrl;
-            break;
-          case "left-interior":
-            updatedCard.leftPage = editedImageUrl;
-            break;
-          case "right-interior":
-            updatedCard.rightPage = editedImageUrl;
-            break;
-        }
-        onCardUpdate(updatedCard);
-      }
-
-      toast.success(`✨ ${slides.find(s => s.id === editingSection)?.title} edited with mask successfully!`);
-      setEditingSection(null);
-      setEditPrompt("");
-      setGeneratedMask("");
-
-    } catch (error) {
-      console.error('Masked edit failed:', error);
-      toast.error(`Failed to edit image with mask: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setIsEditing(false);
-    }
-  };
 
   const handleSubmitEdit = async () => {
     if (!editingSection || !editPrompt.trim()) {
@@ -632,6 +487,16 @@ Apply the requested changes while preserving the complete image structure and po
   const handleShareCard = async () => {
     setIsSharing(true);
     try {
+      // Check if card already has a share URL from email creation
+      if (card.shareUrl) {
+        setShareUrl(card.shareUrl);
+        setShowShareDialog(true);
+        toast.success("Card is ready to share!");
+        setIsSharing(false);
+        return;
+      }
+
+      // If no existing URL, create a new one
       const response = await fetch('/api/cards/store', {
         method: 'POST',
         headers: {
@@ -652,6 +517,12 @@ Apply the requested changes while preserving the complete image structure and po
 
       const result = await response.json();
       setShareUrl(result.share_url);
+      
+      // Update the card with the new share URL
+      if (onCardUpdate) {
+        onCardUpdate({ ...card, shareUrl: result.share_url });
+      }
+      
       setShowShareDialog(true);
       toast.success("Card is ready to share!");
     } catch (error) {
@@ -671,22 +542,41 @@ Apply the requested changes while preserving the complete image structure and po
     }
   };
 
-  const handleEmailCard = () => {
+  const handleEmailCard = async () => {
     if (!emailAddress.trim()) {
       toast.error("Please enter an email address");
       return;
     }
-    
-    // Use your existing email functionality from page.tsx
-    const subject = "Check out this greeting card I made!";
-    const body = `I created a personalized greeting card and wanted to share it with you!\n\nView the card: ${shareUrl}\n\nHope you like it!`;
-    
-    // Open default email client
-    const mailtoLink = `mailto:${emailAddress}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.open(mailtoLink);
-    
-    toast.success("Email client opened with card link!");
-    setShowShareDialog(false);
+
+    setIsSendingEmail(true);
+    try {
+      const response = await fetch('/api/cards/send-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: emailAddress,
+          share_url: shareUrl,
+          card_prompt: card.prompt
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.status === 'success') {
+        toast.success("✉️ Card sent successfully via email!");
+        setShowShareDialog(false);
+        setEmailAddress(""); // Clear the email field
+      } else {
+        toast.error(`Failed to send email: ${result.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error sending email:', error);
+      toast.error("Failed to send email. Please try again.");
+    } finally {
+      setIsSendingEmail(false);
+    }
   };
 
   return (
@@ -702,7 +592,7 @@ Apply the requested changes while preserving the complete image structure and po
         <p className="text-sm text-gray-600 dark:text-gray-400">
           {isFrontBackOnly 
             ? "Swipe through your card: front cover and back cover"
-            : "Swipe through your card: front cover, combined interior view, and back cover"
+            : "Swipe through your card: front cover, left interior, right interior, and back cover"
           }
         </p>
       </motion.div>
@@ -769,7 +659,7 @@ Apply the requested changes while preserving the complete image structure and po
         </div>
 
         {/* Carousel */}
-        <div className="relative h-80 md:h-96 overflow-hidden rounded-xl">
+        <div className="relative h-[60vh] sm:h-80 md:h-96 overflow-hidden rounded-xl">
           <AnimatePresence initial={false} custom={direction}>
             <motion.div
               key={currentSlide}
@@ -816,152 +706,105 @@ Apply the requested changes while preserving the complete image structure and po
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.4, duration: 0.4 }}
                 >
-                  {slides[currentSlide].type === "double" ? (
-                    // Double image layout for interior pages
-                    <div className="w-full h-full flex">
-                      {/* Left Interior */}
-                      <div className="w-1/2 h-full relative group/left">
-                        {slides[currentSlide].leftImage ? (
-                          <img
-                            src={slides[currentSlide].leftImage}
-                            alt="Left Interior"
-                            className="w-full h-full object-contain bg-white"
-                            draggable={false}
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                            <p className="text-gray-500 text-sm">Loading left...</p>
+                  {/* Single image layout with click-to-fullscreen */}
+                  {slides[currentSlide].image ? (
+                    <div 
+                      className="w-full h-full relative cursor-pointer group/image"
+                      onClick={openFullscreen}
+                      title="Click to view fullscreen"
+                    >
+                      <img
+                        src={slides[currentSlide].image}
+                        alt={slides[currentSlide].title}
+                        className="w-full h-full object-contain bg-white"
+                        draggable={false}
+                      />
+                      
+                      {/* Fullscreen hint overlay */}
+                      <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/10 transition-all duration-200 flex items-center justify-center">
+                        <div className="opacity-0 group-hover/image:opacity-100 transition-opacity duration-200 bg-white/90 rounded-full p-3 shadow-lg">
+                          <Maximize2 className="w-6 h-6 text-gray-700" />
+                        </div>
+                      </div>
+                      
+                      {/* Edit Buttons - Always visible */}
+                      <div className="absolute inset-0 pointer-events-none">
+                        {/* Loading State Indicator */}
+                        <div className="absolute top-3 left-3 pointer-events-auto">
+                          {renderLoadingIndicator(getLoadingState(slides[currentSlide].id))}
+                        </div>
+
+                        {/* Edit Button - Always visible */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditSection(slides[currentSlide].id);
+                          }}
+                          className="absolute top-3 right-3 bg-white/90 hover:bg-white text-gray-700 rounded-full p-2 shadow-lg transition-all duration-200 pointer-events-auto"
+                          title={slides[currentSlide].editLabel}
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+
+                        
+                        {/* Reset Button - Show only if has version history */}
+                        {versionHistory[slides[currentSlide].id] && versionHistory[slides[currentSlide].id].length > 0 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              resetSection(slides[currentSlide].id);
+                            }}
+                            className="absolute top-3 left-3 bg-amber-500/90 hover:bg-amber-500 text-white rounded-full p-2 shadow-lg transition-all duration-200 pointer-events-auto"
+                            title="Reset to original"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                          </button>
+                        )}
+                        
+                        {/* Version Navigation - Show only if has version history */}
+                        {versionHistory[slides[currentSlide].id] && versionHistory[slides[currentSlide].id].length > 0 && (
+                          <div className="absolute bottom-3 left-3 bg-white/90 rounded-lg shadow-lg p-2 flex items-center gap-2 pointer-events-auto">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                goToPreviousVersion(slides[currentSlide].id);
+                              }}
+                              disabled={!canGoBack(slides[currentSlide].id)}
+                              className="p-1 rounded-full hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                              title="Previous version"
+                            >
+                              <ChevronLeft className="w-3 h-3" />
+                            </button>
+                            <span className="text-xs text-gray-700 px-1">
+                              {(currentVersionIndex[slides[currentSlide].id] || 0) + 1}/{versionHistory[slides[currentSlide].id].length}
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                goToNextVersion(slides[currentSlide].id);
+                              }}
+                              disabled={!canGoForward(slides[currentSlide].id)}
+                              className="p-1 rounded-full hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                              title="Next version"
+                            >
+                              <ChevronRight className="w-3 h-3" />
+                            </button>
                           </div>
                         )}
-                        {/* Edit Button for Left */}
-                        <button
-                          onClick={() => handleEditSection("left-interior")}
-                          className="absolute top-2 right-2 bg-white/90 hover:bg-white text-gray-700 rounded-full p-1.5 shadow-lg transition-all duration-200 opacity-0 group-hover/left:opacity-100"
-                          title="Edit Left Interior"
-                        >
-                          <Edit3 className="w-3 h-3" />
-                        </button>
-                      </div>
-                      
-                      {/* Divider */}
-                      <div className="w-px bg-gray-300"></div>
-                      
-                      {/* Right Interior */}
-                      <div className="w-1/2 h-full relative group/right">
-                        {slides[currentSlide].rightImage ? (
-                          <img
-                            src={slides[currentSlide].rightImage}
-                            alt="Right Interior"
-                            className="w-full h-full object-contain bg-white"
-                            draggable={false}
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                            <p className="text-gray-500 text-sm">Loading right...</p>
+                        
+                        {/* Edited Indicator */}
+                        {versionHistory[slides[currentSlide].id] && versionHistory[slides[currentSlide].id].length > 0 && (
+                          <div className="absolute bottom-3 right-3 bg-emerald-500 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 pointer-events-auto">
+                            <Wand2 className="w-3 h-3" />
+                            Edited
                           </div>
                         )}
-                        {/* Edit Button for Right */}
-                        <button
-                          onClick={() => handleEditSection("right-interior")}
-                          className="absolute top-2 right-2 bg-white/90 hover:bg-white text-gray-700 rounded-full p-1.5 shadow-lg transition-all duration-200 opacity-0 group-hover/right:opacity-100"
-                          title="Edit Right Interior"
-                        >
-                          <Edit3 className="w-3 h-3" />
-                        </button>
-                      </div>
-                      
-                      {/* Loading State Indicators */}
-                      <div className="absolute top-3 left-3">
-                        {renderLoadingIndicator(getLoadingState("left-interior"))}
-                      </div>
-                      <div className="absolute top-3 right-3">
-                        {renderLoadingIndicator(getLoadingState("right-interior"))}
                       </div>
                     </div>
                   ) : (
-                    // Single image layout for front/back covers
-                    slides[currentSlide].image ? (
-                      <>
-                        <img
-                          src={slides[currentSlide].image}
-                          alt={slides[currentSlide].title}
-                          className="w-full h-full object-contain bg-white"
-                          draggable={false}
-                        />
-                        
-                        {/* Edit Buttons - Always visible */}
-                        <div className="absolute inset-0">
-                          {/* Loading State Indicator */}
-                          {renderLoadingIndicator(getLoadingState(slides[currentSlide].id))}
-
-                          {/* Edit Button - Always visible */}
-                          <button
-                            onClick={() => handleEditSection(slides[currentSlide].id)}
-                            className="absolute top-3 right-3 bg-white/90 hover:bg-white text-gray-700 rounded-full p-2 shadow-lg transition-all duration-200"
-                            title={slides[currentSlide].editLabel}
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-
-                          {/* Paint Mask Button */}
-                          <button
-                            onClick={() => handlePaintMaskEdit(slides[currentSlide].id)}
-                            className="absolute top-3 right-16 bg-blue-500/90 hover:bg-blue-500 text-white rounded-full p-2 shadow-lg transition-all duration-200"
-                            title="Paint Mask Edit"
-                          >
-                            <Paintbrush className="w-4 h-4" />
-                          </button>
-                          
-                          {/* Reset Button - Show only if has version history */}
-                          {versionHistory[slides[currentSlide].id] && versionHistory[slides[currentSlide].id].length > 0 && (
-                            <button
-                              onClick={() => resetSection(slides[currentSlide].id)}
-                              className="absolute top-3 left-3 bg-amber-500/90 hover:bg-amber-500 text-white rounded-full p-2 shadow-lg transition-all duration-200"
-                              title="Reset to original"
-                            >
-                              <RotateCcw className="w-3 h-3" />
-                            </button>
-                          )}
-                          
-                          {/* Version Navigation - Show only if has version history */}
-                          {versionHistory[slides[currentSlide].id] && versionHistory[slides[currentSlide].id].length > 0 && (
-                            <div className="absolute bottom-3 left-3 bg-white/90 rounded-lg shadow-lg p-2 flex items-center gap-2">
-                              <button
-                                onClick={() => goToPreviousVersion(slides[currentSlide].id)}
-                                disabled={!canGoBack(slides[currentSlide].id)}
-                                className="p-1 rounded-full hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                                title="Previous version"
-                              >
-                                <ChevronLeft className="w-3 h-3" />
-                              </button>
-                              <span className="text-xs text-gray-700 px-1">
-                                {(currentVersionIndex[slides[currentSlide].id] || 0) + 1}/{versionHistory[slides[currentSlide].id].length}
-                              </span>
-                              <button
-                                onClick={() => goToNextVersion(slides[currentSlide].id)}
-                                disabled={!canGoForward(slides[currentSlide].id)}
-                                className="p-1 rounded-full hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                                title="Next version"
-                              >
-                                <ChevronRight className="w-3 h-3" />
-                              </button>
-                            </div>
-                          )}
-                          
-                          {/* Edited Indicator */}
-                          {versionHistory[slides[currentSlide].id] && versionHistory[slides[currentSlide].id].length > 0 && (
-                            <div className="absolute bottom-3 right-3 bg-emerald-500 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
-                              <Wand2 className="w-3 h-3" />
-                              Edited
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800">
-                        <p className="text-gray-500 dark:text-gray-400">Loading section...</p>
-                      </div>
-                    )
+                    <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800">
+                      <p className="text-gray-500 dark:text-gray-400">Loading section...</p>
+                    </div>
                   )}
                 </motion.div>
 
@@ -1001,7 +844,7 @@ Apply the requested changes while preserving the complete image structure and po
 
       {/* Quick Navigation Cards */}
       <motion.div 
-        className={`grid ${isFrontBackOnly ? 'grid-cols-2' : 'grid-cols-3'} gap-3`}
+        className={`grid ${isFrontBackOnly ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4'} gap-3`}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.4 }}
@@ -1132,13 +975,17 @@ Apply the requested changes while preserving the complete image structure and po
                   onClick={handleEmailCard}
                   variant="outline"
                   size="sm"
-                  disabled={!emailAddress.trim()}
+                  disabled={!emailAddress.trim() || isSendingEmail}
                 >
-                  <Mail className="w-4 h-4" />
+                  {isSendingEmail ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Mail className="w-4 h-4" />
+                  )}
                 </Button>
               </div>
               <p className="text-xs text-gray-500">
-                Opens your default email client with the card link
+                {isSendingEmail ? "Sending email..." : "Sends the card directly via email"}
               </p>
             </div>
           </div>
@@ -1231,40 +1078,7 @@ Apply the requested changes while preserving the complete image structure and po
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="h-full flex items-center justify-center">
-                        {slides[currentSlide].type === "double" ? (
-                          // Double image layout for fullscreen interior view
-                          <div className="max-w-full max-h-full flex bg-white rounded-lg shadow-2xl overflow-hidden">
-                            <div className="w-1/2">
-                              {slides[currentSlide].leftImage ? (
-                                <img
-                                  src={slides[currentSlide].leftImage}
-                                  alt="Left Interior"
-                                  className="w-full h-full object-contain"
-                                  draggable={false}
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center bg-gray-800">
-                                  <p className="text-white/70">Loading left...</p>
-                                </div>
-                              )}
-                            </div>
-                            <div className="w-px bg-gray-300"></div>
-                            <div className="w-1/2">
-                              {slides[currentSlide].rightImage ? (
-                                <img
-                                  src={slides[currentSlide].rightImage}
-                                  alt="Right Interior"
-                                  className="w-full h-full object-contain"
-                                  draggable={false}
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center bg-gray-800">
-                                  <p className="text-white/70">Loading right...</p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ) : slides[currentSlide].image ? (
+                        {slides[currentSlide].image ? (
                           <img
                             src={slides[currentSlide].image}
                             alt={slides[currentSlide].title}
@@ -1429,36 +1243,10 @@ Apply the requested changes while preserving the complete image structure and po
                 style={{ fontSize: '16px' }}
               />
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Be specific about what you want to change. The AI will modify only what you describe while keeping the rest intact.
+                Be specific about what you want to change. Only the areas you describe will be modified while keeping the rest intact.
               </p>
             </div>
 
-            {/* Paint Mask Option */}
-            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
-              <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2 flex items-center gap-2">
-                <Paintbrush className="w-4 h-4" />
-                Precision Editing with Paint Mask
-              </h4>
-              <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
-                For precise control, use the paint mask tool to select exactly which areas to edit.
-              </p>
-              <Button
-                onClick={() => {
-                  if (!editPrompt.trim()) {
-                    toast.error("Please enter edit instructions first!");
-                    return;
-                  }
-                  handlePaintMaskEdit(editingSection!);
-                }}
-                disabled={!editPrompt.trim()}
-                variant="outline"
-                size="sm"
-                className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-100"
-              >
-                <Paintbrush className="w-4 h-4" />
-                Open Paint Mask Editor
-              </Button>
-            </div>
 
 
 
@@ -1494,19 +1282,6 @@ Apply the requested changes while preserving the complete image structure and po
         </DialogContent>
       </Dialog>
 
-      {/* Paint Mask Editor */}
-      <PaintMaskEditor
-        isOpen={showPaintMask}
-        onClose={() => {
-          setShowPaintMask(false);
-          setEditingSection(null);
-          setEditPrompt("");
-        }}
-        imageUrl={paintMaskImageUrl}
-        onMaskComplete={handleMaskComplete}
-        title={`Paint Mask - ${slides.find(s => s.id === editingSection)?.title || 'Edit Section'}`}
-        description="Paint the areas you want to edit. White areas will be edited by AI, black areas will remain unchanged."
-      />
     </div>
   );
 } 

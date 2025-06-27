@@ -9,6 +9,10 @@ const nextConfig = {
         source: '/query',
         destination: 'http://localhost:5001/query',
       },
+      {
+        source: '/api/cards/store',
+        destination: 'http://localhost:5000/api/cards/store',
+      },
     ];
   },
 };

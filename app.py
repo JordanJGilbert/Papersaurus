@@ -4428,16 +4428,27 @@ animals = [
 ]
 
 def generate_friendly_card_id():
-    """Generate a friendly card ID using adjective-color-animal format"""
-    import random
-    
-    adjective = random.choice(positiveAdjectives)
-    color = random.choice(positiveColors)
-    animal = random.choice(animals)
-    
-    # Create camelCase format: kindAmberPanda
-    card_id = adjective + color.capitalize() + animal.capitalize()
-    return card_id
+    """Generate a friendly card ID using the random name API"""
+    try:
+        response = requests.get('https://16504442930.work/random-name')
+        if response.ok:
+            data = response.json()
+            return data['camelCase']
+        else:
+            # Fallback to local generation if API fails
+            import random
+            adjective = random.choice(positiveAdjectives)
+            color = random.choice(positiveColors)
+            animal = random.choice(animals)
+            return adjective + color.capitalize() + animal.capitalize()
+    except Exception as e:
+        print(f"Error fetching random name from API: {e}")
+        # Fallback to local generation
+        import random
+        adjective = random.choice(positiveAdjectives)
+        color = random.choice(positiveColors)
+        animal = random.choice(animals)
+        return adjective + color.capitalize() + animal.capitalize()
 
 def sync_write_data(key, value):
     """Synchronous version of write_data for Flask routes"""
@@ -4499,6 +4510,8 @@ def store_card():
         # Generate friendly card ID
         card_id = generate_friendly_card_id()
         
+        print(f"Storing card {card_id} with data: {data}")
+        
         # Store card data using existing database system
         card_data = {
             'id': card_id,
@@ -4515,8 +4528,12 @@ def store_card():
         sync_write_data(f"shared_card_{card_id}", card_data)
         
         # Return shareable URL
-        domain = DOMAIN_FROM_ENV or 'vibecarding.com'
-        share_url = f"https://{domain}/card/{card_id}"
+        domain = DOMAIN_FROM_ENV or 'https://vibecarding.com'
+        # Remove https:// if already present to avoid double protocol
+        if domain.startswith('https://'):
+            share_url = f"{domain}/card/{card_id}"
+        else:
+            share_url = f"https://{domain}/card/{card_id}"
         
         return jsonify({
             'status': 'success',
@@ -4539,12 +4556,24 @@ def view_shared_card(card_id):
         # Retrieve card data using synchronous database function
         card_data = sync_read_data(f"shared_card_{card_id}")
         
+        print(f"Retrieving card {card_id}, found data: {card_data}")
+        
         if not card_data:
+            print(f"Card {card_id} not found in database")
             abort(404)
         
         # Check if card has expired
         if card_data.get('expiresAt', 0) < time.time():
+            print(f"Card {card_id} has expired")
             abort(410)  # Gone
+        
+        print(f"Rendering card {card_id} with image URLs: front={card_data.get('frontCover', 'None')}, back={card_data.get('backCover', 'None')}, left={card_data.get('leftPage', 'None')}, right={card_data.get('rightPage', 'None')}")
+        
+        # Format the creation date for display
+        if card_data.get('createdAt'):
+            from datetime import datetime
+            created_timestamp = card_data.get('createdAt')
+            card_data['createdAtFormatted'] = datetime.fromtimestamp(created_timestamp).strftime('%B %d, %Y')
         
         # Render card viewer template
         return render_template('card_viewer.html', card=card_data)
