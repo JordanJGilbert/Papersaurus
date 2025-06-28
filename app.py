@@ -4144,11 +4144,21 @@ def create_card_pdf():
         def download_and_process_image(url):
             """Download image and prepare for PDF"""
             try:
-                response = requests.get(url, timeout=30)
-                response.raise_for_status()
-                
-                # Open with PIL to ensure proper format
-                img = Image.open(io.BytesIO(response.content))
+                if url.startswith('data:'):
+                    # Handle base64 data URLs
+                    print(f"Processing base64 data URL: {url[:50]}...")
+                    # Extract the base64 data
+                    header, data = url.split(',', 1)
+                    img_data = base64.b64decode(data)
+                    img = Image.open(io.BytesIO(img_data))
+                else:
+                    # Handle HTTP URLs
+                    print(f"Downloading image from URL: {url}")
+                    response = requests.get(url, timeout=30)
+                    response.raise_for_status()
+                    
+                    # Open with PIL to ensure proper format
+                    img = Image.open(io.BytesIO(response.content))
                 
                 # Convert to RGB if needed
                 if img.mode != 'RGB':
@@ -4161,16 +4171,23 @@ def create_card_pdf():
                 
                 return ImageReader(img_buffer)
             except Exception as e:
-                print(f"Error processing image {url}: {e}")
+                print(f"Error processing image {url[:100]}...: {e}")
                 return None
         
         # Download all images
         print("Downloading card images...")
+        print(f"Front cover URL: {front_cover}")
+        print(f"Back cover URL: {back_cover[:100]}..." if len(back_cover) > 100 else f"Back cover URL: {back_cover}")
+        
         front_img = download_and_process_image(front_cover)
         back_img = download_and_process_image(back_cover)
         
-        if not front_img or not back_img:
-            return jsonify({'error': 'Failed to download required images'}), 500
+        if not front_img:
+            print("Failed to process front cover image")
+            return jsonify({'error': 'Failed to download front cover image'}), 500
+        if not back_img:
+            print("Failed to process back cover image")
+            return jsonify({'error': 'Failed to download back cover image'}), 500
         
         left_img = None
         right_img = None
@@ -4545,6 +4562,64 @@ def store_card():
         print(f"Error storing card: {str(e)}")
         return jsonify({
             'error': 'Failed to store card',
+            'details': str(e)
+        }), 500
+
+
+@app.route('/api/cards/send-email', methods=['POST'])
+def send_card_email():
+    """Send a card via email to a recipient"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'error': 'No email data provided'}), 400
+        
+        email = data.get('email')
+        share_url = data.get('share_url')
+        card_prompt = data.get('card_prompt', 'your custom card')
+        
+        if not email:
+            return jsonify({'error': 'Email address is required'}), 400
+        if not share_url:
+            return jsonify({'error': 'Share URL is required'}), 400
+        
+        # Send email using the same endpoint as other email functions
+        email_response = requests.post('https://16504442930.work/send_email_attachments', json={
+            'to': email,
+            'from': 'vibecarding@ast.engineer',
+            'subject': 'Someone sent you a beautiful greeting card! 🎉',
+            'body': f"""Hi there!
+
+Someone has sent you a beautiful greeting card created with VibeCarding!
+
+View your card: {share_url}
+
+The card was created with the theme: "{card_prompt}"
+
+We hope this card brings a smile to your face! 
+
+Best regards,
+The VibeCarding Team
+vibecarding@ast.engineer""",
+            'html': False
+        })
+        
+        if email_response.ok:
+            return jsonify({
+                'status': 'success',
+                'message': 'Card sent successfully via email!'
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to send email'
+            }), 500
+        
+    except Exception as e:
+        print(f"Error sending card email: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Failed to send email',
             'details': str(e)
         }), 500
 

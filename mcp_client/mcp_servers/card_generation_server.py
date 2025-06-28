@@ -148,7 +148,7 @@ def store_card_data(images: Dict[str, str], job_data: Dict[str, Any]) -> str:
 def send_completion_email(email: str, card_type: str, card_url: str) -> None:
     """Send completion email to user"""
     try:
-        response = requests.post('https://16504442930.work/send_email_with_attachments', json={
+        response = requests.post('https://16504442930.work/send_email', json={
             'to': email,
             'from': 'vibecarding@ast.engineer',
             'subject': f'Your {card_type} card is ready! 🎉',
@@ -167,7 +167,7 @@ Happy card making! ✨
 Best regards,
 The VibeCarding Team
 vibecarding@ast.engineer""",
-            'url': card_url
+            'html': False
         })
         
         if response.ok:

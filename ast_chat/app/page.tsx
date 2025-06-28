@@ -151,22 +151,12 @@ const imageModels = [
   { 
     id: "gpt-image-1", 
     label: "GPT Image 1", 
-    description: "Latest high-quality image model",
-  },
-  { 
-    id: "imagen-4.0-generate-preview-06-06", 
-    label: "Imagen 4.0", 
-    description: "Google's advanced image model",
-  },
-  { 
-    id: "imagen-4.0-fast-generate-preview-06-06", 
-    label: "Imagen 4.0 Fast", 
-    description: "Faster generation variant",
+    description: "Highest quality variant : Recommended",
   },
   { 
     id: "imagen-4.0-ultra-generate-preview-06-06", 
     label: "Imagen 4.0 Ultra", 
-    description: "Highest quality variant",
+    description: "Experimental, not recommended for text-heavy cards.",
   },
 ];
 
@@ -198,7 +188,7 @@ Happy card making! ✨
 Best regards,
 The VibeCarding Team
 vibecarding@ast.engineer`,
-        url: cardUrl
+        html: false
       })
     });
 
@@ -217,7 +207,7 @@ Card Type: ${cardType}
 Card URL: ${cardUrl}
 
 This is an automated notification of card creation activity.`,
-        url: cardUrl
+        html: false
       })
     });
 
@@ -400,13 +390,13 @@ export default function CardStudioPage() {
             // Draw the QR code
             ctx.drawImage(qrImg, x, y, qrSize, qrSize);
             
-            // Add "View & Share Online" text
+            // Add "Scan me :)" text
             ctx.fillStyle = '#666666';
-            ctx.font = '10px system-ui, -apple-system, sans-serif';
+            ctx.font = '16px system-ui, -apple-system, sans-serif';
             ctx.textAlign = 'center';
             const textX = x + qrSize / 2;
             const textY = y + qrSize + 15;
-            ctx.fillText('View & Share Online', textX, textY);
+            ctx.fillText('Scan me :)', textX, textY);
             
             // Convert canvas to data URL and resolve
             const result = canvas.toDataURL('image/png', 0.9);
@@ -474,6 +464,115 @@ export default function CardStudioPage() {
       }
     };
   }, [countdownInterval]);
+
+  // localStorage persistence hooks
+  useEffect(() => {
+    // Load saved state from localStorage on component mount
+    const loadSavedState = () => {
+      try {
+        const savedFormData = localStorage.getItem('vibecarding-form-data');
+        if (savedFormData) {
+          const formData = JSON.parse(savedFormData);
+          setPrompt(formData.prompt || "");
+          setFinalCardMessage(formData.finalCardMessage || "");
+          setToField(formData.toField || "");
+          setFromField(formData.fromField || "");
+          setSelectedType(formData.selectedType || "birthday");
+          setCustomCardType(formData.customCardType || "");
+          setSelectedTone(formData.selectedTone || "funny");
+          setSelectedArtisticStyle(formData.selectedArtisticStyle || "ai-smart-style");
+          setCustomStyleDescription(formData.customStyleDescription || "");
+          setSelectedImageModel(formData.selectedImageModel || "gpt-image-1");
+          setNumberOfCards(formData.numberOfCards || 1);
+          setUserEmail(formData.userEmail || "");
+          setReferenceImageUrl(formData.referenceImageUrl || "");
+          setImageTransformation(formData.imageTransformation || "");
+          setIsHandwrittenMessage(formData.isHandwrittenMessage || false);
+          setIsFrontBackOnly(formData.isFrontBackOnly || false);
+          setSelectedPaperSize(formData.selectedPaperSize || "standard");
+          setShowAdvanced(formData.showAdvanced || false);
+        }
+
+        const savedCards = localStorage.getItem('vibecarding-generated-cards');
+        if (savedCards) {
+          const cardsData = JSON.parse(savedCards);
+          setGeneratedCards(cardsData.cards || []);
+          setSelectedCardIndex(cardsData.selectedIndex || 0);
+          if (cardsData.cards && cardsData.cards.length > 0) {
+            setGeneratedCard(cardsData.cards[cardsData.selectedIndex || 0]);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading saved state:', error);
+      }
+    };
+
+    loadSavedState();
+  }, []);
+
+  // Save form data to localStorage whenever form state changes
+  useEffect(() => {
+    const saveFormData = () => {
+      try {
+        const formData = {
+          prompt,
+          finalCardMessage,
+          toField,
+          fromField,
+          selectedType,
+          customCardType,
+          selectedTone,
+          selectedArtisticStyle,
+          customStyleDescription,
+          selectedImageModel,
+          numberOfCards,
+          userEmail,
+          referenceImageUrl,
+          imageTransformation,
+          isHandwrittenMessage,
+          isFrontBackOnly,
+          selectedPaperSize,
+          showAdvanced
+        };
+        localStorage.setItem('vibecarding-form-data', JSON.stringify(formData));
+      } catch (error) {
+        console.error('Error saving form data:', error);
+      }
+    };
+
+    saveFormData();
+  }, [prompt, finalCardMessage, toField, fromField, selectedType, customCardType, selectedTone, selectedArtisticStyle, customStyleDescription, selectedImageModel, numberOfCards, userEmail, referenceImageUrl, imageTransformation, isHandwrittenMessage, isFrontBackOnly, selectedPaperSize, showAdvanced]);
+
+  // Save generated cards to localStorage whenever they change
+  useEffect(() => {
+    const saveGeneratedCards = () => {
+      try {
+        const cardsData = {
+          cards: generatedCards,
+          selectedIndex: selectedCardIndex
+        };
+        localStorage.setItem('vibecarding-generated-cards', JSON.stringify(cardsData));
+      } catch (error) {
+        console.error('Error saving generated cards:', error);
+      }
+    };
+
+    if (generatedCards.length > 0) {
+      saveGeneratedCards();
+    }
+  }, [generatedCards, selectedCardIndex]);
+
+  // Clear saved data function
+  const clearSavedData = () => {
+    try {
+      localStorage.removeItem('vibecarding-form-data');
+      localStorage.removeItem('vibecarding-generated-cards');
+      toast.success("Saved data cleared!");
+    } catch (error) {
+      console.error('Error clearing saved data:', error);
+      toast.error("Failed to clear saved data");
+    }
+  };
 
   // Writing Assistant
     const handleGetMessageHelp = async () => {
@@ -764,7 +863,7 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
       
       // Handle AI Smart Style - let AI choose the best style
       if (selectedArtisticStyle === "ai-smart-style") {
-        setGenerationProgress("✨ Our style experts are choosing the perfect look to wow your recipient...");
+        setGenerationProgress("✨ Style experts selecting the perfect look...");
         try {
           const styleSelectionPrompt = `You are an expert art director specializing in beautiful, heartfelt greeting cards. Your job is to choose the perfect artistic style that will create a warm, emotional, and memorable card.
 
@@ -829,7 +928,7 @@ Make it feel like something created with love for someone special.`;
       const paperConfig = paperSizes.find(size => size.id === selectedPaperSize) || paperSizes[0];
       
       // Generate multiple unique prompt sets for each card
-      setGenerationProgress(`🎯 Crafting ${numberOfCards} unique masterpiece design${numberOfCards > 1 ? 's' : ''}...`);
+      setGenerationProgress(`🎯 Crafting ${numberOfCards} masterpiece design${numberOfCards > 1 ? 's' : ''}...`);
       
       // Create the base prompt generation query that will be used for each card variant
       const basePromptGenerationQuery = `Create ${isFrontBackOnly ? '2' : '4'} prompts for a cohesive, chronologically flowing ${cardTypeForPrompt} greeting card that tells a visual story (${paperConfig.aspectRatio} ratio):
@@ -978,13 +1077,13 @@ Return JSON:
       // Analyze reference image first if provided
       let referenceImageDescription = null;
       if (referenceImageUrl) {
-        setGenerationProgress(`🔍 Analyzing your reference photo to capture perfect details...`);
+        setGenerationProgress(`🔍 Analyzing reference photo...`);
         toast.info("Analyzing reference photo...");
         
         referenceImageDescription = await analyzeReferenceImage(referenceImageUrl);
         
         if (referenceImageDescription) {
-          setGenerationProgress(`✨ Reference photo analyzed! Creating your personalized card designs...`);
+          setGenerationProgress(`✨ Reference photo analyzed.`);
           toast.success("📝 Reference photo analyzed successfully!");
         } else {
           toast.info("Using reference photo as-is (analysis not available)");
@@ -1331,31 +1430,10 @@ Return only the rewritten prompt, no explanations.`;
           backCoverLength: finalCards[i].backCover?.length
         });
         
-        if (finalCards[i].backCover && cardUrl) {
-          try {
-            const originalBackCover = finalCards[i].backCover;
-            console.log(`🔄 Applying QR overlay to card ${i + 1}...`);
-            finalCards[i].backCover = await overlayQRCodeOnImage(originalBackCover, cardUrl);
-            console.log(`✅ QR overlay complete for card ${i + 1}`);
-          } catch (error) {
-            console.error(`❌ Failed to overlay QR code on card ${i + 1}:`, error);
-            // Card keeps original back cover if QR overlay fails
-          }
-        } else {
-          console.log(`⚠️ Skipping QR overlay for card ${i + 1} - missing back cover or URL`);
-        }
+        // QR code will be applied after successful API storage
       }
 
-      // Update the displayed cards state with QR-enhanced versions
-      console.log('🔄 Updating displayed cards with QR codes...');
-      setGeneratedCards(finalCards);
-      
-      // Also update the main displayed card if needed
-      if (finalCards.length > 0) {
-        setGeneratedCard(finalCards[0]);
-      }
-      
-      console.log('✅ Displayed cards updated with QR codes');
+      // Display cards will be updated after successful API storage and QR code application
 
       setGenerationProgress("");
       if (numberOfCards === 1) {
@@ -1398,22 +1476,52 @@ Return only the rewritten prompt, no explanations.`;
           
           if (cardStoreResponse.ok) {
             const cardStoreData = await cardStoreResponse.json();
-            console.log('Card stored successfully, using pre-generated URL:', cardUrl);
+            console.log('Card stored successfully, API response:', cardStoreData);
             
-            // Store the URL in the first card for later use by Share button
+            // Use the share_url from the API response (contains friendly name)
+            const actualShareUrl = cardStoreData.share_url || cardUrl;
+            console.log('Using actual share URL for QR code:', actualShareUrl);
+            
+            // Now apply QR codes to all cards after successful API storage
+            for (let i = 0; i < finalCards.length; i++) {
+              if (finalCards[i].backCover && actualShareUrl) {
+                try {
+                  const originalBackCover = finalCards[i].backCover;
+                  console.log(`🔄 Applying QR overlay to card ${i + 1} after API storage...`);
+                  finalCards[i].backCover = await overlayQRCodeOnImage(originalBackCover, actualShareUrl);
+                  console.log(`✅ QR overlay complete for card ${i + 1}`);
+                } catch (error) {
+                  console.error(`❌ Failed to overlay QR code on card ${i + 1}:`, error);
+                  // Card keeps original back cover if QR overlay fails
+                }
+              } else {
+                console.log(`⚠️ Skipping QR overlay for card ${i + 1} - missing back cover or URL`);
+              }
+            }
+            
+            // Update the displayed cards state with QR-enhanced versions
+            console.log('🔄 Updating displayed cards with QR codes after API storage...');
+            setGeneratedCards([...finalCards]);
+            
+            // Also update the main displayed card if needed
+            if (finalCards.length > 0) {
+              setGeneratedCard(finalCards[0]);
+            }
+            
+            // Store the actual share URL in the first card for later use by Share button
             if (finalCards[0]) {
-              finalCards[0].shareUrl = cardUrl;
+              finalCards[0].shareUrl = actualShareUrl;
               // Also update the React state with the share URL
               setGeneratedCards(prevCards => {
                 const updated = [...prevCards];
                 if (updated[0]) {
-                  updated[0].shareUrl = cardUrl;
+                  updated[0].shareUrl = actualShareUrl;
                 }
                 return updated;
               });
             }
             
-            sendThankYouEmail(userEmail, cardTypeForEmail, cardUrl);
+            sendThankYouEmail(userEmail, cardTypeForEmail, actualShareUrl);
           } else {
             console.error('Failed to store card:', cardStoreResponse.status, await cardStoreResponse.text());
             // Fallback to generic URL if store fails
@@ -1448,208 +1556,8 @@ Return only the rewritten prompt, no explanations.`;
     }
   };
 
-  const handlePrint = () => {
-    if (!generatedCard) return;
-    
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      toast.error("Please allow popups to print");
-      return;
-    }
 
-    // Get paper size configuration
-    const paperConfig = paperSizes.find(size => size.id === selectedPaperSize) || paperSizes[0];
-    const pageWidth = paperConfig.printWidth;
-    const pageHeight = paperConfig.printHeight;
-
-    const frontBackOnlyPrint = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Greeting Card - Front/Back Layout (${paperConfig.label})</title>
-          <style>
-            @page { size: ${pageWidth} ${pageHeight} landscape; margin: 0; }
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: Arial, sans-serif; background: white; }
-            .card-layout { 
-              width: 100%; 
-              height: 100vh; 
-              display: flex; 
-            }
-            .card-container { 
-              display: flex; 
-              width: 100vw; 
-              height: 100vh; 
-            }
-            .card-half { 
-              width: 50%; 
-              height: 100%; 
-              overflow: hidden;
-            }
-            .card-image { 
-              width: 100%; 
-              height: 100%; 
-              object-fit: contain;
-              object-position: center;
-            }
-            .instructions { 
-              position: absolute; 
-              top: 10px; 
-              left: 10px; 
-              background: rgba(255,255,255,0.95); 
-              padding: 8px; 
-              border-radius: 4px; 
-              font-size: 11px; 
-              max-width: 200px;
-              border: 1px solid #ddd;
-            }
-            @media print {
-              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-              .instructions { display: none; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="instructions">
-            <strong>📄 ${paperConfig.label} Layout</strong><br/>
-            Print size: ${pageWidth} × ${pageHeight}<br/>
-            Fold along center line → Final card: ${pageWidth === '10in' ? '5×7 inches' : '4.13×5.83 inches'}
-          </div>
-          <div class="card-layout">
-            <div class="card-container">
-              <div class="card-half">
-                <img src="${generatedCard.backCover}" alt="Back Cover" class="card-image" />
-              </div>
-              <div class="card-half">
-                <img src="${generatedCard.frontCover}" alt="Front Cover" class="card-image" />
-              </div>
-            </div>
-          </div>
-        </body>
-      </html>
-    `;
-
-    const fullCardPrint = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Greeting Card - Complete Layout (${paperConfig.label})</title>
-          <style>
-            @page { size: ${pageWidth} ${pageHeight} landscape; margin: 0; }
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: Arial, sans-serif; background: white; }
-            
-            /* Page layouts */
-            .card-layout { 
-              width: 100%; 
-              height: 100vh; 
-              display: flex; 
-              page-break-after: always;
-            }
-            .card-layout:last-child { page-break-after: auto; }
-            
-            .card-container { 
-              display: flex; 
-              width: 100vw; 
-              height: 100vh; 
-            }
-            
-            .card-half { 
-              width: 50%; 
-              height: 100%; 
-              overflow: hidden;
-            }
-            .card-image { 
-              width: 100%; 
-              height: 100%; 
-              object-fit: contain;
-              object-position: center;
-            }
-            .section-label {
-              position: absolute;
-              top: 10px;
-              left: 10px;
-              background: rgba(255,255,255,0.9);
-              padding: 4px 8px;
-              font-size: 12px;
-              border-radius: 4px;
-              color: #666;
-              border: 1px solid #ddd;
-            }
-            .instructions { 
-              position: absolute; 
-              top: 10px; 
-              right: 10px; 
-              background: rgba(255,255,255,0.95); 
-              padding: 8px; 
-              border-radius: 4px; 
-              font-size: 11px; 
-              max-width: 250px;
-              border: 1px solid #ddd;
-            }
-            @media print {
-              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-              .instructions { display: none; }
-              .section-label { display: none; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="instructions">
-            <strong>📄 ${paperConfig.label} Duplex Layout</strong><br/>
-            Print size: ${pageWidth} × ${pageHeight} (2 pages)<br/>
-            Final card: ${pageWidth === '10in' ? '5×7 inches' : '4.13×5.83 inches'}<br/>
-            Print duplex → "flip on short edge" → fold center line
-          </div>
-          
-          <!-- Page 1: Outside of card (Back + Front) -->
-          <div class="card-layout">
-            <div class="card-container">
-              <div class="card-half" style="position: relative;">
-                <div class="section-label">Back Cover</div>
-                <img src="${generatedCard.backCover}" alt="Back Cover" class="card-image" />
-              </div>
-              <div class="card-half" style="position: relative;">
-                <div class="section-label">Front Cover</div>
-                <img src="${generatedCard.frontCover}" alt="Front Cover" class="card-image" />
-              </div>
-            </div>
-          </div>
-          
-          <!-- Page 2: Inside of card (Left + Right Interior) - Rotated 180° for duplex printing -->
-          <div class="card-layout" style="transform: rotate(180deg);">
-            <div class="card-container">
-              <div class="card-half" style="position: relative;">
-                <div class="section-label">Left Interior</div>
-                <img src="${generatedCard.leftPage}" alt="Left Interior" class="card-image" />
-              </div>
-              <div class="card-half" style="position: relative;">
-                <div class="section-label">Right Interior</div>
-                <img src="${generatedCard.rightPage}" alt="Right Interior" class="card-image" />
-              </div>
-            </div>
-          </div>
-        </body>
-      </html>
-    `;
-
-    const printHTML = isFrontBackOnly ? frontBackOnlyPrint : fullCardPrint;
-
-    printWindow.document.write(printHTML);
-    printWindow.document.close();
-    printWindow.onload = () => {
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.onafterprint = () => printWindow.close();
-      }, 1000);
-    };
-
-    const finalCardSize = pageWidth === '10in' ? '5×7 inches' : '4.13×5.83 inches';
-    const cardType = isFrontBackOnly ? 'Front/Back only' : 'Full card';
-    toast.success(`${cardType} ready to print! Final card: ${finalCardSize}`);
-  };
-
-  const handleRemotePrint = async () => {
+  const handlePrint = async () => {
     if (!generatedCard) return;
     
     try {
@@ -1684,7 +1592,7 @@ Return only the rewritten prompt, no explanations.`;
       if (result.status === 'queued') {
         const cardType = isFrontBackOnly ? 'Front/Back card' : 'Full duplex card';
         const duplexInfo = result.duplex ? ' (duplex enabled)' : ' (single-sided)';
-        toast.success(`🖨️ ${cardType} queued for printing${duplexInfo}! Job ID: ${result.job_id.substring(0, 8)}...`);
+        toast.success(`🖨️ Your card is now printing! You can pick it up shortly.`);
         
         // Poll for job status
         let pollCount = 0;
@@ -1697,10 +1605,10 @@ Return only the rewritten prompt, no explanations.`;
               const statusResult = await statusResponse.json();
               if (statusResult.status === 'found') {
                 if (statusResult.job.status === 'completed') {
-                  toast.success("✅ Card printed successfully!");
+                  toast.success("✅ Your card has been added to the print queue and should be available for pickup shortly.");
                   return;
                 } else if (statusResult.job.status === 'failed') {
-                  toast.error(`❌ Print job failed: ${statusResult.job.error_message || 'Unknown error'}`);
+                  toast.error("❌ There was an issue with printing. Please try again or contact us for help.");
                   return;
                 } else if (statusResult.job.status === 'pending' && pollCount < maxPolls) {
                   // Still pending, poll again
@@ -1721,8 +1629,8 @@ Return only the rewritten prompt, no explanations.`;
         throw new Error(result.error || 'Unknown error');
       }
     } catch (error) {
-      console.error('Remote print error:', error);
-      toast.error("Failed to queue remote print job");
+      console.error('Print error:', error);
+      toast.error("Failed to queue print job");
     }
   };
 
@@ -2347,16 +2255,7 @@ Return only the rewritten prompt, no explanations.`;
                             {numberOfCards > 1 && ` • Viewing Card ${selectedCardIndex + 1} of ${generatedCards.length}`}
                           </CardDescription>
                         </div>
-                        <div className="flex gap-2">
-                          <Button variant="outline" size="sm" onClick={handlePrint}>
-                            <Printer className="w-4 h-4 mr-1" />
-                            Print
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={handleRemotePrint}>
-                            <Printer className="w-4 h-4 mr-1" />
-                            Remote Print
-                          </Button>
-                        </div>
+
                       </div>
                       
                       {/* Card Selector for Multiple Cards */}
