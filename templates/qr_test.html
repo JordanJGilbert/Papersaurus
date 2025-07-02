@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code Generator with Logo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+        
+        input[type="text"], input[type="url"], input[type="number"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .file-upload {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+        
+        .file-upload input[type="file"] {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+        
+        .file-upload-label {
+            display: block;
+            padding: 12px 20px;
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #f8f9fa;
+        }
+        
+        .file-upload-label:hover {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+        
+        .file-upload.has-file .file-upload-label {
+            border-color: #28a745;
+            background: #f0fff4;
+            color: #28a745;
+        }
+        
+        .preview-container {
+            margin-top: 15px;
+            text-align: center;
+        }
+        
+        .logo-preview {
+            max-width: 100px;
+            max-height: 100px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            width: 100%;
+            margin-top: 20px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .result-container {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            text-align: center;
+            display: none;
+        }
+        
+        .qr-result {
+            max-width: 300px;
+            margin: 0 auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+        }
+        
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .download-btn {
+            background: #28a745;
+            margin-top: 15px;
+            padding: 10px 20px;
+            display: inline-block;
+            text-decoration: none;
+            border-radius: 6px;
+            color: white;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 QR Code Generator with Logo</h1>
+        
+        <div class="info-box">
+            <strong>💡 How it works:</strong> Generate QR codes with your custom logo in the center. 
+            The logo will be automatically sized and positioned for optimal scanning.
+        </div>
+        
+        <form id="qrForm">
+            <div class="form-group">
+                <label for="url">🔗 URL to encode in QR code:</label>
+                <input type="url" id="url" name="url" placeholder="https://example.com" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="size">📐 QR Code Size (pixels):</label>
+                <input type="number" id="size" name="size" value="200" min="100" max="500">
+            </div>
+            
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="seamless" name="seamless" style="margin: 0;">
+                    <span>🎨 Seamless Logo Integration (perfectly surrounds logo without white background)</span>
+                </label>
+                <small style="color: #666; margin-top: 5px; display: block;">
+                    When enabled, the logo blends directly with the QR code pattern for a more integrated look.
+                </small>
+            </div>
+            
+            <div class="form-group">
+                <label for="logo">🖼️ Logo Image (optional):</label>
+                <div class="file-upload" id="logoUpload">
+                    <input type="file" id="logo" name="logo" accept="image/*">
+                    <label for="logo" class="file-upload-label">
+                        📁 Click to upload logo image or drag & drop
+                    </label>
+                </div>
+                <div class="preview-container" id="logoPreview" style="display: none;">
+                    <img class="logo-preview" id="logoImg" alt="Logo preview">
+                    <p><small>Logo preview</small></p>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn" id="generateBtn">
+                ✨ Generate QR Code
+            </button>
+        </form>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Generating your QR code...</p>
+        </div>
+        
+        <div class="error" id="error"></div>
+        
+        <div class="result-container" id="result">
+            <h3>🎉 Your QR Code is Ready!</h3>
+            <img class="qr-result" id="qrImage" alt="Generated QR Code">
+            <br>
+            <a href="#" class="download-btn" id="downloadBtn" download="qr-code.png">
+                ⬇️ Download QR Code
+            </a>
+            <div class="success">
+                <strong>✅ Success!</strong> Your QR code has been generated. Test it with your phone's camera!
+            </div>
+        </div>
+        
+        <!-- Logo Library Section -->
+        <div style="margin-top: 40px; padding: 30px; background: #f8f9fa; border-radius: 12px;">
+            <h3 style="color: #333; margin-bottom: 20px; text-align: center;">📚 Saved Logo Library</h3>
+            <p style="color: #666; margin-bottom: 20px; font-size: 14px; text-align: center;">
+                Your uploaded logos are automatically saved and will be used in future QR codes and card generation.
+            </p>
+            
+            <div id="logo-library" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 15px; margin-bottom: 20px; min-height: 60px;">
+                <div style="grid-column: 1 / -1; text-align: center; color: #999; padding: 20px;">
+                    Loading logos...
+                </div>
+            </div>
+            
+            <div style="text-align: center;">
+                <button id="refresh-logos" style="
+                    padding: 8px 16px;
+                    background: #667eea;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-size: 14px;
+                    font-weight: 500;
+                ">🔄 Refresh Logo Library</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('qrForm');
+        const logoInput = document.getElementById('logo');
+        const logoUpload = document.getElementById('logoUpload');
+        const logoPreview = document.getElementById('logoPreview');
+        const logoImg = document.getElementById('logoImg');
+        const loading = document.getElementById('loading');
+        const error = document.getElementById('error');
+        const result = document.getElementById('result');
+        const qrImage = document.getElementById('qrImage');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const generateBtn = document.getElementById('generateBtn');
+        const logoLibrary = document.getElementById('logo-library');
+        const refreshLogosBtn = document.getElementById('refresh-logos');
+
+        let uploadedLogoUrl = null;
+
+        // Handle logo file selection
+        logoInput.addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                // Show preview
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    logoImg.src = e.target.result;
+                    logoPreview.style.display = 'block';
+                    logoUpload.classList.add('has-file');
+                    logoUpload.querySelector('.file-upload-label').textContent = `📁 ${file.name} selected`;
+                };
+                reader.readAsDataURL(file);
+
+                // Upload the file to server and save as logo
+                try {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('save_as_logo', 'true'); // Save to logo library
+
+                    const uploadResponse = await fetch('/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (uploadResponse.ok) {
+                        const uploadResult = await uploadResponse.json();
+                        uploadedLogoUrl = uploadResult.url;
+                        console.log('Logo uploaded:', uploadedLogoUrl);
+                    } else {
+                        throw new Error('Upload failed');
+                    }
+                } catch (err) {
+                    console.error('Upload error:', err);
+                    showError('Failed to upload logo. You can still generate QR code without logo.');
+                }
+            }
+        });
+
+        // Handle form submission
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const url = document.getElementById('url').value;
+            const size = parseInt(document.getElementById('size').value);
+            const seamless = document.getElementById('seamless').checked;
+
+            // Show loading
+            loading.style.display = 'block';
+            result.style.display = 'none';
+            error.style.display = 'none';
+            generateBtn.disabled = true;
+
+            try {
+                const requestData = {
+                    url: url,
+                    size: size,
+                    seamless: seamless
+                };
+
+                // Add logo URL if uploaded
+                if (uploadedLogoUrl) {
+                    requestData.logo_url = uploadedLogoUrl;
+                }
+
+                const response = await fetch('/api/generate-qr-with-logo', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    // Show result
+                    qrImage.src = data.qr_code;
+                    downloadBtn.href = data.qr_code;
+                    result.style.display = 'block';
+                    
+                    console.log('QR Code generated successfully:', data);
+                } else {
+                    throw new Error(data.message || 'Unknown error');
+                }
+
+            } catch (err) {
+                console.error('Generation error:', err);
+                showError('Failed to generate QR code: ' + err.message);
+            } finally {
+                loading.style.display = 'none';
+                generateBtn.disabled = false;
+            }
+        });
+
+        function showError(message) {
+            error.textContent = message;
+            error.style.display = 'block';
+        }
+
+        // Drag and drop functionality
+        logoUpload.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            logoUpload.style.borderColor = '#667eea';
+        });
+
+        logoUpload.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            logoUpload.style.borderColor = '#ccc';
+        });
+
+        logoUpload.addEventListener('drop', function(e) {
+            e.preventDefault();
+            logoUpload.style.borderColor = '#ccc';
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                logoInput.files = files;
+                logoInput.dispatchEvent(new Event('change'));
+            }
+        });
+
+        // Logo Library Functions
+        async function loadLogoLibrary() {
+            try {
+                const response = await fetch('/api/logos');
+                if (response.ok) {
+                    const data = await response.json();
+                    displayLogos(data.logos || []);
+                } else {
+                    displayLogos([]);
+                }
+            } catch (err) {
+                console.error('Failed to load logo library:', err);
+                logoLibrary.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #999; padding: 20px;">Failed to load logos</div>';
+            }
+        }
+
+        function displayLogos(logos) {
+            if (logos.length === 0) {
+                logoLibrary.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #999; padding: 20px;">No logos saved yet. Upload a logo above to get started!</div>';
+                return;
+            }
+
+            logoLibrary.innerHTML = logos.map(logo => `
+                <div style="
+                    border: 2px solid #e0e0e0;
+                    border-radius: 8px;
+                    padding: 10px;
+                    text-align: center;
+                    background: white;
+                    cursor: pointer;
+                    transition: all 0.3s;
+                " onclick="selectLogo('${logo.url}', '${logo.filename}')" 
+                   onmouseover="this.style.borderColor='#667eea'; this.style.transform='scale(1.05)'"
+                   onmouseout="this.style.borderColor='#e0e0e0'; this.style.transform='scale(1)'">
+                    <img src="${logo.url}" alt="${logo.filename}" style="
+                        width: 60px;
+                        height: 60px;
+                        object-fit: contain;
+                        border-radius: 4px;
+                        margin-bottom: 8px;
+                    ">
+                    <div style="font-size: 12px; color: #666; word-break: break-word;">
+                        ${logo.filename.length > 15 ? logo.filename.substring(0, 15) + '...' : logo.filename}
+                    </div>
+                    <div style="font-size: 10px; color: #999; margin-top: 4px;">
+                        ${new Date(logo.uploaded_at).toLocaleDateString()}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function selectLogo(logoUrl, filename) {
+            uploadedLogoUrl = logoUrl;
+            logoImg.src = logoUrl;
+            logoPreview.style.display = 'block';
+            logoUpload.classList.add('has-file');
+            logoUpload.querySelector('.file-upload-label').textContent = `📁 ${filename} selected from library`;
+            
+            // Visual feedback
+            const logoCards = logoLibrary.querySelectorAll('div[onclick]');
+            logoCards.forEach(card => {
+                card.style.borderColor = '#e0e0e0';
+                card.style.background = 'white';
+            });
+            
+            // Highlight selected logo
+            event.currentTarget.style.borderColor = '#28a745';
+            event.currentTarget.style.background = '#f0fff4';
+            
+            console.log('Selected logo from library:', logoUrl);
+        }
+
+        // Refresh logos button
+        refreshLogosBtn.addEventListener('click', loadLogoLibrary);
+
+        // Load logos on page load
+        loadLogoLibrary();
+    </script>
+</body>
+</html> 

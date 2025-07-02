@@ -20,6 +20,8 @@ from openai import OpenAI
 # Google GenAI client for Imagen
 from google import genai
 from google.genai import types
+# Replicate client for FLUX 1.1 Pro
+import replicate
 # import base64 # Already imported globally
 
 mcp = FastMCP("Image, Video, Music, and Speech Services Server")
@@ -344,9 +346,9 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
         all_prompt_results = []
         any_errors_openai = False
         
-        async def generate_for_single_prompt_openai_responses_api(prompt_text, prompt_idx_openai):
+        async def generate_for_single_prompt_openai_image_api(prompt_text, prompt_idx_openai):
             try:
-                print(f"🎯 OpenAI (Responses API) Prompt #{prompt_idx_openai}: '{prompt_text[:50]}...'")
+                print(f"🎯 OpenAI (Image API) Prompt #{prompt_idx_openai}: '{prompt_text[:50]}...'")
                 start_time_openai = time.time()
                 
                 gpt_size = "1024x1024"
@@ -358,31 +360,26 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                 elif aspect_ratio == "2:3": gpt_size = "1024x1536"
                 elif aspect_ratio == "1:1": gpt_size = "1024x1024"
 
-                input_content_for_api = [{"type": "input_text", "text": prompt_text}]
-                
+                # Check if we have input images for this prompt
+                input_image_files = []
                 if input_images and prompt_idx_openai < len(input_images):
                     current_input_image_sources = input_images[prompt_idx_openai]
                     if not isinstance(current_input_image_sources, list):
                          current_input_image_sources = [current_input_image_sources]
 
                     for source_index, image_source_url_or_b64 in enumerate(current_input_image_sources):
-                        print(f"🖼️ Processing input_image #{source_index} for OpenAI Responses API: {str(image_source_url_or_b64)[:70]}...")
+                        print(f"🖼️ Processing input_image #{source_index} for OpenAI Image API: {str(image_source_url_or_b64)[:70]}...")
                         img_bytes = None
-                        mime_type = "image/png" # Default, will be refined
                         
                         try:
                             if str(image_source_url_or_b64).startswith("data:image"):
-                                # Already a data URL, pass it directly
-                                input_content_for_api.append({"type": "input_image", "image_url": image_source_url_or_b64})
-                                print(f"✅ Added pre-formatted data URL for input_image #{source_index}")
-                                continue # Skip further processing for this image
+                                # Extract base64 data from data URL
+                                base64_data = image_source_url_or_b64.split(',')[1]
+                                img_bytes = base64.b64decode(base64_data)
                             elif str(image_source_url_or_b64).startswith("http://") or str(image_source_url_or_b64).startswith("https://"):
                                 resp = await asyncio.to_thread(requests.get, image_source_url_or_b64, timeout=20)
                                 resp.raise_for_status()
                                 img_bytes = resp.content
-                                header_content_type = resp.headers.get('Content-Type', '')
-                                if header_content_type.startswith('image/'):
-                                    mime_type = header_content_type
                             elif len(str(image_source_url_or_b64)) > 100: # Assume raw base64
                                 img_bytes = base64.b64decode(image_source_url_or_b64)
                             else:
@@ -390,113 +387,94 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                                 continue
 
                             if img_bytes:
-                                pil_image = await asyncio.to_thread(Image.open, BytesIO(img_bytes))
-                                original_format = pil_image.format # PNG, JPEG, GIF, WEBP etc.
-                                
-                                # Refine MIME type based on Pillow's detection
-                                if original_format:
-                                    if original_format.upper() == "JPEG": mime_type = "image/jpeg"
-                                    elif original_format.upper() == "PNG": mime_type = "image/png"
-                                    elif original_format.upper() == "GIF": mime_type = "image/gif"
-                                    elif original_format.upper() == "WEBP": mime_type = "image/webp"
-                                    # Keep default 'image/png' if Pillow format is None or not one of the above common ones
-                                
-                                # Convert to PNG if not a directly supported format by OpenAI or for consistency
-                                if original_format not in ['PNG', 'JPEG', 'GIF', 'WEBP']:
-                                    print(f"Unsupported format {original_format}, converting to PNG for OpenAI input.")
-                                    output_buffer = BytesIO()
-                                    # Handle transparency correctly during conversion
-                                    if pil_image.mode == 'RGBA' or pil_image.mode == 'LA' or (pil_image.mode == 'P' and 'transparency' in pil_image.info):
-                                        await asyncio.to_thread(pil_image.save, output_buffer, format='PNG')
-                                    else: # Convert to RGB first if no alpha, then save as PNG
-                                        rgb_pil_image = pil_image.convert('RGB')
-                                        await asyncio.to_thread(rgb_pil_image.save, output_buffer, format='PNG')
-                                    img_bytes = output_buffer.getvalue()
-                                    mime_type = 'image/png' # Mime type is now PNG
-
-                                b64_encoded_img = base64.b64encode(img_bytes).decode('utf-8')
-                                data_url = f"data:{mime_type};base64,{b64_encoded_img}"
-                                input_content_for_api.append({"type": "input_image", "image_url": data_url})
-                                print(f"✅ Added data URL for input_image #{source_index} (final mime: {mime_type}, size: {len(img_bytes)})")
+                                # Create a BytesIO object for the Image API
+                                img_file = BytesIO(img_bytes)
+                                img_file.name = f"input_image_{source_index}.png"
+                                input_image_files.append(img_file)
+                                print(f"✅ Added input image #{source_index} for Image API (size: {len(img_bytes)} bytes)")
 
                         except Exception as e_proc_img:
                             print(f"⚠️ Failed to process input_image source #{source_index} for prompt #{prompt_idx_openai}: {e_proc_img}")
                 
-                print(f"Calling OpenAI client.responses.create with model gpt-4.1-2025-04-14, tool image_generation, size: {gpt_size}")
-                input_summary = []
-                for item in input_content_for_api:
-                    if item["type"] == "input_text":
-                        input_summary.append({"type": "input_text", "text_length": len(item["text"])})
-                    elif item["type"] == "input_image":
-                        input_summary.append({"type": "input_image", "image_url_preview": item["image_url"][:100] + "..." if item.get("image_url") else "No URL"})
-                print(f"Input content summary: {json.dumps(input_summary, indent=2)}")
-
-                # 🔍 DEBUG: Log what parameters are being sent to OpenAI Responses API
-                tool_params = {
-                    "type": "image_generation",
+                # 🔍 DEBUG: Log what parameters are being sent to OpenAI Image API
+                api_params = {
+                    "model": "gpt-image-1",
+                    "prompt": prompt_text,
                     "size": gpt_size,
+                    "quality": quality if quality != "auto" else "standard",
+                    "n": 1
                 }
                 
-                # Add optional parameters if not default
-                if quality != "auto":
-                    tool_params["quality"] = quality
-                if output_format != "png":
-                    tool_params["output_format"] = output_format
-                if output_compression != 100 and output_format in ["webp", "jpeg"]:
-                    tool_params["output_compression"] = output_compression
-                # Always include moderation for GPT-1 (forced to "low")
-                tool_params["moderation"] = moderation
+                print(f"🔧 OpenAI Image API Parameters being sent:")
+                for key, value in api_params.items():
+                    if key == "prompt":
+                        print(f"   {key}: {value[:100]}..." if len(value) > 100 else f"   {key}: {value}")
+                    else:
+                        print(f"   {key}: {value}")
                 
-                print(f"🔧 OpenAI Responses API Tool Parameters being sent:")
-                for key, value in tool_params.items():
-                    print(f"   {key}: {value}")
+                # Debug input content
+                print(f"📝 Input summary:")
+                print(f"   Prompt length: {len(prompt_text)} chars")
+                print(f"   Input images: {len(input_image_files)}")
+                
+                # Check if prompt might be too long or contain problematic content
+                if len(prompt_text) > 4000:
+                    print(f"⚠️ Warning: Prompt is very long ({len(prompt_text)} chars)")
+                
+                # Check for potential content issues
+                problematic_terms = ["realistic", "photorealistic", "real person", "actual person"]
+                for term in problematic_terms:
+                    if term.lower() in prompt_text.lower():
+                        print(f"⚠️ Warning: Prompt contains potentially problematic term: '{term}'")
 
-                response_openai = await asyncio.to_thread(
-                    client.responses.create,
-                    model="gpt-4.1-2025-04-14", 
-                    input=[{"role": "user", "content": input_content_for_api}],
-                    tools=[tool_params],
-                )
+                # Call the appropriate API endpoint based on whether we have input images
+                if input_image_files:
+                    # Use the edits endpoint for image-to-image generation
+                    print(f"🔄 Using Image API edits endpoint with {len(input_image_files)} input image(s)")
+                    
+                    # For edits, we use the first input image as the base
+                    base_image = input_image_files[0]
+                    base_image.seek(0)  # Reset file pointer
+                    
+                    response_openai = await asyncio.to_thread(
+                        client.images.edit,
+                        image=base_image,
+                        prompt=prompt_text,
+                        model="gpt-image-1",
+                        size=gpt_size,
+                        n=1
+                    )
+                else:
+                    # Use the generations endpoint for text-to-image
+                    print(f"🎨 Using Image API generations endpoint")
+                    
+                    response_openai = await asyncio.to_thread(
+                        client.images.generate,
+                        **api_params
+                    )
 
                 end_time_openai = time.time()
                 duration_openai = end_time_openai - start_time_openai
-                print(f"✅ OpenAI Responses API CALL COMPLETE - Prompt #{prompt_idx_openai} (took {duration_openai:.2f}s)")
+                print(f"✅ OpenAI Image API CALL COMPLETE - Prompt #{prompt_idx_openai} (took {duration_openai:.2f}s)")
 
-                generated_image_b64 = None
-                revised_prompt_for_image = None
+                # Extract the generated image
+                if not response_openai.data or len(response_openai.data) == 0:
+                    return {"error": f"OpenAI Image API did not return any image data for prompt: {prompt_text[:100]}..."}
 
-                if response_openai.output:
-                    for output_item in response_openai.output:
-                        if output_item.type == "image_generation_call":
-                            if output_item.status == "completed" and output_item.result:
-                                generated_image_b64 = output_item.result
-                                revised_prompt_for_image = output_item.revised_prompt
-                                print(f"🖼️ Image generated. Revised prompt by gpt-4.1-2025-04-14: {revised_prompt_for_image}")
-                                break
-                            else:
-                                print(f"⚠️ Image generation tool call not completed or no result: Status {output_item.status}. Message: {getattr(output_item, 'message', 'N/A')}")
-                                return {"error": f"OpenAI image generation tool call status: {output_item.status}. Message: {getattr(output_item, 'message', 'N/A')}"}
-                
+                generated_image_b64 = response_openai.data[0].b64_json
                 if not generated_image_b64:
-                    print(f"Error: OpenAI Responses API did not return image data for prompt: {prompt_text}")
-                    full_output_log = "No output attribute or empty."
-                    if hasattr(response_openai, 'output') and response_openai.output:
-                        try:
-                            full_output_log = response_openai.output.model_dump_json(indent=2)
-                        except Exception: # Fallback if model_dump_json fails or not available
-                            full_output_log = str(response_openai.output)
-                    print(f"Full OpenAI Response Output: {full_output_log}")
-                    return {"error": f"OpenAI Responses API did not return image data for prompt: {prompt_text}"}
+                    return {"error": f"OpenAI Image API returned empty image data for prompt: {prompt_text[:100]}..."}
 
+                # Process and save the image
                 image_bytes_data = base64.b64decode(generated_image_b64)
                 pil_image_obj = Image.open(BytesIO(image_bytes_data))
                 
-                filename_openai = f"gpt_responses_img_{uuid.uuid4().hex[:8]}.png" # Always save as PNG from this API
+                filename_openai = f"gpt_image_api_{uuid.uuid4().hex[:8]}.png"
                 local_path_openai = os.path.join(image_dir, filename_openai)
                 await asyncio.to_thread(pil_image_obj.save, local_path_openai, format="PNG")
                 
                 image_url_openai = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename_openai}"
-                print(f"✅ OpenAI (Responses API) Success: Prompt #{prompt_idx_openai}. Generated image: {image_url_openai}")
+                print(f"✅ OpenAI (Image API) Success: Prompt #{prompt_idx_openai}. Generated image: {image_url_openai}")
                 
                 # QA Check for spelling mistakes
                 print(f"🔍 Starting QA check for spelling mistakes...")
@@ -511,28 +489,33 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                     try:
                         regeneration_prompt = f"{prompt_text}\n\nIMPORTANT: Pay special attention to correct spelling of all text. Double-check every word for spelling accuracy."
                         
-                        regeneration_response = await asyncio.to_thread(
-                            client.responses.create,
-                            model="gpt-4.1-2025-04-14", 
-                            input=[{"role": "user", "content": [{"type": "input_text", "text": regeneration_prompt}]}],
-                            tools=[tool_params],
-                        )
+                        if input_image_files:
+                            # Reset file pointer for regeneration
+                            base_image.seek(0)
+                            regeneration_response = await asyncio.to_thread(
+                                client.images.edit,
+                                image=base_image,
+                                prompt=regeneration_prompt,
+                                model="gpt-image-1",
+                                size=gpt_size,
+                                n=1
+                            )
+                        else:
+                            regeneration_response = await asyncio.to_thread(
+                                client.images.generate,
+                                model="gpt-image-1",
+                                prompt=regeneration_prompt,
+                                size=gpt_size,
+                                quality=quality if quality != "auto" else "standard",
+                                n=1
+                            )
                         
-                        # Process regenerated image
-                        regenerated_image_b64 = None
-                        if regeneration_response.output:
-                            for output_item in regeneration_response.output:
-                                if output_item.type == "image_generation_call":
-                                    if output_item.status == "completed" and output_item.result:
-                                        regenerated_image_b64 = output_item.result
-                                        break
-                        
-                        if regenerated_image_b64:
+                        if regeneration_response.data and regeneration_response.data[0].b64_json:
                             # Save regenerated image
-                            regenerated_image_bytes = base64.b64decode(regenerated_image_b64)
+                            regenerated_image_bytes = base64.b64decode(regeneration_response.data[0].b64_json)
                             regenerated_pil_image = Image.open(BytesIO(regenerated_image_bytes))
                             
-                            regenerated_filename = f"gpt_responses_img_fixed_{uuid.uuid4().hex[:8]}.png"
+                            regenerated_filename = f"gpt_image_api_fixed_{uuid.uuid4().hex[:8]}.png"
                             regenerated_local_path = os.path.join(image_dir, regenerated_filename)
                             await asyncio.to_thread(regenerated_pil_image.save, regenerated_local_path, format="PNG")
                             
@@ -558,13 +541,13 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
 
             except Exception as e_openai:
                 error_str_openai = str(e_openai)
-                print(f"❌ OpenAI (Responses API) Error Type: {type(e_openai).__name__}")
-                print(f"❌ OpenAI (Responses API) Error: Prompt #{prompt_idx_openai} ('{prompt_text[:30]}...'): {error_str_openai}")
+                print(f"❌ OpenAI (Image API) Error Type: {type(e_openai).__name__}")
+                print(f"❌ OpenAI (Image API) Error: Prompt #{prompt_idx_openai} ('{prompt_text[:30]}...'): {error_str_openai}")
                 import traceback
                 print(traceback.format_exc())
-                return {"error": f"OpenAI image generation via Responses API failed for prompt '{prompt_text}': {error_str_openai}"}
+                return {"error": f"OpenAI image generation via Image API failed for prompt '{prompt_text}': {error_str_openai}"}
 
-        openai_tasks = [generate_for_single_prompt_openai_responses_api(p, i) for i, p in enumerate(prompts)]
+        openai_tasks = [generate_for_single_prompt_openai_image_api(p, i) for i, p in enumerate(prompts)]
         
         # Debug: Show batch start time for OpenAI
         batch_start_time_openai = time.time()
@@ -597,6 +580,1007 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
             if all(isinstance(res, dict) and "error" in res for res in all_prompt_results):
                  return {"status": "error", "message": "All image generations failed with OpenAI. Check results for details.", "results": all_prompt_results}
             return {"status": "partial_error", "message": "Some images failed to generate with OpenAI. Check results for details.", "results": all_prompt_results}
+        
+        return {"status": "success", "results": all_prompt_results}
+
+    elif model_version == "flux-1.1-pro":
+        # --- FLUX 1.1 Pro Logic via Replicate ---
+        replicate_api_token = os.environ.get("REPLICATE_API_KEY")
+        if not replicate_api_token:
+            print("Error: REPLICATE_API_KEY environment variable not set.")
+            return {"status": "error", "message": "REPLICATE_API_KEY environment variable not set for flux-1.1-pro model."}
+        
+        try:
+            # Initialize the replicate client with the API token
+            replicate_client = replicate.Client(api_token=replicate_api_token)
+        except Exception as e:
+            print(f"Error initializing Replicate client: {str(e)}")
+            return {"status": "error", "message": f"Failed to initialize Replicate client: {str(e)}"}
+
+        all_prompt_results = []
+        any_errors_flux = False
+        
+        async def generate_for_single_prompt_flux(prompt_text, prompt_idx_flux):
+            try:
+                print(f"🎯 FLUX 1.1 Pro Prompt #{prompt_idx_flux}: '{prompt_text[:50]}...'")
+                start_time_flux = time.time()
+                
+                # Map aspect ratio to FLUX format (FLUX supports standard ratios)
+                flux_aspect_ratio = aspect_ratio
+                valid_flux_ratios = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]
+                if aspect_ratio not in valid_flux_ratios:
+                    flux_aspect_ratio = "16:9"  # Default fallback
+                
+                # Prepare input for FLUX 1.1 Pro
+                flux_input = {
+                    "prompt": prompt_text,
+                    "aspect_ratio": flux_aspect_ratio,
+                    "prompt_upsampling": True,  # Enable prompt enhancement
+                    "safety_tolerance": 2,  # Moderate safety filtering
+                    "output_format": "jpg",  # FLUX outputs JPG
+                    "output_quality": 95  # High quality
+                }
+                
+                # Add image prompt if input_images provided
+                if input_images and prompt_idx_flux < len(input_images):
+                    current_input_image_sources = input_images[prompt_idx_flux]
+                    if not isinstance(current_input_image_sources, list):
+                        current_input_image_sources = [current_input_image_sources]
+                    
+                    # FLUX 1.1 Pro supports image_prompt parameter
+                    if current_input_image_sources:
+                        image_source = current_input_image_sources[0]  # Use first image as reference
+                        print(f"🖼️ Using input image for FLUX: {str(image_source)[:70]}...")
+                        flux_input["image_prompt"] = image_source
+                
+                print(f"🔧 FLUX 1.1 Pro Parameters:")
+                for key, value in flux_input.items():
+                    if key == "prompt":
+                        print(f"   {key}: {value[:100]}..." if len(value) > 100 else f"   {key}: {value}")
+                    elif key == "image_prompt":
+                        print(f"   {key}: {str(value)[:50]}...")
+                    else:
+                        print(f"   {key}: {value}")
+                
+                # Call FLUX 1.1 Pro via Replicate
+                response_flux = await asyncio.to_thread(
+                    replicate_client.run,
+                    "black-forest-labs/flux-1.1-pro",
+                    input=flux_input
+                )
+                
+                end_time_flux = time.time()
+                duration_flux = end_time_flux - start_time_flux
+                print(f"✅ FLUX 1.1 Pro API CALL COMPLETE - Prompt #{prompt_idx_flux} (took {duration_flux:.2f}s)")
+                
+                # Process the response - FLUX returns a file object
+                if not response_flux:
+                    return {"error": f"FLUX 1.1 Pro did not return any image data for prompt: {prompt_text[:100]}..."}
+                
+                # Download the image from the response URL
+                try:
+                    if hasattr(response_flux, 'read'):
+                        # Response is a file-like object
+                        image_bytes_data = response_flux.read()
+                    elif isinstance(response_flux, str) and response_flux.startswith('http'):
+                        # Response is a URL - download it
+                        resp = await asyncio.to_thread(requests.get, response_flux, timeout=30)
+                        resp.raise_for_status()
+                        image_bytes_data = resp.content
+                    else:
+                        return {"error": f"Unexpected FLUX response format: {type(response_flux)}"}
+                    
+                    if not image_bytes_data:
+                        return {"error": f"FLUX 1.1 Pro returned empty image data for prompt: {prompt_text[:100]}..."}
+                    
+                    # Process and save the image
+                    pil_image_obj = Image.open(BytesIO(image_bytes_data))
+                    
+                    # Convert to requested format
+                    if output_format.lower() == "png":
+                        filename_flux = f"flux_11_pro_{uuid.uuid4().hex[:8]}.png"
+                        save_format = "PNG"
+                    elif output_format.lower() == "webp":
+                        filename_flux = f"flux_11_pro_{uuid.uuid4().hex[:8]}.webp"
+                        save_format = "WEBP"
+                    else:  # Default to JPEG
+                        filename_flux = f"flux_11_pro_{uuid.uuid4().hex[:8]}.jpg"
+                        save_format = "JPEG"
+                        # Convert RGBA to RGB for JPEG
+                        if pil_image_obj.mode == "RGBA":
+                            rgb_img = Image.new("RGB", pil_image_obj.size, (255, 255, 255))
+                            rgb_img.paste(pil_image_obj, mask=pil_image_obj.split()[-1])
+                            pil_image_obj = rgb_img
+                    
+                    local_path_flux = os.path.join(image_dir, filename_flux)
+                    
+                    # Save with compression settings
+                    if save_format == "JPEG":
+                        await asyncio.to_thread(
+                            pil_image_obj.save, 
+                            local_path_flux, 
+                            format=save_format, 
+                            quality=output_compression, 
+                            optimize=True
+                        )
+                    elif save_format == "WEBP":
+                        await asyncio.to_thread(
+                            pil_image_obj.save, 
+                            local_path_flux, 
+                            format=save_format, 
+                            quality=output_compression, 
+                            optimize=True
+                        )
+                    else:  # PNG
+                        await asyncio.to_thread(pil_image_obj.save, local_path_flux, format=save_format, optimize=True)
+                    
+                    image_url_flux = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename_flux}"
+                    print(f"✅ FLUX 1.1 Pro Success: Prompt #{prompt_idx_flux}. Generated image: {image_url_flux}")
+                    
+                    # QA Check for spelling mistakes
+                    print(f"🔍 Starting QA check for spelling mistakes...")
+                    qa_result = await qa_check_spelling(image_url_flux, prompt_text)
+                    
+                    if qa_result["has_errors"]:
+                        print(f"❌ QA Check: Spelling errors detected in image {prompt_idx_flux}")
+                        print(f"   Errors: {qa_result['errors']}")
+                        print(f"🔄 Regenerating image to fix spelling errors...")
+                        
+                        # Try regeneration once
+                        try:
+                            regeneration_prompt = f"{prompt_text}\n\nIMPORTANT: Pay special attention to correct spelling of all text. Double-check every word for spelling accuracy."
+                            
+                            regeneration_input = flux_input.copy()
+                            regeneration_input["prompt"] = regeneration_prompt
+                            
+                            regeneration_response = await asyncio.to_thread(
+                                replicate_client.run,
+                                "black-forest-labs/flux-1.1-pro",
+                                input=regeneration_input
+                            )
+                            
+                            if regeneration_response:
+                                # Process regenerated image
+                                if hasattr(regeneration_response, 'read'):
+                                    regen_image_bytes = regeneration_response.read()
+                                elif isinstance(regeneration_response, str) and regeneration_response.startswith('http'):
+                                    regen_resp = await asyncio.to_thread(requests.get, regeneration_response, timeout=30)
+                                    regen_resp.raise_for_status()
+                                    regen_image_bytes = regen_resp.content
+                                else:
+                                    raise Exception(f"Unexpected regeneration response format: {type(regeneration_response)}")
+                                
+                                if regen_image_bytes:
+                                    regenerated_pil_image = Image.open(BytesIO(regen_image_bytes))
+                                    
+                                    regenerated_filename = f"flux_11_pro_fixed_{uuid.uuid4().hex[:8]}.{output_format.lower()}"
+                                    regenerated_local_path = os.path.join(image_dir, regenerated_filename)
+                                    
+                                    # Save regenerated image with same format settings
+                                    if save_format == "JPEG" and regenerated_pil_image.mode == "RGBA":
+                                        rgb_img = Image.new("RGB", regenerated_pil_image.size, (255, 255, 255))
+                                        rgb_img.paste(regenerated_pil_image, mask=regenerated_pil_image.split()[-1])
+                                        regenerated_pil_image = rgb_img
+                                    
+                                    if save_format in ["JPEG", "WEBP"]:
+                                        await asyncio.to_thread(
+                                            regenerated_pil_image.save, 
+                                            regenerated_local_path, 
+                                            format=save_format, 
+                                            quality=output_compression, 
+                                            optimize=True
+                                        )
+                                    else:
+                                        await asyncio.to_thread(regenerated_pil_image.save, regenerated_local_path, format=save_format, optimize=True)
+                                    
+                                    regenerated_url = f"{DOMAIN}/user_data/{user_number_safe}/images/{regenerated_filename}"
+                                    print(f"✅ Successfully regenerated image with corrected spelling: {regenerated_url}")
+                                    
+                                    # Remove the original image with errors
+                                    try:
+                                        os.remove(local_path_flux)
+                                        print(f"🗑️ Removed original image with spelling errors")
+                                    except Exception:
+                                        pass
+                                    
+                                    return [regenerated_url]
+                                    
+                        except Exception as regen_error:
+                            print(f"⚠️ Regeneration failed: {regen_error}, keeping original image")
+                    else:
+                        print(f"✅ QA Check: No spelling errors detected in image {prompt_idx_flux}")
+                    
+                    return [image_url_flux]
+                    
+                except Exception as e_process:
+                    return {"error": f"Failed to process FLUX image response: {str(e_process)}"}
+                    
+            except Exception as e_flux:
+                error_str_flux = str(e_flux)
+                print(f"❌ FLUX 1.1 Pro Error: Prompt #{prompt_idx_flux} ('{prompt_text[:30]}...'): {error_str_flux}")
+                import traceback
+                print(traceback.format_exc())
+                return {"error": f"FLUX 1.1 Pro generation failed for prompt '{prompt_text}': {error_str_flux}"}
+
+        flux_tasks = [generate_for_single_prompt_flux(p, i) for i, p in enumerate(prompts)]
+        
+        # Debug: Show batch start time for FLUX
+        batch_start_time_flux = time.time()
+        batch_start_str_flux = time.strftime("%H:%M:%S", time.localtime(batch_start_time_flux))
+        print(f"\n⏱️ FLUX BATCH START [{batch_start_str_flux}] - Launching {len(prompts)} concurrent API calls...")
+
+        results_from_flux = await asyncio.gather(*flux_tasks, return_exceptions=False) # Errors handled within helper
+
+        # Debug: Show batch completion time for FLUX
+        batch_end_time_flux = time.time()
+        batch_duration_flux = batch_end_time_flux - batch_start_time_flux
+        batch_end_str_flux = time.strftime("%H:%M:%S", time.localtime(batch_end_time_flux))
+        print(f"\n🏁 FLUX BATCH COMPLETE [{batch_end_str_flux}] - All {len(prompts)} requests finished (total time: {batch_duration_flux:.2f}s)")
+
+        for i_flux, r_flux in enumerate(results_from_flux):
+            if isinstance(r_flux, dict) and "error" in r_flux:
+                any_errors_flux = True
+                all_prompt_results.append(r_flux) 
+            elif isinstance(r_flux, list):
+                all_prompt_results.append(r_flux)
+            else:
+                any_errors_flux = True
+                error_msg_detail = f"Unexpected result type for FLUX prompt index {i_flux}: {type(r_flux)}"
+                print(error_msg_detail)
+                all_prompt_results.append({"error": error_msg_detail})
+        
+        if any_errors_flux:
+            # Check if all failed
+            if all(isinstance(res, dict) and "error" in res for res in all_prompt_results):
+                 return {"status": "error", "message": "All image generations failed with FLUX 1.1 Pro. Check results for details.", "results": all_prompt_results}
+            return {"status": "partial_error", "message": "Some images failed to generate with FLUX 1.1 Pro. Check results for details.", "results": all_prompt_results}
+        
+        return {"status": "success", "results": all_prompt_results}
+
+    elif model_version == "seedream-3":
+        # --- SeeDream 3 Logic via Replicate ---
+        replicate_api_token = os.environ.get("REPLICATE_API_KEY")
+        if not replicate_api_token:
+            print("Error: REPLICATE_API_KEY environment variable not set.")
+            return {"status": "error", "message": "REPLICATE_API_KEY environment variable not set for seedream-3 model."}
+        
+        try:
+            # Initialize the replicate client with the API token
+            replicate_client = replicate.Client(api_token=replicate_api_token)
+        except Exception as e:
+            print(f"Error initializing Replicate client: {str(e)}")
+            return {"status": "error", "message": f"Failed to initialize Replicate client: {str(e)}"}
+
+        all_prompt_results = []
+        any_errors_seedream = False
+        
+        async def generate_for_single_prompt_seedream(prompt_text, prompt_idx_seedream):
+            try:
+                print(f"🎯 SeeDream 3 Prompt #{prompt_idx_seedream}: '{prompt_text[:50]}...'")
+                start_time_seedream = time.time()
+                
+                # Prepare input for SeeDream 3 - using the exact schema from the documentation
+                seedream_input = {
+                    "prompt": prompt_text
+                }
+                
+                # Add image input if provided (SeeDream 3 supports image conditioning)
+                if input_images and prompt_idx_seedream < len(input_images):
+                    current_input_image_sources = input_images[prompt_idx_seedream]
+                    if not isinstance(current_input_image_sources, list):
+                        current_input_image_sources = [current_input_image_sources]
+                    
+                    # SeeDream 3 supports image input for conditioning
+                    if current_input_image_sources:
+                        image_source = current_input_image_sources[0]  # Use first image as reference
+                        print(f"🖼️ Using input image for SeeDream 3: {str(image_source)[:70]}...")
+                        seedream_input["image"] = image_source
+                
+                print(f"🔧 SeeDream 3 Parameters:")
+                for key, value in seedream_input.items():
+                    if key == "prompt":
+                        print(f"   {key}: {value[:100]}..." if len(value) > 100 else f"   {key}: {value}")
+                    elif key == "image":
+                        print(f"   {key}: {str(value)[:50]}...")
+                    else:
+                        print(f"   {key}: {value}")
+                
+                # Call SeeDream 3 via Replicate
+                response_seedream = await asyncio.to_thread(
+                    replicate_client.run,
+                    "bytedance/seedream-3",
+                    input=seedream_input
+                )
+                
+                end_time_seedream = time.time()
+                duration_seedream = end_time_seedream - start_time_seedream
+                print(f"✅ SeeDream 3 API CALL COMPLETE - Prompt #{prompt_idx_seedream} (took {duration_seedream:.2f}s)")
+                
+                # Process the response - SeeDream 3 returns a file object
+                if not response_seedream:
+                    return {"error": f"SeeDream 3 did not return any image data for prompt: {prompt_text[:100]}..."}
+                
+                # Download the image from the response
+                try:
+                    if hasattr(response_seedream, 'read'):
+                        # Response is a file-like object
+                        image_bytes_data = response_seedream.read()
+                    elif isinstance(response_seedream, str) and response_seedream.startswith('http'):
+                        # Response is a URL - download it
+                        resp = await asyncio.to_thread(requests.get, response_seedream, timeout=30)
+                        resp.raise_for_status()
+                        image_bytes_data = resp.content
+                    else:
+                        return {"error": f"Unexpected SeeDream 3 response format: {type(response_seedream)}"}
+                    
+                    if not image_bytes_data:
+                        return {"error": f"SeeDream 3 returned empty image data for prompt: {prompt_text[:100]}..."}
+                    
+                    # Process and save the image
+                    pil_image_obj = Image.open(BytesIO(image_bytes_data))
+                    
+                    # Convert to requested format
+                    if output_format.lower() == "png":
+                        filename_seedream = f"seedream3_{uuid.uuid4().hex[:8]}.png"
+                        save_format = "PNG"
+                    elif output_format.lower() == "webp":
+                        filename_seedream = f"seedream3_{uuid.uuid4().hex[:8]}.webp"
+                        save_format = "WEBP"
+                    else:  # Default to JPEG
+                        filename_seedream = f"seedream3_{uuid.uuid4().hex[:8]}.jpg"
+                        save_format = "JPEG"
+                        # Convert RGBA to RGB for JPEG
+                        if pil_image_obj.mode == "RGBA":
+                            rgb_img = Image.new("RGB", pil_image_obj.size, (255, 255, 255))
+                            rgb_img.paste(pil_image_obj, mask=pil_image_obj.split()[-1])
+                            pil_image_obj = rgb_img
+                    
+                    local_path_seedream = os.path.join(image_dir, filename_seedream)
+                    
+                    # Save with compression settings
+                    if save_format == "JPEG":
+                        await asyncio.to_thread(
+                            pil_image_obj.save, 
+                            local_path_seedream, 
+                            format=save_format, 
+                            quality=output_compression, 
+                            optimize=True
+                        )
+                    elif save_format == "WEBP":
+                        await asyncio.to_thread(
+                            pil_image_obj.save, 
+                            local_path_seedream, 
+                            format=save_format, 
+                            quality=output_compression, 
+                            optimize=True
+                        )
+                    else:  # PNG
+                        await asyncio.to_thread(pil_image_obj.save, local_path_seedream, format=save_format, optimize=True)
+                    
+                    image_url_seedream = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename_seedream}"
+                    print(f"✅ SeeDream 3 Success: Prompt #{prompt_idx_seedream}. Generated image: {image_url_seedream}")
+                    
+                    # QA Check for spelling mistakes
+                    print(f"🔍 Starting QA check for spelling mistakes...")
+                    qa_result = await qa_check_spelling(image_url_seedream, prompt_text)
+                    
+                    if qa_result["has_errors"]:
+                        print(f"❌ QA Check: Spelling errors detected in image {prompt_idx_seedream}")
+                        print(f"   Errors: {qa_result['errors']}")
+                        print(f"🔄 Regenerating image to fix spelling errors...")
+                        
+                        # Try regeneration once
+                        try:
+                            regeneration_prompt = f"{prompt_text}\n\nIMPORTANT: Pay special attention to correct spelling of all text. Double-check every word for spelling accuracy."
+                            
+                            regeneration_input = seedream_input.copy()
+                            regeneration_input["prompt"] = regeneration_prompt
+                            
+                            regeneration_response = await asyncio.to_thread(
+                                replicate_client.run,
+                                "bytedance/seedream-3",
+                                input=regeneration_input
+                            )
+                            
+                            if regeneration_response:
+                                # Process regenerated image
+                                if hasattr(regeneration_response, 'read'):
+                                    regen_image_bytes = regeneration_response.read()
+                                elif isinstance(regeneration_response, str) and regeneration_response.startswith('http'):
+                                    regen_resp = await asyncio.to_thread(requests.get, regeneration_response, timeout=30)
+                                    regen_resp.raise_for_status()
+                                    regen_image_bytes = regen_resp.content
+                                else:
+                                    raise Exception(f"Unexpected regeneration response format: {type(regeneration_response)}")
+                                
+                                if regen_image_bytes:
+                                    regenerated_pil_image = Image.open(BytesIO(regen_image_bytes))
+                                    
+                                    regenerated_filename = f"seedream3_fixed_{uuid.uuid4().hex[:8]}.{output_format.lower()}"
+                                    regenerated_local_path = os.path.join(image_dir, regenerated_filename)
+                                    
+                                    # Save regenerated image with same format settings
+                                    if save_format == "JPEG" and regenerated_pil_image.mode == "RGBA":
+                                        rgb_img = Image.new("RGB", regenerated_pil_image.size, (255, 255, 255))
+                                        rgb_img.paste(regenerated_pil_image, mask=regenerated_pil_image.split()[-1])
+                                        regenerated_pil_image = rgb_img
+                                    
+                                    if save_format in ["JPEG", "WEBP"]:
+                                        await asyncio.to_thread(
+                                            regenerated_pil_image.save, 
+                                            regenerated_local_path, 
+                                            format=save_format, 
+                                            quality=output_compression, 
+                                            optimize=True
+                                        )
+                                    else:
+                                        await asyncio.to_thread(regenerated_pil_image.save, regenerated_local_path, format=save_format, optimize=True)
+                                    
+                                    regenerated_url = f"{DOMAIN}/user_data/{user_number_safe}/images/{regenerated_filename}"
+                                    print(f"✅ Successfully regenerated image with corrected spelling: {regenerated_url}")
+                                    
+                                    # Remove the original image with errors
+                                    try:
+                                        os.remove(local_path_seedream)
+                                        print(f"🗑️ Removed original image with spelling errors")
+                                    except Exception:
+                                        pass
+                                    
+                                    return [regenerated_url]
+                                    
+                        except Exception as regen_error:
+                            print(f"⚠️ Regeneration failed: {regen_error}, keeping original image")
+                    else:
+                        print(f"✅ QA Check: No spelling errors detected in image {prompt_idx_seedream}")
+                    
+                    return [image_url_seedream]
+                    
+                except Exception as e_process:
+                    return {"error": f"Failed to process SeeDream 3 image response: {str(e_process)}"}
+                    
+            except Exception as e_seedream:
+                error_str_seedream = str(e_seedream)
+                print(f"❌ SeeDream 3 Error: Prompt #{prompt_idx_seedream} ('{prompt_text[:30]}...'): {error_str_seedream}")
+                import traceback
+                print(traceback.format_exc())
+                return {"error": f"SeeDream 3 generation failed for prompt '{prompt_text}': {error_str_seedream}"}
+
+        seedream_tasks = [generate_for_single_prompt_seedream(p, i) for i, p in enumerate(prompts)]
+        
+        # Debug: Show batch start time for SeeDream 3
+        batch_start_time_seedream = time.time()
+        batch_start_str_seedream = time.strftime("%H:%M:%S", time.localtime(batch_start_time_seedream))
+        print(f"\n⏱️ SEEDREAM 3 BATCH START [{batch_start_str_seedream}] - Launching {len(prompts)} concurrent API calls...")
+
+        results_from_seedream = await asyncio.gather(*seedream_tasks, return_exceptions=False) # Errors handled within helper
+
+        # Debug: Show batch completion time for SeeDream 3
+        batch_end_time_seedream = time.time()
+        batch_duration_seedream = batch_end_time_seedream - batch_start_time_seedream
+        batch_end_str_seedream = time.strftime("%H:%M:%S", time.localtime(batch_end_time_seedream))
+        print(f"\n🏁 SEEDREAM 3 BATCH COMPLETE [{batch_end_str_seedream}] - All {len(prompts)} requests finished (total time: {batch_duration_seedream:.2f}s)")
+
+        for i_seedream, r_seedream in enumerate(results_from_seedream):
+            if isinstance(r_seedream, dict) and "error" in r_seedream:
+                any_errors_seedream = True
+                all_prompt_results.append(r_seedream) 
+            elif isinstance(r_seedream, list):
+                all_prompt_results.append(r_seedream)
+            else:
+                any_errors_seedream = True
+                error_msg_detail = f"Unexpected result type for SeeDream 3 prompt index {i_seedream}: {type(r_seedream)}"
+                print(error_msg_detail)
+                all_prompt_results.append({"error": error_msg_detail})
+        
+        if any_errors_seedream:
+            # Check if all failed
+            if all(isinstance(res, dict) and "error" in res for res in all_prompt_results):
+                 return {"status": "error", "message": "All image generations failed with SeeDream 3. Check results for details.", "results": all_prompt_results}
+            return {"status": "partial_error", "message": "Some images failed to generate with SeeDream 3. Check results for details.", "results": all_prompt_results}
+        
+        return {"status": "success", "results": all_prompt_results}
+
+    elif model_version == "ideogram-v3-turbo":
+        # --- Ideogram V3 Turbo Logic via Replicate ---
+        replicate_api_token = os.environ.get("REPLICATE_API_KEY")
+        if not replicate_api_token:
+            print("Error: REPLICATE_API_KEY environment variable not set.")
+            return {"status": "error", "message": "REPLICATE_API_KEY environment variable not set for ideogram-v3-turbo model."}
+        
+        try:
+            # Initialize the replicate client with the API token
+            replicate_client = replicate.Client(api_token=replicate_api_token)
+        except Exception as e:
+            print(f"Error initializing Replicate client: {str(e)}")
+            return {"status": "error", "message": f"Failed to initialize Replicate client: {str(e)}"}
+
+        all_prompt_results = []
+        any_errors_ideogram = False
+        
+        async def generate_for_single_prompt_ideogram(prompt_text, prompt_idx_ideogram):
+            try:
+                print(f"🎯 Ideogram V3 Turbo Prompt #{prompt_idx_ideogram}: '{prompt_text[:50]}...'")
+                start_time_ideogram = time.time()
+                
+                # Map aspect ratio to Ideogram V3 Turbo format
+                ideogram_aspect_ratio = aspect_ratio
+                valid_ideogram_ratios = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]
+                if aspect_ratio not in valid_ideogram_ratios:
+                    ideogram_aspect_ratio = "16:9"  # Default fallback
+                
+                # Prepare input for Ideogram V3 Turbo
+                ideogram_input = {
+                    "prompt": prompt_text,
+                    "aspect_ratio": ideogram_aspect_ratio,
+                    "model": "V_3_TURBO",
+                    "magic_prompt_option": "Auto"  # Enable automatic prompt enhancement
+                }
+                
+                # Add image input if provided (Ideogram V3 supports image conditioning)
+                if input_images and prompt_idx_ideogram < len(input_images):
+                    current_input_image_sources = input_images[prompt_idx_ideogram]
+                    if not isinstance(current_input_image_sources, list):
+                        current_input_image_sources = [current_input_image_sources]
+                    
+                    # Ideogram V3 supports image input for conditioning
+                    if current_input_image_sources:
+                        image_source = current_input_image_sources[0]  # Use first image as reference
+                        print(f"🖼️ Using input image for Ideogram V3 Turbo: {str(image_source)[:70]}...")
+                        ideogram_input["image"] = image_source
+                
+                print(f"🔧 Ideogram V3 Turbo Parameters:")
+                for key, value in ideogram_input.items():
+                    if key == "prompt":
+                        print(f"   {key}: {value[:100]}..." if len(value) > 100 else f"   {key}: {value}")
+                    elif key == "image":
+                        print(f"   {key}: {str(value)[:50]}...")
+                    else:
+                        print(f"   {key}: {value}")
+                
+                # Call Ideogram V3 Turbo via Replicate
+                response_ideogram = await asyncio.to_thread(
+                    replicate_client.run,
+                    "ideogram-ai/ideogram-v3-turbo",
+                    input=ideogram_input
+                )
+                
+                end_time_ideogram = time.time()
+                duration_ideogram = end_time_ideogram - start_time_ideogram
+                print(f"✅ Ideogram V3 Turbo API CALL COMPLETE - Prompt #{prompt_idx_ideogram} (took {duration_ideogram:.2f}s)")
+                
+                # Process the response - Ideogram V3 returns a file object
+                if not response_ideogram:
+                    return {"error": f"Ideogram V3 Turbo did not return any image data for prompt: {prompt_text[:100]}..."}
+                
+                # Download the image from the response
+                try:
+                    if hasattr(response_ideogram, 'read'):
+                        # Response is a file-like object
+                        image_bytes_data = response_ideogram.read()
+                    elif isinstance(response_ideogram, str) and response_ideogram.startswith('http'):
+                        # Response is a URL - download it
+                        resp = await asyncio.to_thread(requests.get, response_ideogram, timeout=30)
+                        resp.raise_for_status()
+                        image_bytes_data = resp.content
+                    else:
+                        return {"error": f"Unexpected Ideogram V3 Turbo response format: {type(response_ideogram)}"}
+                    
+                    if not image_bytes_data:
+                        return {"error": f"Ideogram V3 Turbo returned empty image data for prompt: {prompt_text[:100]}..."}
+                    
+                    # Process and save the image
+                    pil_image_obj = Image.open(BytesIO(image_bytes_data))
+                    
+                    # Convert to requested format
+                    if output_format.lower() == "png":
+                        filename_ideogram = f"ideogram_v3_turbo_{uuid.uuid4().hex[:8]}.png"
+                        save_format = "PNG"
+                    elif output_format.lower() == "webp":
+                        filename_ideogram = f"ideogram_v3_turbo_{uuid.uuid4().hex[:8]}.webp"
+                        save_format = "WEBP"
+                    else:  # Default to JPEG
+                        filename_ideogram = f"ideogram_v3_turbo_{uuid.uuid4().hex[:8]}.jpg"
+                        save_format = "JPEG"
+                        # Convert RGBA to RGB for JPEG
+                        if pil_image_obj.mode == "RGBA":
+                            rgb_img = Image.new("RGB", pil_image_obj.size, (255, 255, 255))
+                            rgb_img.paste(pil_image_obj, mask=pil_image_obj.split()[-1])
+                            pil_image_obj = rgb_img
+                    
+                    local_path_ideogram = os.path.join(image_dir, filename_ideogram)
+                    
+                    # Save with compression settings
+                    if save_format == "JPEG":
+                        await asyncio.to_thread(
+                            pil_image_obj.save, 
+                            local_path_ideogram, 
+                            format=save_format, 
+                            quality=output_compression, 
+                            optimize=True
+                        )
+                    elif save_format == "WEBP":
+                        await asyncio.to_thread(
+                            pil_image_obj.save, 
+                            local_path_ideogram, 
+                            format=save_format, 
+                            quality=output_compression, 
+                            optimize=True
+                        )
+                    else:  # PNG
+                        await asyncio.to_thread(pil_image_obj.save, local_path_ideogram, format=save_format, optimize=True)
+                    
+                    image_url_ideogram = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename_ideogram}"
+                    print(f"✅ Ideogram V3 Turbo Success: Prompt #{prompt_idx_ideogram}. Generated image: {image_url_ideogram}")
+                    
+                    # QA Check for spelling mistakes
+                    print(f"🔍 Starting QA check for spelling mistakes...")
+                    qa_result = await qa_check_spelling(image_url_ideogram, prompt_text)
+                    
+                    if qa_result["has_errors"]:
+                        print(f"❌ QA Check: Spelling errors detected in image {prompt_idx_ideogram}")
+                        print(f"   Errors: {qa_result['errors']}")
+                        print(f"🔄 Regenerating image to fix spelling errors...")
+                        
+                        # Try regeneration once
+                        try:
+                            regeneration_prompt = f"{prompt_text}\n\nIMPORTANT: Pay special attention to correct spelling of all text. Double-check every word for spelling accuracy."
+                            
+                            regeneration_input = ideogram_input.copy()
+                            regeneration_input["prompt"] = regeneration_prompt
+                            
+                            regeneration_response = await asyncio.to_thread(
+                                replicate_client.run,
+                                "ideogram-ai/ideogram-v3-turbo",
+                                input=regeneration_input
+                            )
+                            
+                            if regeneration_response:
+                                # Process regenerated image
+                                if hasattr(regeneration_response, 'read'):
+                                    regen_image_bytes = regeneration_response.read()
+                                elif isinstance(regeneration_response, str) and regeneration_response.startswith('http'):
+                                    regen_resp = await asyncio.to_thread(requests.get, regeneration_response, timeout=30)
+                                    regen_resp.raise_for_status()
+                                    regen_image_bytes = regen_resp.content
+                                else:
+                                    raise Exception(f"Unexpected regeneration response format: {type(regeneration_response)}")
+                                
+                                if regen_image_bytes:
+                                    regenerated_pil_image = Image.open(BytesIO(regen_image_bytes))
+                                    
+                                    regenerated_filename = f"ideogram_v3_turbo_fixed_{uuid.uuid4().hex[:8]}.{output_format.lower()}"
+                                    regenerated_local_path = os.path.join(image_dir, regenerated_filename)
+                                    
+                                    # Save regenerated image with same format settings
+                                    if save_format == "JPEG" and regenerated_pil_image.mode == "RGBA":
+                                        rgb_img = Image.new("RGB", regenerated_pil_image.size, (255, 255, 255))
+                                        rgb_img.paste(regenerated_pil_image, mask=regenerated_pil_image.split()[-1])
+                                        regenerated_pil_image = rgb_img
+                                    
+                                    if save_format in ["JPEG", "WEBP"]:
+                                        await asyncio.to_thread(
+                                            regenerated_pil_image.save, 
+                                            regenerated_local_path, 
+                                            format=save_format, 
+                                            quality=output_compression, 
+                                            optimize=True
+                                        )
+                                    else:
+                                        await asyncio.to_thread(regenerated_pil_image.save, regenerated_local_path, format=save_format, optimize=True)
+                                    
+                                    regenerated_url = f"{DOMAIN}/user_data/{user_number_safe}/images/{regenerated_filename}"
+                                    print(f"✅ Successfully regenerated image with corrected spelling: {regenerated_url}")
+                                    
+                                    # Remove the original image with errors
+                                    try:
+                                        os.remove(local_path_ideogram)
+                                        print(f"🗑️ Removed original image with spelling errors")
+                                    except Exception:
+                                        pass
+                                    
+                                    return [regenerated_url]
+                                    
+                        except Exception as regen_error:
+                            print(f"⚠️ Regeneration failed: {regen_error}, keeping original image")
+                    else:
+                        print(f"✅ QA Check: No spelling errors detected in image {prompt_idx_ideogram}")
+                    
+                    return [image_url_ideogram]
+                    
+                except Exception as e_process:
+                    return {"error": f"Failed to process Ideogram V3 Turbo image response: {str(e_process)}"}
+                    
+            except Exception as e_ideogram:
+                error_str_ideogram = str(e_ideogram)
+                print(f"❌ Ideogram V3 Turbo Error: Prompt #{prompt_idx_ideogram} ('{prompt_text[:30]}...'): {error_str_ideogram}")
+                import traceback
+                print(traceback.format_exc())
+                return {"error": f"Ideogram V3 Turbo generation failed for prompt '{prompt_text}': {error_str_ideogram}"}
+
+        ideogram_tasks = [generate_for_single_prompt_ideogram(p, i) for i, p in enumerate(prompts)]
+        
+        # Debug: Show batch start time for Ideogram V3 Turbo
+        batch_start_time_ideogram = time.time()
+        batch_start_str_ideogram = time.strftime("%H:%M:%S", time.localtime(batch_start_time_ideogram))
+        print(f"\n⏱️ IDEOGRAM V3 TURBO BATCH START [{batch_start_str_ideogram}] - Launching {len(prompts)} concurrent API calls...")
+
+        results_from_ideogram = await asyncio.gather(*ideogram_tasks, return_exceptions=False) # Errors handled within helper
+
+        # Debug: Show batch completion time for Ideogram V3 Turbo
+        batch_end_time_ideogram = time.time()
+        batch_duration_ideogram = batch_end_time_ideogram - batch_start_time_ideogram
+        batch_end_str_ideogram = time.strftime("%H:%M:%S", time.localtime(batch_end_time_ideogram))
+        print(f"\n🏁 IDEOGRAM V3 TURBO BATCH COMPLETE [{batch_end_str_ideogram}] - All {len(prompts)} requests finished (total time: {batch_duration_ideogram:.2f}s)")
+
+        for i_ideogram, r_ideogram in enumerate(results_from_ideogram):
+            if isinstance(r_ideogram, dict) and "error" in r_ideogram:
+                any_errors_ideogram = True
+                all_prompt_results.append(r_ideogram) 
+            elif isinstance(r_ideogram, list):
+                all_prompt_results.append(r_ideogram)
+            else:
+                any_errors_ideogram = True
+                error_msg_detail = f"Unexpected result type for Ideogram V3 Turbo prompt index {i_ideogram}: {type(r_ideogram)}"
+                print(error_msg_detail)
+                all_prompt_results.append({"error": error_msg_detail})
+        
+        if any_errors_ideogram:
+            # Check if all failed
+            if all(isinstance(res, dict) and "error" in res for res in all_prompt_results):
+                 return {"status": "error", "message": "All image generations failed with Ideogram V3 Turbo. Check results for details.", "results": all_prompt_results}
+            return {"status": "partial_error", "message": "Some images failed to generate with Ideogram V3 Turbo. Check results for details.", "results": all_prompt_results}
+        
+        return {"status": "success", "results": all_prompt_results}
+
+    elif model_version == "ideogram-v3-quality":
+        # --- Ideogram V3 Quality Logic via Replicate (reusing V3 Turbo code) ---
+        replicate_api_token = os.environ.get("REPLICATE_API_KEY")
+        if not replicate_api_token:
+            print("Error: REPLICATE_API_KEY environment variable not set.")
+            return {"status": "error", "message": "REPLICATE_API_KEY environment variable not set for ideogram-v3-quality model."}
+        
+        try:
+            # Initialize the replicate client with the API token
+            replicate_client = replicate.Client(api_token=replicate_api_token)
+        except Exception as e:
+            print(f"Error initializing Replicate client: {str(e)}")
+            return {"status": "error", "message": f"Failed to initialize Replicate client: {str(e)}"}
+
+        all_prompt_results = []
+        any_errors_ideogram = False
+        
+        async def generate_for_single_prompt_ideogram_quality(prompt_text, prompt_idx_ideogram):
+            try:
+                print(f"🎯 Ideogram V3 Quality Prompt #{prompt_idx_ideogram}: '{prompt_text[:50]}...'")
+                start_time_ideogram = time.time()
+                
+                # Map aspect ratio to Ideogram V3 Quality format
+                ideogram_aspect_ratio = aspect_ratio
+                valid_ideogram_ratios = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]
+                if aspect_ratio not in valid_ideogram_ratios:
+                    ideogram_aspect_ratio = "16:9"  # Default fallback
+                
+                # Prepare input for Ideogram V3 Quality (same as turbo but with V_3 model)
+                ideogram_input = {
+                    "prompt": prompt_text,
+                    "aspect_ratio": ideogram_aspect_ratio,
+                    "model": "V_3",  # Quality model instead of V_3_TURBO
+                    "magic_prompt_option": "Auto"  # Enable automatic prompt enhancement
+                }
+                
+                # Add image input if provided (Ideogram V3 supports image conditioning)
+                if input_images and prompt_idx_ideogram < len(input_images):
+                    current_input_image_sources = input_images[prompt_idx_ideogram]
+                    if not isinstance(current_input_image_sources, list):
+                        current_input_image_sources = [current_input_image_sources]
+                    
+                    # Ideogram V3 supports image input for conditioning
+                    if current_input_image_sources:
+                        image_source = current_input_image_sources[0]  # Use first image as reference
+                        print(f"🖼️ Using input image for Ideogram V3 Quality: {str(image_source)[:70]}...")
+                        ideogram_input["image"] = image_source
+                
+                print(f"🔧 Ideogram V3 Quality Parameters:")
+                for key, value in ideogram_input.items():
+                    if key == "prompt":
+                        print(f"   {key}: {value[:100]}..." if len(value) > 100 else f"   {key}: {value}")
+                    elif key == "image":
+                        print(f"   {key}: {str(value)[:50]}...")
+                    else:
+                        print(f"   {key}: {value}")
+                
+                # Call Ideogram V3 Quality via Replicate (same endpoint)
+                response_ideogram = await asyncio.to_thread(
+                    replicate_client.run,
+                    "ideogram-ai/ideogram-v3-turbo",  # Same endpoint, different model parameter
+                    input=ideogram_input
+                )
+                
+                end_time_ideogram = time.time()
+                duration_ideogram = end_time_ideogram - start_time_ideogram
+                print(f"✅ Ideogram V3 Quality API CALL COMPLETE - Prompt #{prompt_idx_ideogram} (took {duration_ideogram:.2f}s)")
+                
+                # Process the response - same as turbo version
+                if not response_ideogram:
+                    return {"error": f"Ideogram V3 Quality did not return any image data for prompt: {prompt_text[:100]}..."}
+                
+                # Download the image from the response
+                try:
+                    if hasattr(response_ideogram, 'read'):
+                        # Response is a file-like object
+                        image_bytes_data = response_ideogram.read()
+                    elif isinstance(response_ideogram, str) and response_ideogram.startswith('http'):
+                        # Response is a URL - download it
+                        resp = await asyncio.to_thread(requests.get, response_ideogram, timeout=30)
+                        resp.raise_for_status()
+                        image_bytes_data = resp.content
+                    else:
+                        return {"error": f"Unexpected Ideogram V3 Quality response format: {type(response_ideogram)}"}
+                    
+                    if not image_bytes_data:
+                        return {"error": f"Ideogram V3 Quality returned empty image data for prompt: {prompt_text[:100]}..."}
+                    
+                    # Process and save the image
+                    pil_image_obj = Image.open(BytesIO(image_bytes_data))
+                    
+                    # Convert to requested format
+                    if output_format.lower() == "png":
+                        filename_ideogram = f"ideogram_v3_quality_{uuid.uuid4().hex[:8]}.png"
+                        save_format = "PNG"
+                    elif output_format.lower() == "webp":
+                        filename_ideogram = f"ideogram_v3_quality_{uuid.uuid4().hex[:8]}.webp"
+                        save_format = "WEBP"
+                    else:  # Default to JPEG
+                        filename_ideogram = f"ideogram_v3_quality_{uuid.uuid4().hex[:8]}.jpg"
+                        save_format = "JPEG"
+                        # Convert RGBA to RGB for JPEG
+                        if pil_image_obj.mode == "RGBA":
+                            rgb_img = Image.new("RGB", pil_image_obj.size, (255, 255, 255))
+                            rgb_img.paste(pil_image_obj, mask=pil_image_obj.split()[-1])
+                            pil_image_obj = rgb_img
+                    
+                    local_path_ideogram = os.path.join(image_dir, filename_ideogram)
+                    
+                    # Save with compression settings
+                    if save_format == "JPEG":
+                        await asyncio.to_thread(
+                            pil_image_obj.save, 
+                            local_path_ideogram, 
+                            format=save_format, 
+                            quality=output_compression, 
+                            optimize=True
+                        )
+                    elif save_format == "WEBP":
+                        await asyncio.to_thread(
+                            pil_image_obj.save, 
+                            local_path_ideogram, 
+                            format=save_format, 
+                            quality=output_compression, 
+                            optimize=True
+                        )
+                    else:  # PNG
+                        await asyncio.to_thread(pil_image_obj.save, local_path_ideogram, format=save_format, optimize=True)
+                    
+                    image_url_ideogram = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename_ideogram}"
+                    print(f"✅ Ideogram V3 Quality Success: Prompt #{prompt_idx_ideogram}. Generated image: {image_url_ideogram}")
+                    
+                    # QA Check for spelling mistakes
+                    print(f"🔍 Starting QA check for spelling mistakes...")
+                    qa_result = await qa_check_spelling(image_url_ideogram, prompt_text)
+                    
+                    if qa_result["has_errors"]:
+                        print(f"❌ QA Check: Spelling errors detected in image {prompt_idx_ideogram}")
+                        print(f"   Errors: {qa_result['errors']}")
+                        print(f"🔄 Regenerating image to fix spelling errors...")
+                        
+                        # Try regeneration once
+                        try:
+                            regeneration_prompt = f"{prompt_text}\n\nIMPORTANT: Pay special attention to correct spelling of all text. Double-check every word for spelling accuracy."
+                            
+                            regeneration_input = ideogram_input.copy()
+                            regeneration_input["prompt"] = regeneration_prompt
+                            
+                            regeneration_response = await asyncio.to_thread(
+                                replicate_client.run,
+                                "ideogram-ai/ideogram-v3-turbo",
+                                input=regeneration_input
+                            )
+                            
+                            if regeneration_response:
+                                # Process regenerated image (same logic as original)
+                                if hasattr(regeneration_response, 'read'):
+                                    regen_image_bytes = regeneration_response.read()
+                                elif isinstance(regeneration_response, str) and regeneration_response.startswith('http'):
+                                    regen_resp = await asyncio.to_thread(requests.get, regeneration_response, timeout=30)
+                                    regen_resp.raise_for_status()
+                                    regen_image_bytes = regen_resp.content
+                                else:
+                                    raise Exception(f"Unexpected regeneration response format: {type(regeneration_response)}")
+                                
+                                if regen_image_bytes:
+                                    regenerated_pil_image = Image.open(BytesIO(regen_image_bytes))
+                                    
+                                    regenerated_filename = f"ideogram_v3_quality_fixed_{uuid.uuid4().hex[:8]}.{output_format.lower()}"
+                                    regenerated_local_path = os.path.join(image_dir, regenerated_filename)
+                                    
+                                    # Save regenerated image with same format settings
+                                    if save_format == "JPEG" and regenerated_pil_image.mode == "RGBA":
+                                        rgb_img = Image.new("RGB", regenerated_pil_image.size, (255, 255, 255))
+                                        rgb_img.paste(regenerated_pil_image, mask=regenerated_pil_image.split()[-1])
+                                        regenerated_pil_image = rgb_img
+                                    
+                                    if save_format in ["JPEG", "WEBP"]:
+                                        await asyncio.to_thread(
+                                            regenerated_pil_image.save, 
+                                            regenerated_local_path, 
+                                            format=save_format, 
+                                            quality=output_compression, 
+                                            optimize=True
+                                        )
+                                    else:
+                                        await asyncio.to_thread(regenerated_pil_image.save, regenerated_local_path, format=save_format, optimize=True)
+                                    
+                                    regenerated_url = f"{DOMAIN}/user_data/{user_number_safe}/images/{regenerated_filename}"
+                                    print(f"✅ Successfully regenerated image with corrected spelling: {regenerated_url}")
+                                    
+                                    # Remove the original image with errors
+                                    try:
+                                        os.remove(local_path_ideogram)
+                                        print(f"🗑️ Removed original image with spelling errors")
+                                    except Exception:
+                                        pass
+                                    
+                                    return [regenerated_url]
+                                    
+                        except Exception as regen_error:
+                            print(f"⚠️ Regeneration failed: {regen_error}, keeping original image")
+                    else:
+                        print(f"✅ QA Check: No spelling errors detected in image {prompt_idx_ideogram}")
+                    
+                    return [image_url_ideogram]
+                    
+                except Exception as e_process:
+                    return {"error": f"Failed to process Ideogram V3 Quality image response: {str(e_process)}"}
+                    
+            except Exception as e_ideogram:
+                error_str_ideogram = str(e_ideogram)
+                print(f"❌ Ideogram V3 Quality Error: Prompt #{prompt_idx_ideogram} ('{prompt_text[:30]}...'): {error_str_ideogram}")
+                import traceback
+                print(traceback.format_exc())
+                return {"error": f"Ideogram V3 Quality generation failed for prompt '{prompt_text}': {error_str_ideogram}"}
+
+        ideogram_tasks = [generate_for_single_prompt_ideogram_quality(p, i) for i, p in enumerate(prompts)]
+        
+        # Debug: Show batch start time for Ideogram V3 Quality
+        batch_start_time_ideogram = time.time()
+        batch_start_str_ideogram = time.strftime("%H:%M:%S", time.localtime(batch_start_time_ideogram))
+        print(f"\n⏱️ IDEOGRAM V3 QUALITY BATCH START [{batch_start_str_ideogram}] - Launching {len(prompts)} concurrent API calls...")
+
+        results_from_ideogram = await asyncio.gather(*ideogram_tasks, return_exceptions=False) # Errors handled within helper
+
+        # Debug: Show batch completion time for Ideogram V3 Quality
+        batch_end_time_ideogram = time.time()
+        batch_duration_ideogram = batch_end_time_ideogram - batch_start_time_ideogram
+        batch_end_str_ideogram = time.strftime("%H:%M:%S", time.localtime(batch_end_time_ideogram))
+        print(f"\n🏁 IDEOGRAM V3 QUALITY BATCH COMPLETE [{batch_end_str_ideogram}] - All {len(prompts)} requests finished (total time: {batch_duration_ideogram:.2f}s)")
+
+        for i_ideogram, r_ideogram in enumerate(results_from_ideogram):
+            if isinstance(r_ideogram, dict) and "error" in r_ideogram:
+                any_errors_ideogram = True
+                all_prompt_results.append(r_ideogram) 
+            elif isinstance(r_ideogram, list):
+                all_prompt_results.append(r_ideogram)
+            else:
+                any_errors_ideogram = True
+                error_msg_detail = f"Unexpected result type for Ideogram V3 Quality prompt index {i_ideogram}: {type(r_ideogram)}"
+                print(error_msg_detail)
+                all_prompt_results.append({"error": error_msg_detail})
+        
+        if any_errors_ideogram:
+            # Check if all failed
+            if all(isinstance(res, dict) and "error" in res for res in all_prompt_results):
+                 return {"status": "error", "message": "All image generations failed with Ideogram V3 Quality. Check results for details.", "results": all_prompt_results}
+            return {"status": "partial_error", "message": "Some images failed to generate with Ideogram V3 Quality. Check results for details.", "results": all_prompt_results}
         
         return {"status": "success", "results": all_prompt_results}
 
@@ -672,11 +1656,51 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                     return None # Return None on error for this specific image
 
             # Create and run tasks concurrently for all images from this single prompt response
-            # For Google GenAI client, response.generated_images contains the list of GeneratedImage objects
-            if hasattr(response, 'generated_images'):
+            # For Google GenAI client, response should contain generated images
+            
+            # Debug: Check what attributes the response object has
+            print(f"🔍 DEBUG: Response type: {type(response)}")
+            print(f"🔍 DEBUG: Response attributes: {[attr for attr in dir(response) if not attr.startswith('_')]}")
+            
+            # Try to print the actual response content for debugging
+            try:
+                if hasattr(response, '__dict__'):
+                    print(f"🔍 DEBUG: Response dict: {response.__dict__}")
+                elif hasattr(response, '_pb'):
+                    print(f"🔍 DEBUG: Response protobuf available")
+            except Exception as debug_error:
+                print(f"🔍 DEBUG: Could not inspect response: {debug_error}")
+            
+            images_list = None
+            
+            # Try different possible attribute names for the generated images
+            if hasattr(response, 'generated_images') and response.generated_images:
                 images_list = response.generated_images
+                print(f"✅ Found images via 'generated_images' attribute: {len(images_list)} images")
+            elif hasattr(response, 'images') and response.images:
+                images_list = response.images
+                print(f"✅ Found images via 'images' attribute: {len(images_list)} images")
+            elif hasattr(response, 'image') and response.image:
+                images_list = [response.image]  # Single image
+                print(f"✅ Found single image via 'image' attribute")
+            elif hasattr(response, 'candidates') and response.candidates:
+                # Sometimes the response structure is different
+                for candidate in response.candidates:
+                    if hasattr(candidate, 'content') and candidate.content:
+                        if hasattr(candidate.content, 'parts'):
+                            for part in candidate.content.parts:
+                                if hasattr(part, 'inline_data') and part.inline_data:
+                                    # This might be image data
+                                    print(f"✅ Found image data in candidate.content.parts")
+                                    # We'll handle this case differently
+                                    break
             else:
-                print(f"Unexpected response format from Google GenAI: {type(response)}, expected response with 'generated_images' attribute")
+                print(f"❌ Could not find images in response. Type: {type(response)}")
+                print(f"❌ Available attributes: {[attr for attr in dir(response) if not attr.startswith('_')]}")
+                return []
+            
+            if not images_list:
+                print(f"❌ No images list found in response")
                 return []
 
             save_tasks = [
@@ -948,13 +1972,28 @@ async def generate_images_with_prompts(
     moderation: str = "low"
 ) -> dict:
     """
-    Generate one image for each prompt using Google's Imagen 4.0 model or OpenAI's GPT-1.
+    Generate one image for each prompt using Google's Imagen 4.0, OpenAI's GPT-1, Black Forest Labs' FLUX 1.1 Pro, ByteDance's SeeDream 3, or Ideogram's V3 Turbo.
     All images will be generated with the specified aspect ratio (defaults to 16:9).
     
-    **NEW: Image Input Support for GPT-1**
-    When using GPT-1 with input_images, the model can analyze reference images and use them as context
-    for generating new images. This is perfect for style transfer, handwriting replication, and 
-    reference-based generation.
+    **NEW: SeeDream 3 Support**
+    SeeDream 3 is a cutting-edge text-to-image model from ByteDance offering:
+    - Native 2K high-resolution image generation
+    - Excellent photorealistic and cinematic quality
+    - Fast generation times with superior detail
+    - Cost-effective at $0.03 per image
+    - Commercial use license
+    
+    **FLUX 1.1 Pro Support**
+    FLUX 1.1 Pro is a state-of-the-art text-to-image model from Black Forest Labs offering:
+    - Exceptional image quality and prompt adherence
+    - Fast generation times (typically 3-10 seconds)
+    - Support for image prompts as visual references
+    - Built-in prompt enhancement
+    - Commercial use license
+    
+    **Image Input Support**
+    Both GPT-1 and FLUX 1.1 Pro support input images as visual context for generation.
+    This is perfect for style transfer, handwriting replication, and reference-based generation.
 
     Args:
         user_number (str): The user's unique identifier (used for directory structure).
@@ -964,32 +2003,66 @@ async def generate_images_with_prompts(
                            - "imagen-4.0-fast-generate-preview-06-06" (Google GenAI client, faster generation)
                            - "imagen-4.0-ultra-generate-preview-06-06" (Google GenAI client, highest quality)
                            - "gpt-image-1" (OpenAI, supports image inputs as context)
+                           - "flux-1.1-pro" (Black Forest Labs, fastest & highest quality, supports image prompts)
+                           - "seedream-3" (ByteDance, native 2K resolution, photorealistic, $0.03 per image)
+                           - "ideogram-v3-turbo" (Ideogram AI, excellent text rendering, magic prompt enhancement, fast)
+                           - "ideogram-v3-quality" (Ideogram AI, highest quality text rendering, slower but better)
         input_images (list, optional): List of image URLs or base64 strings to use as context/reference.
-                                     Only supported by gpt-image-1. If provided, should match the length 
+                                     Supported by gpt-image-1, flux-1.1-pro, seedream-3, ideogram-v3-turbo, and ideogram-v3-quality. If provided, should match the length 
                                      of prompts list, or provide one image to use for all prompts.
                                      Images are used as visual context for generation.
         aspect_ratio (str): Aspect ratio for generated images. Supported ratios:
-                            - "1:1" (square) - 1024x1024 for GPT-1
-                            - "16:9" (landscape) - 1536x1024 for GPT-1 (closest available)
-                            - "9:16" (portrait) - 1024x1536 for GPT-1 (closest available)
-                            - "4:3" (landscape) - 1536x1024 for GPT-1
-                            - "3:4" (portrait) - 1024x1536 for GPT-1
-                            - "3:2" (landscape) - 1536x1024 for GPT-1
-                            - "2:3" (portrait) - 1024x1536 for GPT-1
-                            Defaults to "16:9". GPT-1 uses closest supported size, Imagen supports exact ratios.
-                            Note: GPT-1 only supports '1024x1024', '1024x1536', '1536x1024', 'auto'.
-        quality (str): Image quality for GPT-1. Options: "auto" (default), "high", "medium", "low".
-                      Ignored for Imagen models.
-        output_format (str): Output format for GPT-1. Options: "png" (default), "jpeg", "webp".
-                            Ignored for Imagen models.
-        output_compression (int): Compression level 0-100% for GPT-1 with webp/jpeg formats.
-                                 Default: 100. Ignored for Imagen models.
-        moderation (str): Content moderation for GPT-1. Always forced to "low" for GPT-1 models.
-                         Options: "auto", "low" - but GPT-1 will always use "low".
+                            - "1:1" (square) - 1024x1024 for GPT-1, native for FLUX & Imagen
+                            - "16:9" (landscape) - 1536x1024 for GPT-1, native for FLUX & Imagen  
+                            - "9:16" (portrait) - 1024x1536 for GPT-1, native for FLUX & Imagen
+                            - "4:3" (landscape) - 1536x1024 for GPT-1, native for FLUX & Imagen
+                            - "3:4" (portrait) - 1024x1536 for GPT-1, native for FLUX & Imagen
+                            - "3:2" (landscape) - 1536x1024 for GPT-1, native for FLUX & Imagen
+                            - "2:3" (portrait) - 1024x1536 for GPT-1, native for FLUX & Imagen
+                            Defaults to "16:9". GPT-1 uses closest supported size, FLUX & Imagen support exact ratios.
+        quality (str): Image quality setting. Options: "auto" (default), "high", "medium", "low".
+                      Used by GPT-1 and FLUX (FLUX defaults to high quality).
+        output_format (str): Output format. Options: "png", "jpeg" (default), "webp".
+                            Supported by GPT-1 and FLUX. Imagen always outputs PNG.
+        output_compression (int): Compression level 0-100% for jpeg/webp formats.
+                                 Default: 100. Used by GPT-1 and FLUX.
+        moderation (str): Content moderation level. Always forced to "low" for GPT-1.
+                         FLUX uses moderate safety filtering by default.
                          Ignored for Imagen models.
 
     Returns:
         dict: {"status": "success", "results": [ [url], ... ]} or {"status": "error", "message": ...}
+
+    **FLUX 1.1 Pro Examples:**
+    ```python
+    # High-quality text-to-image generation
+    result = await generate_images_with_prompts(
+        prompts=["A majestic dragon soaring over a medieval castle at sunset"],
+        model_version="flux-1.1-pro",
+        aspect_ratio="16:9",
+        output_format="jpeg"
+    )
+
+    # Style transfer with image reference
+    result = await generate_images_with_prompts(
+        prompts=["Create a portrait in the same artistic style as this reference image"],
+        model_version="flux-1.1-pro",
+        input_images=["https://example.com/style_reference.jpg"],
+        aspect_ratio="3:4"
+    )
+
+    # Multiple high-quality images with different aspect ratios
+    result = await generate_images_with_prompts(
+        prompts=[
+            "A cyberpunk cityscape with neon lights",
+            "A serene mountain lake at dawn",
+            "A vintage car in a retro garage"
+        ],
+        model_version="flux-1.1-pro",
+        aspect_ratio="16:9",
+        output_format="png"
+    )
+    ```
 
     **GPT-1 with Image Context Examples:**
     ```python
@@ -1015,12 +2088,48 @@ async def generate_images_with_prompts(
     )
     ```
 
-    **Image Input Requirements (GPT-1 only):**
-    - Supported formats: PNG, JPEG, WebP, non-animated GIF
-    - Maximum size: 50MB per image
-    - Maximum: 500 images per request
+    **SeeDream 3 Examples:**
+    ```python
+    # High-resolution 2K photorealistic generation
+    result = await generate_images_with_prompts(
+        prompts=["A cinematic portrait of a young woman with platinum hair in golden hour lighting"],
+        model_version="seedream-3",
+        aspect_ratio="16:9",
+        output_format="jpeg"
+    )
+
+    # Photorealistic scene with fine details
+    result = await generate_images_with_prompts(
+        prompts=["A bustling city street at night with neon reflections on wet pavement, ultra detailed"],
+        model_version="seedream-3",
+        aspect_ratio="9:16"
+    )
+
+    # High-quality product photography style
+    result = await generate_images_with_prompts(
+        prompts=[
+            "Professional product photography of a luxury watch on marble surface",
+            "Architectural photography of a modern minimalist interior",
+            "Food photography of a gourmet dish with dramatic lighting"
+        ],
+        model_version="seedream-3",
+        aspect_ratio="1:1",
+        output_format="png"
+    )
+    ```
+
+    **Image Input Requirements:**
+    - **SeeDream 3**: PNG, JPEG, WebP formats; supports image conditioning for style transfer
+    - **FLUX 1.1 Pro**: PNG, JPEG, WebP, GIF formats; any reasonable size
+    - **GPT-1**: PNG, JPEG, WebP, non-animated GIF; max 50MB per image, max 500 images
     - Images are processed as visual context alongside text prompts
     - Can provide one image for all prompts, or one image per prompt
+    
+    **Performance & Pricing:**
+    - **SeeDream 3**: ~5-15 seconds per image, $0.03 per image, native 2K resolution, commercial license
+    - **FLUX 1.1 Pro**: ~3-10 seconds per image, $0.04 per image, commercial license
+    - **GPT-1**: ~10-30 seconds per image, varies by OpenAI pricing
+    - **Imagen 4.0**: ~5-15 seconds per image, Google Cloud pricing
     """
     # Use default user number if empty
     if not user_number or user_number == "--user_number_not_needed--":
@@ -1036,7 +2145,11 @@ async def generate_images_with_prompts(
         "imagen-4.0-generate-preview-06-06",
         "imagen-4.0-fast-generate-preview-06-06", 
         "imagen-4.0-ultra-generate-preview-06-06",
-        "gpt-image-1"  # Added gpt-image-1
+        "gpt-image-1",  # Added gpt-image-1
+        "flux-1.1-pro",  # Added FLUX 1.1 Pro
+        "seedream-3",  # Added SeeDream 3
+        "ideogram-v3-turbo",  # Added Ideogram V3 Turbo
+        "ideogram-v3-quality"  # Added Ideogram V3 Quality
     ]
     
     if model_version not in valid_models:
@@ -1175,12 +2288,6 @@ async def edit_images(
     result = await edit_images(
         images=["https://example.com/photo.jpg"],
         edit_prompt="Convert to Art Deco style with geometric patterns, gold accents, and 1920s aesthetic"
-    )
-
-    # Transform to match specific visual references
-    result = await edit_images(
-        images=["https://example.com/building.jpg"],
-        edit_prompt="Make this look like it's from a Studio Ghibli film - soft colors, whimsical details, hand-drawn animation style"
     )
 
     # Apply contextual transformations

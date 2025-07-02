@@ -11,12 +11,59 @@ import os
 import sys
 from urllib.parse import urlparse
 import tempfile
+import signal
+import atexit
 
 # Configuration
-EC2_BASE_URL = "https://vibecarding.com "  # Your actual domain
-PRINTER_NAME = "ET-8550"  # Replace with your actual printer name
-POLL_INTERVAL = 10  # seconds
+EC2_BASE_URL = "https://vibecarding.com"  # Replace with your actual domain
+PRINTER_NAME = "EPSON_ET_8550_Series"  # Replace with your actual printer name
+POLL_INTERVAL = 3  # seconds
 MAX_RETRIES = 3
+
+# Global variable to track caffeinate process
+caffeinate_process = None
+
+def prevent_sleep():
+    """Prevent system sleep on macOS"""
+    global caffeinate_process
+    try:
+        # Start caffeinate to prevent sleep
+        caffeinate_process = subprocess.Popen(['caffeinate', '-d'], 
+                                            stdout=subprocess.DEVNULL, 
+                                            stderr=subprocess.DEVNULL)
+        print("☕ Sleep prevention activated (caffeinate)")
+        return True
+    except Exception as e:
+        print(f"⚠️ Could not prevent sleep: {e}")
+        return False
+
+def cleanup_caffeinate():
+    """Clean up caffeinate process"""
+    global caffeinate_process
+    if caffeinate_process:
+        try:
+            caffeinate_process.terminate()
+            caffeinate_process.wait(timeout=5)
+            print("☕ Sleep prevention deactivated")
+        except:
+            try:
+                caffeinate_process.kill()
+            except:
+                pass
+        caffeinate_process = None
+
+# Register cleanup function
+atexit.register(cleanup_caffeinate)
+
+def signal_handler(sig, frame):
+    """Handle interrupt signals"""
+    print("\n\n🛑 Print agent stopping...")
+    cleanup_caffeinate()
+    sys.exit(0)
+
+# Register signal handler
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 def download_file(url, local_path):
     """Download a file from URL to local path"""
@@ -41,54 +88,40 @@ def print_file(file_path, settings):
         # Build lp command
         cmd = ['lp', '-d', PRINTER_NAME]
         
-        # Add print settings
-        if settings.get('duplex'):
-            # For greeting cards, use short-edge binding (flip on short edge)
-            if settings.get('paper_type') == 'cardstock' or settings.get('type') == 'card':
-                cmd.extend(['-o', 'sides=two-sided-short-edge'])
-                print("📄 Using duplex: flip on short edge (for greeting cards)")
-            else:
-                cmd.extend(['-o', 'sides=two-sided-long-edge'])
-                print("📄 Using duplex: flip on long edge (for documents)")
-        else:
-            print("📄 Using single-sided printing")
+        # Handle different paper sizes based on server settings
+        paper_size = settings.get('paper_size', 'standard')
         
+        if paper_size == 'compact':
+            # 4×6 card (8×6 print layout)
+            cmd.extend(['-o', 'media=Custom.8x6in'])
+        elif paper_size == 'a6':
+            # A6 card (8.3×5.8 print layout)
+            cmd.extend(['-o', 'media=Custom.8.3x5.8in'])
+        else:
+            # Default: standard 5×7 card (10×7 print layout)
+            cmd.extend(['-o', 'media=Custom.7x10in'])
+        
+        # Set duplex and orientation based on card type
+        if settings.get('duplex', False):
+            cmd.extend(['-o', 'sides=two-sided-long-edge'])
+        else:
+            cmd.extend(['-o', 'sides=one-sided'])
+        
+        # Landscape orientation for card layouts
+        cmd.extend(['-o', 'orientation-requested=4'])
+        
+        # Only allow copies setting from server
         if settings.get('copies', 1) > 1:
             cmd.extend(['-n', str(settings['copies'])])
-            print(f"📄 Copies: {settings['copies']}")
-        
-        if settings.get('color_mode') == 'mono':
-            cmd.extend(['-o', 'ColorModel=Gray'])
-            print("📄 Color mode: Grayscale")
-        else:
-            print("📄 Color mode: Color")
-        
-        # Quality settings
-        if settings.get('quality') == 'high':
-            cmd.extend(['-o', 'print-quality=5'])
-            print("📄 Quality: High")
-        elif settings.get('quality') == 'draft':
-            cmd.extend(['-o', 'print-quality=3'])
-            print("📄 Quality: Draft")
-        else:
-            print("📄 Quality: Normal")
-        
-        # Paper size
-        paper_size = settings.get('paper_size', 'letter')
-        if paper_size != 'letter':  # Only specify if not default
-            cmd.extend(['-o', f'PageSize={paper_size}'])
-            print(f"📄 Paper size: {paper_size}")
         
         # Add the file
         cmd.append(file_path)
         
         print(f"🖨️ Executing: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         
         if result.returncode == 0:
             print(f"✅ Print command successful")
-            if result.stdout:
-                print(f"📋 Print job ID: {result.stdout.strip()}")
             return True, None
         else:
             error_msg = f"Print command failed: {result.stderr}"
@@ -181,6 +214,9 @@ def main():
     print(f"⏱️ Poll interval: {POLL_INTERVAL} seconds")
     print("=" * 50)
     
+    # Prevent system sleep
+    prevent_sleep()
+    
     # Test printer connection
     try:
         result = subprocess.run(['lpstat', '-p', PRINTER_NAME], 
@@ -208,11 +244,21 @@ def main():
                     # Process the job
                     success, error_msg = process_print_job(job)
                     
-                    # Mark as complete
-                    mark_job_complete(job_id, success, error_msg)
+                    # Mark as complete with retry logic
+                    marked_complete = False
+                    for retry in range(MAX_RETRIES):
+                        if mark_job_complete(job_id, success, error_msg):
+                            marked_complete = True
+                            break
+                        else:
+                            print(f"⚠️ Retry {retry + 1}/{MAX_RETRIES} marking job complete...")
+                            time.sleep(2)
                     
                     if success:
-                        print(f"🎉 Job completed successfully!")
+                        if marked_complete:
+                            print(f"🎉 Job completed successfully!")
+                        else:
+                            print(f"⚠️ Job printed but couldn't mark complete on server (will retry next poll)")
                     else:
                         print(f"💥 Job failed: {error_msg}")
             else:

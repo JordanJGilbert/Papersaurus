@@ -1656,7 +1656,11 @@ async def handle_query(request: QueryRequest):
                  # Ensure result is empty if only an error string was generated (no payload to serialize)
                  response_result_str = ""
             
-            print(f"MCP_SERVICE_LOG: Direct tool call '{tool_name}' completed. Result string: '{response_result_str[:200]}...', Error: {response_error_str}")
+            # Avoid printing large image data in logs
+            log_result_str = response_result_str[:200] if response_result_str else ""
+            if "data:image/" in log_result_str or '"b64_json"' in log_result_str:
+                log_result_str = "[IMAGE_DATA_TRUNCATED_FOR_LOG]"
+            print(f"MCP_SERVICE_LOG: Direct tool call '{tool_name}' completed. Result: '{log_result_str}...', Error: {response_error_str}")
             return QueryResponse(result=response_result_str, error=response_error_str)
 
         except Exception as e:
@@ -2303,7 +2307,11 @@ async def route_internal_mcp_tool_call(
                         break
                     except json.JSONDecodeError as je:
                         response_result_str = content_item.text
-                        print(f"Internal Call: Tool '{tool_name}' content text was not JSON: '{response_result_str[:200]}...'. Error: {je}")
+                        # Avoid printing large image data in logs
+                        log_str = response_result_str[:200] if response_result_str else ""
+                        if "data:image/" in log_str or '"b64_json"' in log_str or '"results"' in log_str:
+                            log_str = "[LARGE_DATA_TRUNCATED_FOR_LOG]"
+                        print(f"Internal Call: Tool '{tool_name}' content text was not JSON: '{log_str}...'. Error: {je}")
                         break
                     except Exception as e:
                         response_error_str = f"Error processing TextContent from tool '{tool_name}': {str(e)}"
@@ -2319,7 +2327,11 @@ async def route_internal_mcp_tool_call(
                         break
                     except json.JSONDecodeError as je:
                         response_result_str = content_item.text
-                        print(f"Internal Call: Tool '{tool_name}' direct content text was not JSON: '{response_result_str[:200]}...'. Error: {je}")
+                        # Avoid printing large image data in logs
+                        log_str = response_result_str[:200] if response_result_str else ""
+                        if "data:image/" in log_str or '"b64_json"' in log_str or '"results"' in log_str:
+                            log_str = "[LARGE_DATA_TRUNCATED_FOR_LOG]"
+                        print(f"Internal Call: Tool '{tool_name}' direct content text was not JSON: '{log_str}...'. Error: {je}")
                         break
                     except Exception as e:
                         response_error_str = f"Error processing direct content item from tool '{tool_name}': {str(e)}"
@@ -2336,14 +2348,22 @@ async def route_internal_mcp_tool_call(
                 print(f"Internal Call: Extracted payload from direct TextContent for tool '{tool_name}'.")
             except json.JSONDecodeError as je:
                 response_result_str = result_from_tool_call.text
-                print(f"Internal Call: Tool '{tool_name}' direct text was not JSON: '{response_result_str[:200]}...'. Error: {je}")
+                # Avoid printing large image data in logs
+                log_str = response_result_str[:200] if response_result_str else ""
+                if "data:image/" in log_str or '"b64_json"' in log_str or '"results"' in log_str:
+                    log_str = "[LARGE_DATA_TRUNCATED_FOR_LOG]"
+                print(f"Internal Call: Tool '{tool_name}' direct text was not JSON: '{log_str}...'. Error: {je}")
             except Exception as e:
                 response_error_str = f"Error processing direct TextContent from tool '{tool_name}': {str(e)}"
                 print(f"Internal Call: {response_error_str}")
         else: 
             # Fallback: convert to string but log the type for debugging
             response_result_str = str(result_from_tool_call)
-            print(f"Internal Call: Tool '{tool_name}' returned unexpected type {type(result_from_tool_call)}: '{response_result_str[:200]}...'")
+            # Avoid printing large image data in logs
+            log_str = response_result_str[:200] if response_result_str else ""
+            if "data:image/" in log_str or '"b64_json"' in log_str or '"results"' in log_str:
+                log_str = "[LARGE_DATA_TRUNCATED_FOR_LOG]"
+            print(f"Internal Call: Tool '{tool_name}' returned unexpected type {type(result_from_tool_call)}: '{log_str}...'")
 
         if actual_tool_payload_dict is not None:
             if "error" in actual_tool_payload_dict: 
@@ -2358,7 +2378,11 @@ async def route_internal_mcp_tool_call(
                 if response_result_str == "" and actual_tool_payload_dict is not None: 
                      response_result_str = str(actual_tool_payload_dict) 
         
-        print(f"Internal Call: Tool '{tool_name}' executed. Final result string for QueryResponse: '{response_result_str[:200]}...', Error: {response_error_str}")
+        # Avoid printing large image data in logs
+        log_str = response_result_str[:200] if response_result_str else ""
+        if "data:image/" in log_str or '"b64_json"' in log_str or '"results"' in log_str:
+            log_str = "[LARGE_DATA_TRUNCATED_FOR_LOG]"
+        print(f"Internal Call: Tool '{tool_name}' executed. Final result: '{log_str}...', Error: {response_error_str}")
         return QueryResponse(result=response_result_str, error=response_error_str)
 
     except Exception as e:

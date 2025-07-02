@@ -42,6 +42,23 @@ try:
 except ImportError as e:
     HEIC_SUPPORT_AVAILABLE = False
     print(f"HEIC support not available: {e}. HEIC files will be handled as regular files.")
+
+# Gmail API imports for delegated email sending
+try:
+    from google.auth.transport.requests import Request
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.base import MIMEBase
+    from email import encoders
+    import mimetypes
+    GMAIL_API_AVAILABLE = True
+    print("Gmail API support enabled")
+except ImportError as e:
+    GMAIL_API_AVAILABLE = False
+    print(f"Gmail API not available: {e}. Email functionality will be disabled.")
 # Load environment variables
 load_dotenv()
 
@@ -130,6 +147,16 @@ def register():
 @app.route('/nearby')
 def nearby():       
     return render_template("static_html/nearby.html")
+
+@app.route('/qr-test')
+def qr_test():
+    """QR Code generator test page"""
+    return render_template("qr_test.html")
+
+@app.route('/card-gallery')
+def card_gallery():
+    """Serve the card gallery page"""
+    return render_template('card_gallery.html')
 
 @app.route('/chat')
 def chatbot_ui():
@@ -334,6 +361,39 @@ def upload_file():
         if is_heic:
             response_data["converted_from_heic"] = True
             response_data["original_filename"] = file.filename
+        
+        # If this is a logo image, save it to the logo library
+        if mime_type.startswith('image/') and request.form.get('save_as_logo') == 'true':
+            try:
+                logo_library_key = f"logo_library_{file_key}"
+                logo_data = {
+                    'file_key': file_key,
+                    'filename': filename,
+                    'original_filename': file.filename,
+                    'url': file_url,
+                    'mime_type': mime_type,
+                    'size': len(file_content),
+                    'uploaded_at': timestamp,
+                    'is_logo': True
+                }
+                
+                # Save to logo library
+                logo_path = get_file_path(logo_library_key)
+                with open(logo_path, 'w') as f:
+                    json.dump({
+                        'key': logo_library_key,
+                        'value': logo_data,
+                        'write_timestamp': timestamp,
+                        'read_timestamp': None,
+                        'read_count': 0
+                    }, f)
+                
+                response_data["saved_as_logo"] = True
+                response_data["logo_id"] = logo_library_key
+                
+            except Exception as logo_error:
+                print(f"Error saving logo to library: {logo_error}")
+                response_data["logo_save_error"] = str(logo_error)
         
         return jsonify(response_data), 200
         
@@ -2905,150 +2965,297 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 
-GMAIL_ADDRESS = 'aitoolfactory@gmail.com'
-GMAIL_PASSWORD_FILE = 'gmail'
+# Gmail API Configuration and Helper Functions
+GMAIL_SERVICE_ACCOUNT_FILE = 'utils/google_service_account.json'
+GMAIL_SCOPES = ['https://www.googleapis.com/auth/gmail.send']
+GMAIL_DOMAIN = 'ast.engineer'
 
-def load_gmail_password():
-    with open(GMAIL_PASSWORD_FILE, 'r') as f:
-        return f.read().strip()
-
-@app.route('/iosend_email', methods=['POST'])
-def iosend_email():
-    data = request.get_json()
-
-    # Required
-    to_emails = data.get('to')
-    if not to_emails:
-        return jsonify({'error': 'Missing "to" field'}), 400
-
-    # Optional
-    cc_emails = data.get('cc', [])
-    bcc_emails = data.get('bcc', [])
-    subject = data.get('subject', 'No Subject')
-    body = data.get('body', '')
-    is_html = data.get('html', False)
-
-    # Normalize fields to lists
-    if isinstance(to_emails, str):
-        to_emails = [to_emails]
-    if isinstance(cc_emails, str):
-        cc_emails = [cc_emails]
-    if isinstance(bcc_emails, str):
-        bcc_emails = [bcc_emails]
-
-    try:
-        msg = MIMEMultipart('alternative')
-        msg['From'] = GMAIL_ADDRESS
-        msg['To'] = ', '.join(to_emails)
-        msg['Subject'] = subject
-
-        # Only include CC header if list is not empty
-        if cc_emails:
-            msg['Cc'] = ', '.join(cc_emails)
-
-        # Add content
-        if is_html:
-            msg.attach(MIMEText("Your email client does not support HTML.", 'plain'))
-            msg.attach(MIMEText(body, 'html'))
-        else:
-            msg.attach(MIMEText(body, 'plain'))
-
-        # Combine recipients for SMTP send
-        all_recipients = to_emails + cc_emails + bcc_emails
-
-        # Send via Gmail SMTP
-        password = load_gmail_password()
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(GMAIL_ADDRESS, password)
-            server.sendmail(GMAIL_ADDRESS, all_recipients, msg.as_string())
-
-        return jsonify({'status': 'sent', 'to': to_emails, 'cc': cc_emails, 'bcc': bcc_emails})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-from flask import Flask, request, jsonify
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email.mime.application import MIMEApplication
-from email.utils import formatdate
-from email import encoders
-import smtplib
-import base64
-
-@app.route('/send_email', methods=['POST'])
-def send_email():
-    data = request.get_json()
-
-    # Required 
-    to_emails = data.get('to')
-    if not to_emails:
-        return jsonify({'error': 'Missing "to" field'}), 400
-        
-    # Optional
-    cc_emails = data.get('cc', [])
-    bcc_emails = data.get('bcc', [])
-    subject = data.get('subject', 'No Subject')
-    body = data.get('body', '')
-    is_html = data.get('html', False)
-    calendar_ics = data.get('calendar_ics')  # Expected as raw string or base64
-
-    # Normalize fields to lists
-    if isinstance(to_emails, str):
-        to_emails = [to_emails]
-    if isinstance(cc_emails, str):
-        cc_emails = [cc_emails]
-    if isinstance(bcc_emails, str):
-        bcc_emails = [bcc_emails]
+def initialize_gmail_client(delegate_email):
+    """
+    Initialize Gmail client with JWT authentication (Python version of Node.js function).
+    
+    Args:
+        delegate_email (str): Email address to impersonate
+    
+    Returns:
+        googleapiclient.discovery.Resource: Gmail service object
+    """
+    if not GMAIL_API_AVAILABLE:
+        raise Exception("Gmail API libraries not available")
     
     try:
-        msg = MIMEMultipart('mixed')  # Use 'mixed' since we'll attach a calendar
-        msg['From'] = GMAIL_ADDRESS
-        msg['To'] = ', '.join(to_emails)
-        msg['Subject'] = subject
-        msg['Date'] = formatdate(localtime=True)
-
-        if cc_emails:
-            msg['Cc'] = ', '.join(cc_emails)
-
-        # Build the message body (alternative: plain + HTML)
-        msg_body = MIMEMultipart('alternative')
-        if is_html:
-            msg_body.attach(MIMEText("Your email client does not support HTML.", 'plain'))
-            msg_body.attach(MIMEText(body, 'html'))
-        else:
-            msg_body.attach(MIMEText(body, 'plain'))
-
-        msg.attach(msg_body)
-
-        # Add calendar attachment if present
-        if calendar_ics:
-            try:
-                # If it's base64 encoded, decode it
-                if data.get('calendar_base64', False):
-                    calendar_bytes = base64.b64decode(calendar_ics)
-                else:
-                    calendar_bytes = calendar_ics.encode('utf-8')
-                
-                ical_part = MIMEText(calendar_bytes.decode('utf-8'), 'calendar;method=REQUEST')
-                ical_part.add_header('Content-Disposition', 'attachment; filename="invite.ics"')
-                msg.attach(ical_part)
-            except Exception as e:
-                return jsonify({'error': f'Invalid calendar data: {str(e)}'}), 400
-
-        # Combine all recipients
-        all_recipients = to_emails + cc_emails + bcc_emails
-
-        # Send via SMTP
-        password = load_gmail_password()
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(GMAIL_ADDRESS, password)
-            server.sendmail(GMAIL_ADDRESS, all_recipients, msg.as_string())
-
-        return jsonify({'status': 'sent', 'to': to_emails, 'cc': cc_emails, 'bcc': bcc_emails})
+        # Load service account credentials
+        credentials = service_account.Credentials.from_service_account_file(
+            GMAIL_SERVICE_ACCOUNT_FILE,
+            scopes=[
+                'https://www.googleapis.com/auth/gmail.readonly',
+                'https://www.googleapis.com/auth/gmail.modify', 
+                'https://www.googleapis.com/auth/gmail.send'
+            ]
+        )
+        
+        # Create delegated credentials for the specified user (equivalent to 'subject' in Node.js)
+        delegated_credentials = credentials.with_subject(delegate_email)
+        
+        # Build the Gmail service (equivalent to google.gmail() in Node.js)
+        gmail_service = build('gmail', 'v1', credentials=delegated_credentials)
+        
+        print(f"Gmail client initialized successfully for {delegate_email}")
+        return gmail_service
+        
+    except FileNotFoundError:
+        error_msg = f"Service account file not found: {GMAIL_SERVICE_ACCOUNT_FILE}"
+        print(f"Gmail initialization error: {error_msg}")
+        raise Exception(error_msg)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        error_msg = f"Failed to create Gmail service: {str(e)}"
+        print(f"Gmail initialization error: {error_msg}")
+        raise Exception(error_msg)
 
+def send_email_with_attachment(gmail_service, to, subject, body, attachment_base64=None, filename=None):
+    """
+    Send email with attachment using manual email construction (Python version of Node.js function).
+    
+    Args:
+        gmail_service: Initialized Gmail service object
+        to (str): Recipient email address
+        subject (str): Email subject
+        body (str): Email body (HTML)
+        attachment_base64 (str, optional): Base64 encoded attachment data
+        filename (str, optional): Attachment filename
+    
+    Returns:
+        dict: Gmail API response
+    """
+    try:
+        # Construct email manually (matching Node.js approach)
+        email_parts = [
+            f"To: {to}",
+            f"Subject: {subject}",
+            'Content-Type: multipart/mixed; boundary="boundary123"',
+            '',
+            '--boundary123',
+            'Content-Type: text/html; charset=utf-8',
+            '',
+            body,
+            ''
+        ]
+        
+        # Add attachment if provided
+        if attachment_base64 and filename:
+            email_parts.extend([
+                '--boundary123',
+                f'Content-Type: application/pdf; name="{filename}"',
+                'Content-Transfer-Encoding: base64',
+                f'Content-Disposition: attachment; filename="{filename}"',
+                '',
+                attachment_base64
+            ])
+        
+        # Close boundary
+        email_parts.append('--boundary123--')
+        
+        # Join all parts
+        email_content = '\n'.join(email_parts)
+        
+        # Encode email (matching Node.js base64url encoding)
+        email_bytes = email_content.encode('utf-8')
+        encoded_email = base64.urlsafe_b64encode(email_bytes).decode('utf-8')
+        # Remove padding (matching Node.js .replace(/=+$/, ''))
+        encoded_email = encoded_email.rstrip('=')
+        
+        # Send email via Gmail API
+        message = {
+            'raw': encoded_email
+        }
+        
+        result = gmail_service.users().messages().send(
+            userId='me',
+            body=message
+        ).execute()
+        
+        print(f"Email sent successfully: {result.get('id')}")
+        return result
+        
+    except Exception as error:
+        print(f"Email send error: {error}")
+        raise error
+
+def get_gmail_service(user_email):
+    """
+    Create a Gmail service object with delegated authentication.
+    
+    Args:
+        user_email (str): Email address to impersonate (must be in vibecarding.com domain)
+    
+    Returns:
+        googleapiclient.discovery.Resource: Gmail service object
+    """
+    if not GMAIL_API_AVAILABLE:
+        raise Exception("Gmail API libraries not available")
+    
+    try:
+        # Load service account credentials
+        credentials = service_account.Credentials.from_service_account_file(
+            GMAIL_SERVICE_ACCOUNT_FILE,
+            scopes=GMAIL_SCOPES
+        )
+        
+        # Create delegated credentials for the specified user
+        delegated_credentials = credentials.with_subject(user_email)
+        
+        # Build the Gmail service
+        service = build('gmail', 'v1', credentials=delegated_credentials)
+        return service
+        
+    except FileNotFoundError:
+        raise Exception(f"Service account file not found: {GMAIL_SERVICE_ACCOUNT_FILE}")
+    except Exception as e:
+        raise Exception(f"Failed to create Gmail service: {str(e)}")
+
+def create_message(sender, to, subject, message_text, html_body=None, attachments=None):
+    """
+    Create a message for an email.
+    
+    Args:
+        sender (str): Email address of the sender
+        to (str): Email address of the receiver
+        subject (str): The subject of the email message
+        message_text (str): The text of the email message
+        html_body (str, optional): HTML version of the email
+        attachments (list, optional): List of attachment file paths or data
+    
+    Returns:
+        dict: An object containing a base64url encoded email object
+    """
+    import uuid
+    import re
+    from email.utils import formatdate, make_msgid, formataddr
+    
+    # Clean and validate email addresses
+    to = to.strip() if to else ""
+    sender = sender.strip() if sender else ""
+    subject = subject.strip() if subject else ""
+    
+    # Validate email format
+    email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not re.match(email_regex, to):
+        raise ValueError(f"Invalid 'To' email address: {to}")
+    if not re.match(email_regex, sender):
+        raise ValueError(f"Invalid 'From' email address: {sender}")
+    
+    # Remove any potential control characters or newlines that could break headers
+    to = re.sub(r'[\r\n\x00-\x1f\x7f-\x9f]', '', to)
+    sender = re.sub(r'[\r\n\x00-\x1f\x7f-\x9f]', '', sender)
+    subject = re.sub(r'[\r\n\x00-\x1f\x7f-\x9f]', ' ', subject)
+    
+    if html_body:
+        message = MIMEMultipart('alternative')
+    elif attachments:
+        message = MIMEMultipart()
+    else:
+        message = MIMEText(message_text, 'plain', 'utf-8')
+        message['To'] = to
+        message['From'] = sender
+        message['Subject'] = subject
+        
+        # Add comprehensive anti-spam headers
+        message['Date'] = formatdate(localtime=True)
+        message['Message-ID'] = make_msgid(domain='ast.engineer')
+        message['X-Mailer'] = 'VibeCarding Email Service v1.0'
+        message['MIME-Version'] = '1.0'
+        message['X-Priority'] = '3'
+        message['X-MSMail-Priority'] = 'Normal'
+        message['Importance'] = 'Normal'
+        message['Reply-To'] = sender
+        message['Return-Path'] = sender
+        message['Sender'] = sender
+        
+        # Additional anti-spam headers
+        message['X-Auto-Response-Suppress'] = 'All'
+        message['X-Entity-ID'] = f'vibecarding-{uuid.uuid4().hex[:8]}'
+        message['List-Unsubscribe'] = '<mailto:unsubscribe@ast.engineer>'
+        
+        return {'raw': base64.urlsafe_b64encode(message.as_bytes()).decode()}
+    
+    message['To'] = to
+    message['From'] = sender
+    message['Subject'] = subject
+    
+    # Add comprehensive headers for deliverability
+    message['Date'] = formatdate(localtime=True)
+    message['Message-ID'] = make_msgid(domain='ast.engineer')
+    message['X-Mailer'] = 'VibeCarding Email Service v1.0'
+    message['MIME-Version'] = '1.0'
+    message['X-Priority'] = '3'
+    message['X-MSMail-Priority'] = 'Normal'
+    message['Importance'] = 'Normal'
+    message['Reply-To'] = sender
+    message['Return-Path'] = sender
+    message['Sender'] = sender
+    
+    # Additional anti-spam headers
+    message['X-Auto-Response-Suppress'] = 'All'
+    message['X-Entity-ID'] = f'vibecarding-{uuid.uuid4().hex[:8]}'
+    message['List-Unsubscribe'] = '<mailto:unsubscribe@ast.engineer>'
+    
+    # Add text part with proper encoding
+    text_part = MIMEText(message_text, 'plain', 'utf-8')
+    message.attach(text_part)
+    
+    # Add HTML part if provided
+    if html_body:
+        html_part = MIMEText(html_body, 'html', 'utf-8')
+        message.attach(html_part)
+    
+    # Add attachments if provided
+    if attachments:
+        for attachment in attachments:
+            if isinstance(attachment, dict):
+                # Attachment is data with metadata
+                filename = attachment.get('filename', 'attachment')
+                content = attachment.get('content', b'')
+                content_type = attachment.get('content_type', 'application/octet-stream')
+            else:
+                # Attachment is a file path
+                filename = os.path.basename(attachment)
+                with open(attachment, 'rb') as f:
+                    content = f.read()
+                content_type, _ = mimetypes.guess_type(attachment)
+                if content_type is None:
+                    content_type = 'application/octet-stream'
+            
+            main_type, sub_type = content_type.split('/', 1)
+            part = MIMEBase(main_type, sub_type)
+            part.set_payload(content)
+            encoders.encode_base64(part)
+            part.add_header(
+                'Content-Disposition',
+                f'attachment; filename="{filename}"',
+            )
+            message.attach(part)
+    
+    return {'raw': base64.urlsafe_b64encode(message.as_bytes()).decode()}
+
+def send_gmail_message(service, user_id, message):
+    """
+    Send an email message.
+    
+    Args:
+        service: Authorized Gmail API service instance
+        user_id (str): User's email address. The special value "me" can be used to indicate the authenticated user
+        message (dict): Message to be sent
+    
+    Returns:
+        dict: Sent Message
+    """
+    try:
+        message = service.users().messages().send(userId=user_id, body=message).execute()
+        print(f'Message Id: {message["id"]}')
+        return message
+    except HttpError as error:
+        print(f'An error occurred: {error}')
+        raise error
 
 
 @app.route('/user_data/<user_number>/<category>/<path:filename>')
@@ -4131,11 +4338,25 @@ def create_card_pdf():
         if not is_front_back_only and (not left_page or not right_page):
             return jsonify({'error': 'left_page and right_page are required for full cards'}), 400
         
-        # Set up PDF dimensions for 7x10 inch layout (10x7 landscape for duplex)
-        page_width = 10 * inch
-        page_height = 7 * inch
-        card_width = 5 * inch
-        card_height = 7 * inch
+        # Set up PDF dimensions based on paper size
+        if paper_size == 'compact':
+            # 4×6 card (8×6 print layout)
+            page_width = 8 * inch
+            page_height = 6 * inch
+            card_width = 4 * inch
+            card_height = 6 * inch
+        elif paper_size == 'a6':
+            # A6 card (8.3×5.8 print layout)
+            page_width = 8.3 * inch
+            page_height = 5.8 * inch
+            card_width = 4.15 * inch
+            card_height = 5.8 * inch
+        else:
+            # Default: standard 5×7 card (10×7 print layout)
+            page_width = 10 * inch
+            page_height = 7 * inch
+            card_width = 5 * inch
+            card_height = 7 * inch
         
         # Create PDF in memory
         pdf_buffer = io.BytesIO()
@@ -4656,3 +4877,926 @@ def view_shared_card(card_id):
     except Exception as e:
         print(f"Error viewing shared card: {str(e)}")
         abort(500)
+
+@app.route('/send_email_nodejs_style', methods=['POST'])
+def send_email_nodejs_style():
+    """
+    Send email using the Python version of the Node.js Gmail client approach.
+    Uses manual email construction and JWT authentication like the Node.js version.
+    
+    Expected JSON payload:
+    {
+        "to": "recipient@example.com",
+        "from": "sender@ast.engineer",  // Optional, defaults to vibecarding@ast.engineer
+        "subject": "Email Subject",
+        "body": "HTML email body",
+        "attachment_base64": "base64_encoded_pdf_data",  // Optional
+        "filename": "attachment.pdf"  // Optional
+    }
+    
+    Returns:
+    {
+        "status": "success" | "error",
+        "message": "Status message",
+        "message_id": "Gmail message ID (on success)"
+    }
+    """
+    if not GMAIL_API_AVAILABLE:
+        return jsonify({
+            "status": "error",
+            "message": "Gmail API libraries not available"
+        }), 500
+    
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                "status": "error",
+                "message": "No JSON data provided"
+            }), 400
+        
+        # Validate required fields
+        to_email = data.get('to')
+        if not to_email:
+            return jsonify({
+                "status": "error",
+                "message": "Missing 'to' field"
+            }), 400
+        
+        subject = data.get('subject', 'No Subject')
+        body = data.get('body', '')
+        attachment_base64 = data.get('attachment_base64')
+        filename = data.get('filename')
+        
+        # Set sender email (must be in ast.engineer domain for delegation to work)
+        from_email = data.get('from', 'vibecarding@ast.engineer')
+        
+        # Validate sender domain
+        if not from_email.endswith('@ast.engineer'):
+            return jsonify({
+                "status": "error",
+                "message": "Sender email must be from ast.engineer domain"
+            }), 400
+        
+        # Initialize Gmail client (Python version of Node.js initializeGmailClient)
+        try:
+            gmail_service = initialize_gmail_client(from_email)
+        except Exception as e:
+            return jsonify({
+                "status": "error",
+                "message": f"Failed to initialize Gmail client: {str(e)}"
+            }), 500
+        
+        # Send email using manual construction (Python version of Node.js sendEmailWithAttachment)
+        try:
+            result = send_email_with_attachment(
+                gmail_service=gmail_service,
+                to=to_email,
+                subject=subject,
+                body=body,
+                attachment_base64=attachment_base64,
+                filename=filename
+            )
+            
+            return jsonify({
+                "status": "success",
+                "message": f"Email sent successfully to {to_email}",
+                "message_id": result.get('id'),
+                "from": from_email,
+                "to": to_email,
+                "subject": subject,
+                "method": "nodejs_style_python"
+            }), 200
+            
+        except Exception as e:
+            return jsonify({
+                "status": "error",
+                "message": f"Failed to send email: {str(e)}"
+            }), 500
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Unexpected error: {str(e)}"
+        }), 500
+
+# Job tracking storage - simple in-memory store for demo
+# In production, use Redis or database
+job_storage = {}
+
+@app.route('/api/job-status/<job_id>', methods=['GET'])
+def get_job_status(job_id):
+    """Check the status of a card generation job."""
+    try:
+        if job_id not in job_storage:
+            return jsonify({
+                "status": "not_found",
+                "message": "Job not found"
+            }), 404
+        
+        job_data = job_storage[job_id]
+        return jsonify({
+            "status": job_data.get("status", "unknown"),
+            "cardData": job_data.get("cardData"),
+            "createdAt": job_data.get("createdAt"),
+            "completedAt": job_data.get("completedAt"),
+            "error": job_data.get("error")
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/store-job-result', methods=['POST'])
+def store_job_result():
+    """Store the result of a completed card generation job."""
+    try:
+        data = request.get_json()
+        
+        job_id = data.get('jobId')
+        status = data.get('status')  # 'completed' or 'failed'
+        card_data = data.get('cardData')
+        error = data.get('error')
+        
+        if not job_id:
+            return jsonify({
+                "status": "error", 
+                "message": "Job ID is required"
+            }), 400
+        
+        # Store job result
+        job_storage[job_id] = {
+            "status": status,
+            "cardData": card_data,
+            "error": error,
+            "completedAt": time.time(),
+            "createdAt": job_storage.get(job_id, {}).get("createdAt", time.time())
+        }
+        
+        return jsonify({
+            "status": "success",
+            "message": "Job result stored successfully"
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/create-job', methods=['POST'])
+def create_job():
+    """Create a new card generation job."""
+    try:
+        data = request.get_json()
+        
+        job_id = data.get('jobId')
+        job_data = data.get('jobData')
+        
+        if not job_id:
+            return jsonify({
+                "status": "error",
+                "message": "Job ID is required"
+            }), 400
+        
+        # Store job as processing
+        job_storage[job_id] = {
+            "status": "processing",
+            "jobData": job_data,
+            "createdAt": time.time()
+        }
+        
+        return jsonify({
+            "status": "success",
+            "message": "Job created successfully",
+            "jobId": job_id
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/logos', methods=['GET'])
+def get_saved_logos():
+    """Get all saved logos from the logo library"""
+    try:
+        logos = []
+        
+        # Search through all files for logo library entries
+        for root, dirs, files in os.walk(DATA_DIR):
+            for file in files:
+                file_path = os.path.join(root, file)
+                try:
+                    with open(file_path, 'r') as f:
+                        data = json.load(f)
+                        
+                    # Check if this is a logo library entry
+                    if (data.get('key', '').startswith('logo_library_') and 
+                        isinstance(data.get('value'), dict) and 
+                        data['value'].get('is_logo')):
+                        
+                        logo_info = data['value']
+                        logos.append({
+                            'id': data['key'],
+                            'filename': logo_info.get('filename'),
+                            'original_filename': logo_info.get('original_filename'),
+                            'url': logo_info.get('url'),
+                            'size': logo_info.get('size'),
+                            'uploaded_at': logo_info.get('uploaded_at'),
+                            'mime_type': logo_info.get('mime_type')
+                        })
+                        
+                except (json.JSONDecodeError, IOError):
+                    continue
+        
+        # Sort by upload time (newest first)
+        logos.sort(key=lambda x: x.get('uploaded_at', 0), reverse=True)
+        
+        return jsonify({
+            'status': 'success',
+            'logos': logos,
+            'count': len(logos)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/logos/<logo_id>', methods=['DELETE'])
+def delete_saved_logo(logo_id):
+    """Delete a saved logo from the library"""
+    try:
+        # Find and delete the logo library entry
+        logo_path = get_file_path(logo_id)
+        if not os.path.exists(logo_path):
+            return jsonify({
+                'status': 'error',
+                'message': 'Logo not found'
+            }), 404
+        
+        # Load logo data to get the original file key
+        with open(logo_path, 'r') as f:
+            logo_data = json.load(f)
+        
+        # Delete the logo library entry
+        os.remove(logo_path)
+        
+        # Optionally delete the original file (commented out to preserve files)
+        # original_file_key = logo_data['value'].get('file_key')
+        # if original_file_key:
+        #     original_path = get_file_path(original_file_key)
+        #     if os.path.exists(original_path):
+        #         os.remove(original_path)
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Logo deleted successfully'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/generate-qr-with-logo', methods=['POST'])
+def api_generate_qr_with_logo():
+    """Generate a QR code with optional logo"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+        
+        url = data.get('url')
+        logo_url = data.get('logo_url')  # Optional
+        size = data.get('size', 160)
+        seamless = data.get('seamless', False)  # Optional seamless mode
+        
+        if not url:
+            return jsonify({'error': 'URL is required'}), 400
+        
+        # Generate QR code with optional logo
+        qr_data_url = generate_qr_with_logo(url, logo_url, size, seamless)
+        
+        if qr_data_url:
+            return jsonify({
+                'status': 'success',
+                'qr_code': qr_data_url,
+                'url': url,
+                'has_logo': bool(logo_url),
+                'size': size
+            })
+        else:
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to generate QR code'
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/generate-card-async', methods=['POST'])
+def generate_card_async():
+    """Start async card generation with prompts."""
+    try:
+        data = request.get_json()
+        
+        job_id = data.get('jobId')
+        prompts = data.get('prompts')
+        config = data.get('config')
+        
+        if not job_id or not prompts or not config:
+            return jsonify({
+                "status": "error",
+                "message": "Job ID, prompts, and config are required"
+            }), 400
+        
+        # Store job as processing
+        job_storage[job_id] = {
+            "status": "processing",
+            "prompts": prompts,
+            "config": config,
+            "createdAt": time.time(),
+            "progress": "Starting generation..."
+        }
+        
+        # Start background image generation
+        threading.Thread(target=generate_card_images_background, args=(job_id, prompts, config)).start()
+        
+        return jsonify({
+            "status": "processing",
+            "message": "Card generation started",
+            "jobId": job_id
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+def generate_card_images_background(job_id, prompts, config):
+    """Background function to generate card images."""
+    try:
+        print(f"Starting background generation for job {job_id}")
+        
+        # Update job status
+        if job_id in job_storage:
+            job_storage[job_id]["progress"] = "Generating images..."
+        
+        # Prepare sections to generate
+        sections_to_generate = ["frontCover", "backCover"]
+        if not config.get("isFrontBackOnly", False):
+            sections_to_generate.extend(["leftInterior", "rightInterior"])
+        
+        # Dictionary to store generated images
+        generated_images = {}
+        
+        # Generate all images in parallel by preparing all prompts
+        print(f"Generating all sections in parallel for job {job_id}: {sections_to_generate}")
+        
+        # Update progress
+        if job_id in job_storage:
+            job_storage[job_id]["progress"] = "Generating all card images in parallel..."
+        
+        # Prepare all prompts for parallel generation
+        prompts_list = []
+        section_order = []
+        
+        for section in sections_to_generate:
+            if section in prompts:
+                prompts_list.append(prompts[section])
+                section_order.append(section)
+        
+        if not prompts_list:
+            raise Exception("No valid prompts found for any sections")
+        
+        try:
+            # Prepare MCP call data for all prompts at once
+            mcp_data = {
+                "tool_name": "generate_images_with_prompts",
+                "arguments": {
+                    "user_number": config.get("userNumber", "+17145986105"),
+                    "prompts": prompts_list,  # Pass all prompts at once
+                    "model_version": config.get("modelVersion", "gpt-image-1"),
+                    "aspect_ratio": config.get("aspectRatio", "9:16"),
+                    "quality": config.get("quality", "high"),
+                    "output_format": config.get("outputFormat", "jpeg"),
+                    "output_compression": config.get("outputCompression", 100),
+                    "moderation": config.get("moderation", "auto")
+                }
+            }
+            
+            print(f"Making parallel MCP call for {len(prompts_list)} prompts")
+            
+            # Make request to MCP service for all prompts at once
+            mcp_response = call_mcp_service("generate_images_with_prompts", mcp_data["arguments"])
+            
+            # Handle both dict and direct list responses
+            results_list = None
+            if isinstance(mcp_response, dict):
+                if mcp_response.get("status") == "success" and mcp_response.get("results"):
+                    results_list = mcp_response["results"]
+                elif mcp_response.get("status") == "partial_error" and mcp_response.get("results"):
+                    results_list = mcp_response["results"]
+                    print(f"Warning: Partial error in parallel generation: {mcp_response.get('message')}")
+                elif mcp_response.get("status") == "error":
+                    raise Exception(f"MCP service error: {mcp_response.get('message', 'Unknown error')}")
+                else:
+                    raise Exception(f"Unexpected MCP response status: {mcp_response.get('status')} - {mcp_response}")
+            elif isinstance(mcp_response, list):
+                results_list = mcp_response
+            else:
+                raise Exception(f"Unexpected MCP response format: {type(mcp_response)} - {mcp_response}")
+            
+            if not results_list or len(results_list) != len(section_order):
+                raise Exception(f"Expected {len(section_order)} results, got {len(results_list) if results_list else 0}")
+            
+            # Process each result and map to corresponding section
+            for i, (section, result) in enumerate(zip(section_order, results_list)):
+                try:
+                    # Handle different possible response formats for each result
+                    image_url = None
+                    
+                    if isinstance(result, dict):
+                        if "error" in result:
+                            print(f"Error generating {section}: {result['error']}")
+                            continue  # Skip this section but continue with others
+                        elif result.get("status") == "success" and result.get("image_url"):
+                            image_url = result["image_url"]
+                        elif result.get("status") == "success" and result.get("url"):
+                            image_url = result["url"]
+                        elif result.get("status") == "error":
+                            print(f"Error generating {section}: {result.get('message', 'Unknown error')}")
+                            continue
+                    elif isinstance(result, str):
+                        # If result is directly a URL string
+                        image_url = result
+                    elif isinstance(result, list) and len(result) > 0:
+                        # Handle case where result is a list of URLs
+                        image_url = result[0]
+                    
+                    if image_url:
+                        generated_images[section] = image_url
+                        print(f"Successfully generated {section} for job {job_id}: {image_url}")
+                    else:
+                        print(f"No image URL found for {section}. Result: {result}")
+                        
+                except Exception as section_error:
+                    print(f"Error processing result for {section}: {section_error}")
+                    continue
+                    
+        except Exception as parallel_error:
+            print(f"Error in parallel generation: {parallel_error}")
+            # Fall back to sequential generation if parallel fails
+            print("Falling back to sequential generation...")
+            
+            for section in sections_to_generate:
+                if section not in prompts:
+                    continue
+                    
+                try:
+                    print(f"Generating {section} for job {job_id} (fallback)")
+                    
+                    # Update progress
+                    if job_id in job_storage:
+                        job_storage[job_id]["progress"] = f"Generating {section.replace('Cover', ' Cover').replace('Interior', ' Interior')} (fallback)..."
+                    
+                    # Single prompt call as fallback
+                    single_mcp_data = {
+                        "tool_name": "generate_images_with_prompts",
+                        "arguments": {
+                            "user_number": config.get("userNumber", "+17145986105"),
+                            "prompts": [prompts[section]],
+                            "model_version": config.get("modelVersion", "gpt-image-1"),
+                            "aspect_ratio": config.get("aspectRatio", "9:16"),
+                            "quality": config.get("quality", "high"),
+                            "output_format": config.get("outputFormat", "jpeg"),
+                            "output_compression": config.get("outputCompression", 100),
+                            "moderation": config.get("moderation", "auto")
+                        }
+                    }
+                    
+                    mcp_response = call_mcp_service("generate_images_with_prompts", single_mcp_data["arguments"])
+                    
+                    # Process single response (reuse existing logic)
+                    if isinstance(mcp_response, dict) and mcp_response.get("status") == "success" and mcp_response.get("results"):
+                        result = mcp_response["results"][0]
+                        if isinstance(result, list) and len(result) > 0:
+                            generated_images[section] = result[0]
+                            print(f"Successfully generated {section} (fallback): {result[0]}")
+                    
+                except Exception as fallback_error:
+                    print(f"Fallback generation failed for {section}: {fallback_error}")
+                    continue
+        
+        # Check if we have all required images
+        required_sections = ["frontCover", "backCover"]
+        if not config.get("isFrontBackOnly", False):
+            required_sections.extend(["leftInterior", "rightInterior"])
+        
+        missing_sections = [s for s in required_sections if s not in generated_images]
+        
+        if missing_sections:
+            # Mark as failed
+            if job_id in job_storage:
+                job_storage[job_id].update({
+                    "status": "failed",
+                    "error": f"Failed to generate sections: {', '.join(missing_sections)}",
+                    "completedAt": time.time()
+                })
+            print(f"Job {job_id} failed - missing sections: {missing_sections}")
+            return
+        
+        # Create card data structure
+        card_data = {
+            "id": job_id,
+            "prompt": f"Generated card for {config.get('userEmail', 'user')}",
+            "frontCover": generated_images["frontCover"],
+            "backCover": generated_images["backCover"],
+            "leftPage": generated_images.get("leftInterior", ""),
+            "rightPage": generated_images.get("rightInterior", ""),
+            "createdAt": job_storage[job_id]["createdAt"],
+            "generatedPrompts": prompts
+        }
+        
+        # Mark job as completed
+        if job_id in job_storage:
+            job_storage[job_id].update({
+                "status": "completed",
+                "cardData": card_data,
+                "completedAt": time.time(),
+                "progress": "Generation complete!"
+            })
+        
+        print(f"Job {job_id} completed successfully")
+        
+        # Send email notification if user email is provided
+        user_email = config.get("userEmail")
+        if user_email:
+            try:
+                print(f"Sending completion email to {user_email}")
+                
+                # Prepare email content
+                subject = "🎨 Your Custom Card is Ready!"
+                
+                # Create HTML email body
+                body = f"""
+                <html>
+                <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                    <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                        <h2 style="color: #4CAF50;">🎉 Your Card Generation is Complete!</h2>
+                        
+                        <p>Great news! Your custom card has been successfully generated and is ready for you.</p>
+                        
+                        <div style="background-color: #f9f9f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                            <h3 style="margin-top: 0;">📋 Card Details:</h3>
+                            <ul>
+                                <li><strong>Job ID:</strong> {job_id}</li>
+                                <li><strong>Generated Images:</strong> {len(generated_images)} sections</li>
+                                <li><strong>Sections:</strong> {', '.join(generated_images.keys())}</li>
+                            </ul>
+                        </div>
+                        
+                        <p>🔗 <strong>View your card:</strong> You can access your completed card through the same link or interface where you initiated the generation.</p>
+                        
+                        <p>✨ Your card includes all the sections you requested and is ready to use!</p>
+                        
+                        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+                        
+                        <p style="font-size: 14px; color: #666;">
+                            This is an automated notification from your card generation system.<br>
+                            If you have any questions, please don't hesitate to reach out.
+                        </p>
+                        
+                        <p style="text-align: center; margin-top: 30px;">
+                            <strong>🎨 Happy Creating! 🎨</strong>
+                        </p>
+                    </div>
+                </body>
+                </html>
+                """
+                
+                # Send email using the existing Gmail functionality
+                if GMAIL_API_AVAILABLE:
+                    # Call the internal email sending function directly
+                    try:
+                        gmail_service = initialize_gmail_client("vibecarding@ast.engineer")
+                        result = send_email_with_attachment(
+                            gmail_service=gmail_service,
+                            to=user_email,
+                            subject=subject,
+                            body=body,
+                            attachment_base64=None,
+                            filename=None
+                        )
+                        print(f"✅ Completion email sent successfully to {user_email}, Message ID: {result.get('id')}")
+                    except Exception as gmail_error:
+                        print(f"Failed to send email via Gmail API: {gmail_error}")
+                        # Fall back to simple notification
+                        print(f"📧 Email would be sent to {user_email}: {subject}")
+                else:
+                    print(f"Gmail API not available. Would send email to {user_email}: {subject}")
+                    
+            except Exception as email_error:
+                print(f"Failed to send email notification: {email_error}")
+        
+    except Exception as e:
+        print(f"Error in background generation for job {job_id}: {e}")
+        # Mark job as failed
+        if job_id in job_storage:
+            job_storage[job_id].update({
+                "status": "failed",
+                "error": str(e),
+                "completedAt": time.time()
+            })
+        
+def call_mcp_service(tool_name, arguments):
+    """Helper function to call MCP service."""
+    try:
+        # Check if we have the internal API key
+        if not MCP_INTERNAL_API_KEY:
+            raise Exception("MCP_INTERNAL_API_KEY not configured")
+        
+        # Prepare data for MCP call
+        mcp_data = {
+            "tool_name": tool_name,
+            "arguments": arguments
+        }
+        
+        # Prepare headers for the internal call
+        headers = {
+            'Content-Type': 'application/json',
+            'X-Internal-API-Key': MCP_INTERNAL_API_KEY
+        }
+        
+        print(f"Making MCP call - Tool: {tool_name}")
+        
+        # Make request to MCP service via internal endpoint
+        mcp_response = requests.post(
+            'http://localhost:5001/internal/call_mcp_tool',
+            json=mcp_data,
+            headers=headers,
+            timeout=300  # 5 minute timeout for image generation
+        )
+        
+        if mcp_response.status_code != 200:
+            raise Exception(f"MCP service returned status {mcp_response.status_code}: {mcp_response.text}")
+        
+        response_data = mcp_response.json()
+        print(f"MCP response data: {response_data}")
+        
+        # Check for errors in response
+        if response_data.get("error") and response_data["error"] != "None":
+            raise Exception(f"MCP service error: {response_data['error']}")
+        
+        # Parse result
+        result = response_data.get("result")
+        print(f"MCP result type: {type(result)}, content: {result}")
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except:
+                raise Exception("Invalid JSON response from MCP service")
+        
+        # Handle case where result is a list (which seems to be the actual format)
+        if isinstance(result, list):
+            if len(result) == 0:
+                raise Exception("Empty result list from MCP service")
+            # Return the list format that the calling code expects
+            return {
+                "status": "success",
+                "results": result
+            }
+        
+        # Handle case where result is already a dict
+        if isinstance(result, dict):
+            if result.get("status") == "error":
+                raise Exception(f"MCP generation error: {result.get('message', 'Unknown error')}")
+            return result
+        
+        # If we get here, the format is unexpected
+        raise Exception(f"Unexpected result format from MCP service: {type(result)}")
+        
+    except Exception as e:
+        print(f"Error calling MCP service: {e}")
+        raise e
+
+# Enhanced QR code generation with logo support (Python server-side)
+def generate_qr_with_logo(url: str, logo_path: str = None, size: int = 160, seamless: bool = False) -> str:
+    """
+    Generate a QR code with optional logo in the center using Python PIL.
+    
+    Args:
+        url: URL to encode in QR code
+        logo_path: Optional path to logo image file
+        size: Size of the QR code in pixels
+        seamless: If True, logo blends seamlessly without white background
+    
+    Returns:
+        Base64 data URL of the QR code image
+    """
+    try:
+        import qrcode
+        from PIL import Image, ImageDraw
+        import io
+        import base64
+        
+        # Create QR code with high error correction if logo is present
+        error_correction = qrcode.constants.ERROR_CORRECT_H if logo_path else qrcode.constants.ERROR_CORRECT_M
+        
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=error_correction,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(url)
+        qr.make(fit=True)
+        
+        # Create QR code image
+        qr_img = qr.make_image(fill_color="black", back_color="white")
+        qr_img = qr_img.resize((size, size), Image.Resampling.LANCZOS)
+        
+        # Add logo if provided
+        if logo_path:
+            try:
+                # Open logo image
+                if logo_path.startswith('http'):
+                    import requests
+                    logo_response = requests.get(logo_path, timeout=10)
+                    logo_img = Image.open(io.BytesIO(logo_response.content))
+                else:
+                    logo_img = Image.open(logo_path)
+                
+                # Calculate logo size (25% of QR code size for better fit)
+                logo_size = int(size * 0.25)
+                
+                # Convert logo to RGBA for transparency handling
+                if logo_img.mode != 'RGBA':
+                    logo_img = logo_img.convert('RGBA')
+                
+                # Resize logo to fit perfectly
+                logo_img = logo_img.resize((logo_size, logo_size), Image.Resampling.LANCZOS)
+                
+                # Convert QR code to RGBA for blending
+                qr_img = qr_img.convert('RGBA')
+                
+                # Calculate position to center the logo
+                logo_pos = ((size - logo_size) // 2, (size - logo_size) // 2)
+                
+                if seamless:
+                    # Seamless mode: logo blends directly with QR code
+                    # Create a smart mask that preserves logo transparency
+                    if logo_img.mode == 'RGBA':
+                        # Use the logo's own alpha channel as the mask
+                        _, _, _, alpha = logo_img.split()
+                        qr_img.paste(logo_img, logo_pos, alpha)
+                    else:
+                        # For non-transparent logos, create a circular mask
+                        mask = Image.new('L', (logo_size, logo_size), 0)
+                        draw = ImageDraw.Draw(mask)
+                        draw.ellipse((0, 0, logo_size, logo_size), fill=255)
+                        qr_img.paste(logo_img, logo_pos, mask)
+                else:
+                    # Traditional mode: logo with white circular background
+                    # Create a mask for smooth blending
+                    mask = Image.new('L', (logo_size, logo_size), 0)
+                    draw = ImageDraw.Draw(mask)
+                    
+                    # Create a circular mask with soft edges
+                    draw.ellipse((2, 2, logo_size-2, logo_size-2), fill=255)
+                    
+                    # Apply slight blur to the mask for smoother edges
+                    from PIL import ImageFilter
+                    mask = mask.filter(ImageFilter.GaussianBlur(radius=1))
+                    
+                    # Create a white background only where the logo will be placed
+                    logo_background = Image.new('RGBA', (logo_size, logo_size), (255, 255, 255, 255))
+                    
+                    # Paste the white background using the circular mask
+                    qr_img.paste(logo_background, logo_pos, mask)
+                    
+                    # Now paste the logo on top using the same mask for consistency
+                    qr_img.paste(logo_img, logo_pos, mask)
+                
+                print(f"✅ QR code generated with logo: {logo_path}")
+                
+            except Exception as logo_error:
+                print(f"⚠️ Failed to add logo, continuing without: {logo_error}")
+        
+        # Convert to base64 data URL
+        buffer = io.BytesIO()
+        qr_img.save(buffer, format='PNG')
+        img_data = buffer.getvalue()
+        img_base64 = base64.b64encode(img_data).decode()
+        
+        return f"data:image/png;base64,{img_base64}"
+        
+    except Exception as e:
+        print(f"❌ Error generating QR code: {e}")
+        return None
+
+@app.route('/api/cards/list', methods=['GET'])
+def list_all_cards():
+    """List all stored cards with pagination and filtering"""
+    try:
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 20))
+        search = request.args.get('search', '').lower()
+        
+        cards = []
+        
+        # Search through all files for shared card entries
+        for root, dirs, files in os.walk(DATA_DIR):
+            for file in files:
+                file_path = os.path.join(root, file)
+                try:
+                    with open(file_path, 'r') as f:
+                        data = json.load(f)
+                    
+                    # Check if this is a shared card entry
+                    if (data.get('key', '').startswith('shared_card_') and 
+                        isinstance(data.get('value'), dict)):
+                        
+                        card_data = data['value']
+                        card_id = data['key'].replace('shared_card_', '')
+                        
+                        # Skip expired cards
+                        if card_data.get('expiresAt', 0) < time.time():
+                            continue
+                        
+                        # Apply search filter if provided
+                        if search:
+                            prompt = card_data.get('prompt', '').lower()
+                            if search not in prompt and search not in card_id.lower():
+                                continue
+                        
+                        # Format creation date
+                        created_at = card_data.get('createdAt', 0)
+                        from datetime import datetime
+                        created_formatted = datetime.fromtimestamp(created_at).strftime('%B %d, %Y at %I:%M %p') if created_at else 'Unknown'
+                        
+                        # Generate share URL
+                        domain = DOMAIN_FROM_ENV or 'https://vibecarding.com'
+                        if domain.startswith('https://'):
+                            share_url = f"{domain}/card/{card_id}"
+                        else:
+                            share_url = f"https://{domain}/card/{card_id}"
+                        
+                        cards.append({
+                            'id': card_id,
+                            'prompt': card_data.get('prompt', ''),
+                            'frontCover': card_data.get('frontCover', ''),
+                            'backCover': card_data.get('backCover', ''),
+                            'leftPage': card_data.get('leftPage', ''),
+                            'rightPage': card_data.get('rightPage', ''),
+                            'createdAt': created_at,
+                            'createdAtFormatted': created_formatted,
+                            'shareUrl': share_url,
+                            'hasImages': bool(card_data.get('frontCover') or card_data.get('backCover') or 
+                                           card_data.get('leftPage') or card_data.get('rightPage'))
+                        })
+                        
+                except (json.JSONDecodeError, IOError, KeyError):
+                    continue
+        
+        # Sort by creation time (newest first)
+        cards.sort(key=lambda x: x.get('createdAt', 0), reverse=True)
+        
+        # Apply pagination
+        total_cards = len(cards)
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        paginated_cards = cards[start_idx:end_idx]
+        
+        return jsonify({
+            'status': 'success',
+            'cards': paginated_cards,
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total': total_cards,
+                'pages': (total_cards + per_page - 1) // per_page,
+                'has_next': end_idx < total_cards,
+                'has_prev': page > 1
+            },
+            'search': search if search else None
+        })
+        
+    except Exception as e:
+        print(f"Error listing cards: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500

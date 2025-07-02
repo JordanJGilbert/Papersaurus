@@ -18,6 +18,13 @@ interface GeneratedCard {
   rightPage: string;       // Portrait image - right interior (message area)
   createdAt: Date;
   shareUrl?: string;       // Optional shareable URL for the card
+  // Store the actual prompts sent to image generation
+  generatedPrompts?: {
+    frontCover: string;
+    backCover: string;
+    leftInterior?: string;
+    rightInterior?: string;
+  };
 }
 
 interface PaperConfig {
@@ -42,6 +49,11 @@ interface CardPreviewProps {
     leftInterior: 'idle' | 'loading' | 'completed' | 'error';
     rightInterior: 'idle' | 'loading' | 'completed' | 'error';
   };
+  // Paper size control props
+  selectedPaperSize?: string;
+  onPaperSizeChange?: (paperSize: string) => void;
+  paperSizes?: PaperConfig[];
+  isCardCompleted?: boolean;
 }
 
 const slideVariants = {
@@ -69,7 +81,37 @@ const swipePower = (offset: number, velocity: number) => {
   return Math.abs(offset) * velocity;
 };
 
-export default function CardPreview({ card, onCardUpdate, isFrontBackOnly = false, onPrint, paperConfig, sectionLoadingStates }: CardPreviewProps) {
+export default function CardPreview({ 
+  card, 
+  onCardUpdate, 
+  isFrontBackOnly = false, 
+  onPrint, 
+  paperConfig, 
+  sectionLoadingStates,
+  selectedPaperSize,
+  onPaperSizeChange,
+  paperSizes,
+  isCardCompleted
+}: CardPreviewProps) {
+  
+  // Check if we're in a loading state (when card is null but we have loading states)
+  const isLoadingCard = !card && sectionLoadingStates && Object.values(sectionLoadingStates).some(state => state === 'loading');
+  
+  // Create a placeholder card object when loading
+  const displayCard = card || (isLoadingCard ? {
+    id: 'loading',
+    prompt: 'Loading...',
+    frontCover: '', // Empty strings will show loading placeholders
+    backCover: '',
+    leftPage: '',
+    rightPage: '',
+    createdAt: new Date(),
+  } : null);
+  
+  // Don't render anything if no card and not loading
+  if (!displayCard) {
+    return null;
+  }
   const [currentSlide, setCurrentSlide] = useState(0);
   const [direction, setDirection] = useState(0);
   const [isAutoPlay, setIsAutoPlay] = useState(false);
@@ -92,6 +134,9 @@ export default function CardPreview({ card, onCardUpdate, isFrontBackOnly = fals
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [emailAddress, setEmailAddress] = useState("");
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+  
+  // Factory state
+  const [isSendingToFactory, setIsSendingToFactory] = useState(false);
 
   // Helper function to get the current image (from version history if available, otherwise original)
   const getCurrentImage = (sectionId: string, originalImage: string) => {
@@ -158,13 +203,13 @@ export default function CardPreview({ card, onCardUpdate, isFrontBackOnly = fals
   const getSourceImageForEdit = (sectionId: string) => {
     switch (sectionId) {
       case "front-cover":
-        return card.frontCover;
+        return displayCard.frontCover;
       case "back-cover":
-        return card.backCover;
+        return displayCard.backCover;
       case "left-interior":
-        return card.leftPage;
+        return displayCard.leftPage;
       case "right-interior":
-        return card.rightPage;
+        return displayCard.rightPage;
       default:
         return null;
     }
@@ -175,8 +220,8 @@ export default function CardPreview({ card, onCardUpdate, isFrontBackOnly = fals
       id: "front-cover",
       title: "Front Cover",
       subtitle: "What recipients see first",
-      image: getCurrentImage("front-cover", card.frontCover),
-      originalImage: card.frontCover,
+      image: getCurrentImage("front-cover", displayCard.frontCover),
+      originalImage: displayCard.frontCover,
       description: "The front cover design that recipients will see first.",
       color: "bg-blue-500",
       type: "single" as const,
@@ -186,8 +231,8 @@ export default function CardPreview({ card, onCardUpdate, isFrontBackOnly = fals
       id: "left-interior",
       title: "Left Interior",
       subtitle: "Decorative page",
-      image: getCurrentImage("left-interior", card.leftPage),
-      originalImage: card.leftPage,
+      image: getCurrentImage("left-interior", displayCard.leftPage),
+      originalImage: displayCard.leftPage,
       description: "The decorative left page when the card is opened.",
       color: "bg-emerald-500",
       type: "single" as const,
@@ -197,8 +242,8 @@ export default function CardPreview({ card, onCardUpdate, isFrontBackOnly = fals
       id: "right-interior",
       title: "Right Interior", 
       subtitle: "Message page",
-      image: getCurrentImage("right-interior", card.rightPage),
-      originalImage: card.rightPage,
+      image: getCurrentImage("right-interior", displayCard.rightPage),
+      originalImage: displayCard.rightPage,
       description: "The right page with your message when the card is opened.",
       color: "bg-emerald-600",
       type: "single" as const,
@@ -208,8 +253,8 @@ export default function CardPreview({ card, onCardUpdate, isFrontBackOnly = fals
       id: "back-cover",
       title: "Back Cover",
       subtitle: "What's on the back",
-      image: getCurrentImage("back-cover", card.backCover),
-      originalImage: card.backCover,
+      image: getCurrentImage("back-cover", displayCard.backCover),
+      originalImage: displayCard.backCover,
       description: "The back of the card with subtle design elements.",
       color: "bg-gray-500",
       type: "single" as const,
@@ -291,6 +336,12 @@ export default function CardPreview({ card, onCardUpdate, isFrontBackOnly = fals
 
   // Edit functionality
   const handleEditSection = (sectionId: string) => {
+    // Don't allow editing if we're in loading mode
+    if (isLoadingCard) {
+      toast.error("Please wait for the card to finish generating before editing");
+      return;
+    }
+    
     setEditingSection(sectionId);
     setEditPrompt("");
   };
@@ -385,9 +436,9 @@ Apply the requested changes while preserving the complete image structure and po
       // Add to version history
       addToVersionHistory(editingSection, editedImageUrl);
 
-      // Update the card object if callback provided
-      if (onCardUpdate) {
-        const updatedCard = { ...card };
+      // Update the card object if callback provided (only if not loading placeholder)
+      if (onCardUpdate && !isLoadingCard) {
+        const updatedCard = { ...displayCard };
         switch (editingSection) {
           case "front-cover":
             updatedCard.frontCover = editedImageUrl;
@@ -485,11 +536,17 @@ Apply the requested changes while preserving the complete image structure and po
 
   // Sharing functions
   const handleShareCard = async () => {
+    // Don't allow sharing if we're in loading mode
+    if (isLoadingCard) {
+      toast.error("Please wait for the card to finish generating before sharing");
+      return;
+    }
+    
     setIsSharing(true);
     try {
       // Check if card already has a share URL from email creation
-      if (card.shareUrl) {
-        setShareUrl(card.shareUrl);
+      if (displayCard.shareUrl) {
+        setShareUrl(displayCard.shareUrl);
         setShowShareDialog(true);
         toast.success("Card is ready to share!");
         setIsSharing(false);
@@ -503,11 +560,11 @@ Apply the requested changes while preserving the complete image structure and po
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          prompt: card.prompt,
-          frontCover: card.frontCover,
-          backCover: card.backCover,
-          leftPage: card.leftPage,
-          rightPage: card.rightPage,
+          prompt: displayCard.prompt,
+          frontCover: displayCard.frontCover,
+          backCover: displayCard.backCover,
+          leftPage: displayCard.leftPage,
+          rightPage: displayCard.rightPage,
         }),
       });
 
@@ -519,8 +576,8 @@ Apply the requested changes while preserving the complete image structure and po
       setShareUrl(result.share_url);
       
       // Update the card with the new share URL
-      if (onCardUpdate) {
-        onCardUpdate({ ...card, shareUrl: result.share_url });
+      if (onCardUpdate && !isLoadingCard) {
+        onCardUpdate({ ...displayCard, shareUrl: result.share_url });
       }
       
       setShowShareDialog(true);
@@ -548,34 +605,110 @@ Apply the requested changes while preserving the complete image structure and po
       return;
     }
 
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailAddress)) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
     setIsSendingEmail(true);
     try {
-      const response = await fetch('/api/cards/send-email', {
+      // Use the same working email service as the thank you email
+      const response = await fetch('https://16504442930.work/send_email_with_attachments', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          email: emailAddress,
-          share_url: shareUrl,
-          card_prompt: card.prompt
+          to: emailAddress,
+          from: 'vibecarding@ast.engineer',
+          subject: '🎉 Someone shared a beautiful card with you!',
+          body: `Hi there!
+
+Someone thought you'd love to see this beautiful greeting card created with VibeCarding!
+
+View the card: ${shareUrl}
+
+This card was created with love using our AI-powered greeting card platform. You can create your own cards at https://vibecarding.com
+
+Best regards,
+The VibeCarding Team
+vibecarding@ast.engineer`,
+          html: false
         }),
       });
 
-      const result = await response.json();
-
-      if (response.ok && result.status === 'success') {
+      if (response.ok) {
         toast.success("✉️ Card sent successfully via email!");
         setShowShareDialog(false);
         setEmailAddress(""); // Clear the email field
       } else {
-        toast.error(`Failed to send email: ${result.message || 'Unknown error'}`);
+        const errorText = await response.text();
+        console.error('Email send failed:', response.status, errorText);
+        toast.error("Failed to send email. Please try again.");
       }
     } catch (error) {
       console.error('Error sending email:', error);
       toast.error("Failed to send email. Please try again.");
     } finally {
       setIsSendingEmail(false);
+    }
+  };
+
+  const handleSendToFactory = async () => {
+    // Don't allow sending to factory if we're in loading mode
+    if (isLoadingCard) {
+      toast.error("Please wait for the card to finish generating before sending to factory");
+      return;
+    }
+    
+    setIsSendingToFactory(true);
+    try {
+      // Create a concatenated string of all image prompts
+      const promptDetails = `
+Front Cover Prompt:
+${displayCard.generatedPrompts?.frontCover || 'Not available'}
+
+Back Cover Prompt:
+${displayCard.generatedPrompts?.backCover || 'Not available'}
+
+${!isFrontBackOnly && displayCard.generatedPrompts?.leftInterior ? `Left Interior Prompt:
+${displayCard.generatedPrompts.leftInterior}
+
+` : ''}${!isFrontBackOnly && displayCard.generatedPrompts?.rightInterior ? `Right Interior Prompt:
+${displayCard.generatedPrompts.rightInterior}
+
+` : ''}`;
+
+      const response = await fetch('https://vibecarding.com/send_email_nodejs_style', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: 'cards1@ast.engineer',
+          from: 'vibecarding@ast.engineer',
+          subject: 'New Card Request',
+          body: promptDetails,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      if (result.status === 'success') {
+        toast.success("🏭 Card sent to factory successfully!");
+      } else {
+        throw new Error(result.message || 'Failed to send to factory');
+      }
+    } catch (error) {
+      console.error('Error sending to factory:', error);
+      toast.error("Failed to send to factory. Please try again.");
+    } finally {
+      setIsSendingToFactory(false);
     }
   };
 
@@ -802,8 +935,18 @@ Apply the requested changes while preserving the complete image structure and po
                       </div>
                     </div>
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800">
-                      <p className="text-gray-500 dark:text-gray-400">Loading section...</p>
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-gray-100 dark:bg-gray-800">
+                      <div className="bg-gray-200 dark:bg-gray-700 rounded-lg p-8 flex flex-col items-center gap-4">
+                        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                        <div className="text-center">
+                          <p className="text-gray-500 dark:text-gray-400 font-medium">
+                            {getLoadingState(slides[currentSlide].id) === 'loading' ? 'Generating...' : 'Loading section...'}
+                          </p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                            {slides[currentSlide].title}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </motion.div>
@@ -888,6 +1031,44 @@ Apply the requested changes while preserving the complete image structure and po
         })}
       </motion.div>
 
+      {/* Paper Size Selector - Only show if card is completed and props are provided */}
+      {isCardCompleted && paperSizes && onPaperSizeChange && (
+        <motion.div 
+          className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.5 }}
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex-1">
+              <h4 className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
+                Print Size
+              </h4>
+              <p className="text-xs text-blue-700 dark:text-blue-300">
+                Change the paper size for printing (doesn't affect your images)
+              </p>
+            </div>
+            <div className="w-48">
+              <Select value={selectedPaperSize} onValueChange={onPaperSizeChange}>
+                <SelectTrigger className="border-blue-300 dark:border-blue-700">
+                  <SelectValue placeholder="Choose paper size" />
+                </SelectTrigger>
+                <SelectContent>
+                  {paperSizes.map((size) => (
+                    <SelectItem key={size.id} value={size.id}>
+                      <div className="text-left">
+                        <div className="font-medium">{size.label}</div>
+                        <div className="text-xs text-muted-foreground">{size.description}</div>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
       {/* Card Actions */}
       <motion.div 
         className="flex flex-col sm:flex-row gap-3 pt-4"
@@ -903,20 +1084,55 @@ Apply the requested changes while preserving the complete image structure and po
           >
             <Printer className="w-4 h-4 mr-2" />
             Print Card
+            {paperConfig && (
+              <span className="ml-2 text-xs opacity-75">
+                ({paperConfig.printWidth} × {paperConfig.printHeight})
+              </span>
+            )}
           </Button>
         )}
+
+        {/* Send to Factory Button */}
+        <Button
+          onClick={handleSendToFactory}
+          disabled={isSendingToFactory || isLoadingCard}
+          variant="outline"
+          className="flex-1 border-orange-500 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/20 disabled:opacity-50"
+        >
+          {isSendingToFactory ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Sending...
+            </>
+          ) : isLoadingCard ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Generating...
+            </>
+          ) : (
+            <>
+              🏭
+              <span className="ml-2">Send to Factory</span>
+            </>
+          )}
+        </Button>
         
         {/* Share Button */}
         <Button
           onClick={handleShareCard}
-          disabled={isSharing}
+          disabled={isSharing || isLoadingCard}
           variant="outline"
-          className="flex-1 border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+          className="flex-1 border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50"
         >
           {isSharing ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               Preparing...
+            </>
+          ) : isLoadingCard ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Generating...
             </>
           ) : (
             <>
@@ -1066,7 +1282,7 @@ Apply the requested changes while preserving the complete image structure and po
                       drag="x"
                       dragConstraints={{ left: 0, right: 0 }}
                       dragElastic={1}
-                      onDragEnd={(e, { offset, velocity }) => {
+                      onDragEnd={(_, { offset, velocity }) => {
                         const swipe = swipePower(offset.x, velocity.x);
                         if (swipe < -swipeConfidenceThreshold) {
                           paginate(1);

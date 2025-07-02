@@ -67,10 +67,18 @@ async def call_another_mcp_tool(
             if tool_result_str:
                 try:
                     parsed_tool_result = json.loads(tool_result_str)
-                    print(f"[InternalMCPCallHelper] Successfully called tool '{tool_name}'. Parsed result: {str(parsed_tool_result)[:200]}...")
+                    # Avoid printing large image data in logs
+                    result_str = str(parsed_tool_result)[:200]
+                    if "data:image/" in result_str or '"b64_json"' in result_str or '"results"' in result_str:
+                        result_str = "[LARGE_DATA_TRUNCATED_FOR_LOG]"
+                    print(f"[InternalMCPCallHelper] Successfully called tool '{tool_name}'. Result: {result_str}...")
                     return parsed_tool_result, None
                 except json.JSONDecodeError:
-                    print(f"[InternalMCPCallHelper] Tool '{tool_name}' result was not valid JSON: {tool_result_str[:200]}...")
+                    # Avoid printing large image data in logs
+                    log_str = tool_result_str[:200] if tool_result_str else ""
+                    if "data:image/" in log_str or '"b64_json"' in log_str:
+                        log_str = "[IMAGE_DATA_TRUNCATED_FOR_LOG]"
+                    print(f"[InternalMCPCallHelper] Tool '{tool_name}' result was not valid JSON: {log_str}...")
                     # Return the raw string if it's not JSON, wrapped in a dict for some consistency
                     return {"raw_result": tool_result_str}, None
             else:

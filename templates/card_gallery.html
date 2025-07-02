@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Card Gallery - VibeCarding</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .card-hover {
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        .card-hover:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+        .loading {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+        }
+        @keyframes loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        .masonry {
+            column-count: 1;
+            column-gap: 1rem;
+        }
+        @media (min-width: 640px) {
+            .masonry { column-count: 2; }
+        }
+        @media (min-width: 1024px) {
+            .masonry { column-count: 3; }
+        }
+        @media (min-width: 1280px) {
+            .masonry { column-count: 4; }
+        }
+        .masonry-item {
+            break-inside: avoid;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white/80 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center space-x-4">
+                    <a href="/" class="flex items-center space-x-3">
+                        <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-sparkles text-white text-sm"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-xl font-bold text-gray-900">VibeCarding</h1>
+                            <p class="text-xs text-gray-500">Card Gallery</p>
+                        </div>
+                    </a>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <!-- Search -->
+                    <div class="relative">
+                        <input
+                            type="text"
+                            id="searchInput"
+                            placeholder="Search cards..."
+                            class="w-64 px-4 py-2 pl-10 pr-4 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    </div>
+                    
+                    <!-- Create New Card Button -->
+                    <a href="/ast_chat" class="bg-gradient-to-r from-blue-500 to-cyan-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:from-blue-600 hover:to-cyan-700 transition-all duration-200">
+                        <i class="fas fa-plus mr-2"></i>Create New Card
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Stats & Info -->
+        <div class="mb-8">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-900 mb-2">Card Gallery</h2>
+                        <p class="text-gray-600">Browse all the beautiful cards created with VibeCarding</p>
+                    </div>
+                    <div class="mt-4 sm:mt-0 flex items-center space-x-6 text-sm text-gray-500">
+                        <div class="flex items-center">
+                            <i class="fas fa-images mr-2 text-blue-500"></i>
+                            <span id="totalCards">Loading...</span> Cards
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fas fa-clock mr-2 text-green-500"></i>
+                            <span>Updated Live</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loadingState" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="aspect-[2/3] loading"></div>
+                <div class="p-4">
+                    <div class="h-4 loading rounded mb-2"></div>
+                    <div class="h-3 loading rounded w-2/3"></div>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="aspect-[2/3] loading"></div>
+                <div class="p-4">
+                    <div class="h-4 loading rounded mb-2"></div>
+                    <div class="h-3 loading rounded w-2/3"></div>
+                </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div class="aspect-[2/3] loading"></div>
+                <div class="p-4">
+                    <div class="h-4 loading rounded mb-2"></div>
+                    <div class="h-3 loading rounded w-2/3"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cards Grid -->
+        <div id="cardsGrid" class="hidden masonry">
+            <!-- Cards will be populated here -->
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="hidden text-center py-16">
+            <div class="max-w-md mx-auto">
+                <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-images text-gray-400 text-2xl"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-900 mb-2">No Cards Found</h3>
+                <p class="text-gray-600 mb-6">No cards match your search criteria. Try adjusting your search or create a new card.</p>
+                <a href="/ast_chat" class="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                    <i class="fas fa-plus mr-2"></i>Create Your First Card
+                </a>
+            </div>
+        </div>
+
+        <!-- Pagination -->
+        <div id="pagination" class="hidden mt-8 flex justify-center">
+            <nav class="flex items-center space-x-2">
+                <button id="prevPage" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <i class="fas fa-chevron-left mr-1"></i>Previous
+                </button>
+                <div id="pageNumbers" class="flex items-center space-x-1">
+                    <!-- Page numbers will be populated here -->
+                </div>
+                <button id="nextPage" class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                    Next<i class="fas fa-chevron-right ml-1"></i>
+                </button>
+            </nav>
+        </div>
+    </main>
+
+    <!-- Card Modal -->
+    <div id="cardModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-auto">
+                <div class="p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-xl font-bold text-gray-900">Card Details</h3>
+                        <button id="closeModal" class="text-gray-400 hover:text-gray-600 transition-colors">
+                            <i class="fas fa-times text-xl"></i>
+                        </button>
+                    </div>
+                    
+                    <div id="modalContent">
+                        <!-- Modal content will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        let totalPages = 1;
+        let currentSearch = '';
+        let allCards = [];
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCards();
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            // Search functionality
+            const searchInput = document.getElementById('searchInput');
+            let searchTimeout;
+            
+            searchInput.addEventListener('input', function() {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    currentSearch = this.value.trim();
+                    currentPage = 1;
+                    loadCards();
+                }, 300);
+            });
+
+            // Modal close
+            document.getElementById('closeModal').addEventListener('click', closeModal);
+            document.getElementById('cardModal').addEventListener('click', function(e) {
+                if (e.target === this) closeModal();
+            });
+
+            // Escape key to close modal
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') closeModal();
+            });
+        }
+
+        async function loadCards() {
+            showLoading();
+            
+            try {
+                const params = new URLSearchParams({
+                    page: currentPage,
+                    per_page: 20,
+                    ...(currentSearch && { search: currentSearch })
+                });
+
+                const response = await fetch(`/api/cards/list?${params}`);
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    allCards = data.cards;
+                    totalPages = data.pagination.pages;
+                    
+                    displayCards(data.cards);
+                    updatePagination(data.pagination);
+                    updateStats(data.pagination.total);
+                } else {
+                    throw new Error(data.message || 'Failed to load cards');
+                }
+            } catch (error) {
+                console.error('Error loading cards:', error);
+                showError('Failed to load cards. Please try again.');
+            }
+        }
+
+        function showLoading() {
+            document.getElementById('loadingState').classList.remove('hidden');
+            document.getElementById('cardsGrid').classList.add('hidden');
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('pagination').classList.add('hidden');
+        }
+
+        function displayCards(cards) {
+            document.getElementById('loadingState').classList.add('hidden');
+            
+            if (cards.length === 0) {
+                document.getElementById('emptyState').classList.remove('hidden');
+                document.getElementById('cardsGrid').classList.add('hidden');
+                return;
+            }
+
+            const grid = document.getElementById('cardsGrid');
+            grid.innerHTML = '';
+            
+            cards.forEach(card => {
+                const cardElement = createCardElement(card);
+                grid.appendChild(cardElement);
+            });
+
+            document.getElementById('cardsGrid').classList.remove('hidden');
+            document.getElementById('emptyState').classList.add('hidden');
+        }
+
+        function createCardElement(card) {
+            const cardDiv = document.createElement('div');
+            cardDiv.className = 'masonry-item';
+            
+            const frontImage = card.frontCover || card.backCover || card.leftPage || card.rightPage;
+            const hasImage = !!frontImage;
+            
+            cardDiv.innerHTML = `
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden card-hover cursor-pointer" onclick="openCardModal('${card.id}')">
+                    ${hasImage ? `
+                        <div class="aspect-[2/3] relative overflow-hidden bg-gray-100">
+                            <img 
+                                src="${frontImage}" 
+                                alt="Card preview" 
+                                class="w-full h-full object-cover"
+                                loading="lazy"
+                                onerror="this.parentElement.innerHTML='<div class=\\'w-full h-full bg-gray-100 flex items-center justify-center\\'>Image not available</div>'"
+                            />
+                            <div class="absolute top-2 right-2">
+                                <span class="bg-black/50 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
+                                    <i class="fas fa-eye mr-1"></i>View
+                                </span>
+                            </div>
+                        </div>
+                    ` : `
+                        <div class="aspect-[2/3] bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                            <div class="text-center text-gray-500">
+                                <i class="fas fa-image text-3xl mb-2"></i>
+                                <p class="text-sm">No preview available</p>
+                            </div>
+                        </div>
+                    `}
+                    
+                    <div class="p-4">
+                        <div class="flex items-start justify-between mb-2">
+                            <h3 class="font-semibold text-gray-900 text-sm line-clamp-2 flex-1">
+                                ${card.prompt || 'Untitled Card'}
+                            </h3>
+                            <button 
+                                onclick="event.stopPropagation(); copyCardLink('${card.shareUrl}')"
+                                class="ml-2 text-gray-400 hover:text-blue-500 transition-colors"
+                                title="Copy link"
+                            >
+                                <i class="fas fa-link text-xs"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="flex items-center justify-between text-xs text-gray-500">
+                            <span class="flex items-center">
+                                <i class="fas fa-calendar mr-1"></i>
+                                ${card.createdAtFormatted}
+                            </span>
+                            <span class="flex items-center">
+                                <i class="fas fa-external-link-alt mr-1"></i>
+                                ${card.id}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            return cardDiv;
+        }
+
+        function updatePagination(pagination) {
+            if (pagination.pages <= 1) {
+                document.getElementById('pagination').classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('pagination').classList.remove('hidden');
+            
+            const prevBtn = document.getElementById('prevPage');
+            const nextBtn = document.getElementById('nextPage');
+            
+            prevBtn.disabled = !pagination.has_prev;
+            nextBtn.disabled = !pagination.has_next;
+            
+            prevBtn.onclick = () => {
+                if (pagination.has_prev) {
+                    currentPage--;
+                    loadCards();
+                }
+            };
+            
+            nextBtn.onclick = () => {
+                if (pagination.has_next) {
+                    currentPage++;
+                    loadCards();
+                }
+            };
+
+            // Update page numbers
+            const pageNumbers = document.getElementById('pageNumbers');
+            pageNumbers.innerHTML = '';
+            
+            const startPage = Math.max(1, currentPage - 2);
+            const endPage = Math.min(pagination.pages, currentPage + 2);
+            
+            for (let i = startPage; i <= endPage; i++) {
+                const pageBtn = document.createElement('button');
+                pageBtn.className = `px-3 py-2 text-sm font-medium rounded-lg ${
+                    i === currentPage 
+                        ? 'bg-blue-500 text-white' 
+                        : 'text-gray-500 bg-white border border-gray-300 hover:bg-gray-50'
+                }`;
+                pageBtn.textContent = i;
+                pageBtn.onclick = () => {
+                    currentPage = i;
+                    loadCards();
+                };
+                pageNumbers.appendChild(pageBtn);
+            }
+        }
+
+        function updateStats(total) {
+            document.getElementById('totalCards').textContent = total;
+        }
+
+        async function openCardModal(cardId) {
+            const card = allCards.find(c => c.id === cardId);
+            if (!card) return;
+
+            const modal = document.getElementById('cardModal');
+            const content = document.getElementById('modalContent');
+            
+            content.innerHTML = `
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="space-y-4">
+                        <div>
+                            <h4 class="font-semibold text-gray-900 mb-2">Front Cover</h4>
+                            ${card.frontCover ? `
+                                <img src="${card.frontCover}" alt="Front Cover" class="w-full rounded-lg border border-gray-200">
+                            ` : '<div class="w-full h-48 bg-gray-100 rounded-lg flex items-center justify-center text-gray-500">No front cover</div>'}
+                        </div>
+                        
+                        <div>
+                            <h4 class="font-semibold text-gray-900 mb-2">Back Cover</h4>
+                            ${card.backCover ? `
+                                <img src="${card.backCover}" alt="Back Cover" class="w-full rounded-lg border border-gray-200">
+                            ` : '<div class="w-full h-48 bg-gray-100 rounded-lg flex items-center justify-center text-gray-500">No back cover</div>'}
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <h4 class="font-semibold text-gray-900 mb-2">Left Interior</h4>
+                            ${card.leftPage ? `
+                                <img src="${card.leftPage}" alt="Left Interior" class="w-full rounded-lg border border-gray-200">
+                            ` : '<div class="w-full h-48 bg-gray-100 rounded-lg flex items-center justify-center text-gray-500">No left interior</div>'}
+                        </div>
+                        
+                        <div>
+                            <h4 class="font-semibold text-gray-900 mb-2">Right Interior</h4>
+                            ${card.rightPage ? `
+                                <img src="${card.rightPage}" alt="Right Interior" class="w-full rounded-lg border border-gray-200">
+                            ` : '<div class="w-full h-48 bg-gray-100 rounded-lg flex items-center justify-center text-gray-500">No right interior</div>'}
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-6 p-4 bg-gray-50 rounded-lg">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span class="font-medium text-gray-700">Card ID:</span>
+                            <span class="text-gray-600 ml-2">${card.id}</span>
+                        </div>
+                        <div>
+                            <span class="font-medium text-gray-700">Created:</span>
+                            <span class="text-gray-600 ml-2">${card.createdAtFormatted}</span>
+                        </div>
+                        <div class="md:col-span-2">
+                            <span class="font-medium text-gray-700">Description:</span>
+                            <p class="text-gray-600 mt-1">${card.prompt || 'No description provided'}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4 flex flex-wrap gap-2">
+                        <a 
+                            href="${card.shareUrl}" 
+                            target="_blank"
+                            class="inline-flex items-center px-3 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition-colors"
+                        >
+                            <i class="fas fa-external-link-alt mr-2"></i>View Full Card
+                        </a>
+                        <button 
+                            onclick="copyCardLink('${card.shareUrl}')"
+                            class="inline-flex items-center px-3 py-2 bg-gray-500 text-white text-sm rounded-lg hover:bg-gray-600 transition-colors"
+                        >
+                            <i class="fas fa-copy mr-2"></i>Copy Link
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            modal.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('cardModal').classList.add('hidden');
+        }
+
+        async function copyCardLink(url) {
+            try {
+                await navigator.clipboard.writeText(url);
+                showToast('Card link copied to clipboard!', 'success');
+            } catch (error) {
+                console.error('Failed to copy link:', error);
+                showToast('Failed to copy link', 'error');
+            }
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `fixed top-4 right-4 px-4 py-2 rounded-lg text-white text-sm font-medium z-50 transition-all duration-300 ${
+                type === 'success' ? 'bg-green-500' : 
+                type === 'error' ? 'bg-red-500' : 'bg-blue-500'
+            }`;
+            toast.textContent = message;
+            
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.transform = 'translateX(100%)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function showError(message) {
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('cardsGrid').classList.add('hidden');
+            document.getElementById('emptyState').classList.remove('hidden');
+            
+            const emptyState = document.getElementById('emptyState');
+            emptyState.innerHTML = `
+                <div class="max-w-md mx-auto">
+                    <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-exclamation-triangle text-red-500 text-2xl"></i>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-900 mb-2">Error Loading Cards</h3>
+                    <p class="text-gray-600 mb-6">${message}</p>
+                    <button onclick="loadCards()" class="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                        <i class="fas fa-refresh mr-2"></i>Try Again
+                    </button>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html> 

@@ -20,6 +20,7 @@ anthropic
 openai
 google-generativeai
 mcp
+replicate
 
 # --- Google APIs ---
 google-api-python-client

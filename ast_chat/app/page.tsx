@@ -9,11 +9,13 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowLeft, Sparkles, Printer, Heart, Gift, GraduationCap, Calendar, Wand2, MessageSquarePlus, ChevronDown, Settings, Zap, Palette, Edit3, Upload, X, Cake, ThumbsUp, PartyPopper, Trophy, TreePine, Stethoscope, CloudRain, Baby, Church, Home, MessageCircle, Eye, Wrench, Clock } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ArrowLeft, Sparkles, Printer, Heart, Gift, GraduationCap, Calendar, Wand2, MessageSquarePlus, ChevronDown, Settings, Zap, Palette, Edit3, Upload, X, Cake, ThumbsUp, PartyPopper, Trophy, TreePine, Stethoscope, CloudRain, Baby, Church, Home, MessageCircle, Eye, Wrench, Clock, Undo2, Redo2, RefreshCw, Settings2, AlertTriangle, CheckCircle, Circle } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import CardPreview from "@/components/CardPreview";
-import QRCode from 'qrcode';
+import * as QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
 import { ModeToggle } from "@/components/mode-toggle";
 
@@ -29,6 +31,13 @@ interface GeneratedCard {
   rightPage: string;       // Portrait image - right interior (message area)
   createdAt: Date;
   shareUrl?: string;       // Shareable URL for the card
+  // Store the actual prompts sent to image generation
+  generatedPrompts?: {
+    frontCover: string;
+    backCover: string;
+    leftInterior?: string;
+    rightInterior?: string;
+  };
 }
 
 // Common card types with custom option
@@ -136,6 +145,15 @@ const paperSizes = [
     printHeight: "7in"
   },
   {
+    id: "compact",
+    label: "4×6 Card (Compact)",
+    description: "Compact 4×6 greeting card (8×6 print layout)",
+    aspectRatio: "2:3",
+    dimensions: "768x1152",
+    printWidth: "8in",
+    printHeight: "6in"
+  },
+  {
     id: "a6",
     label: "A6 Card (4×6)",
     description: "A6 paper size (8.3×5.8 print layout)",
@@ -154,6 +172,26 @@ const imageModels = [
     description: "Highest quality variant : Recommended",
   },
   { 
+    id: "flux-1.1-pro", 
+    label: "FLUX 1.1 Pro", 
+    description: "Fastest & highest quality : $0.04 per image, 3-10 seconds",
+  },
+  { 
+    id: "seedream-3", 
+    label: "SeeDream 3", 
+    description: "2K photorealistic quality : $0.03 per image, 5-15 seconds",
+  },
+  { 
+    id: "ideogram-v3-turbo", 
+    label: "Ideogram V3 Turbo", 
+    description: "Excellent text rendering : Magic prompt enhancement, fast generation",
+  },
+  { 
+    id: "ideogram-v3-quality", 
+    label: "Ideogram V3 Quality", 
+    description: "Highest quality text rendering : Slower but better results",
+  },
+  { 
     id: "imagen-4.0-ultra-generate-preview-06-06", 
     label: "Imagen 4.0 Ultra", 
     description: "Experimental, not recommended for text-heavy cards.",
@@ -166,7 +204,7 @@ async function sendThankYouEmail(toEmail: string, cardType: string, cardUrl: str
   
   try {
     // Send to user
-    const userResponse = await fetch('https://16504442930.work/send_email_with_attachments', {
+    const userResponse = await fetch(`${BACKEND_API_BASE_URL}/send_email_with_attachments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -193,7 +231,7 @@ vibecarding@ast.engineer`,
     });
 
     // Send copy to jordan@ast.engineer
-    const adminResponse = await fetch('https://16504442930.work/send_email_with_attachments', {
+    const adminResponse = await fetch(`${BACKEND_API_BASE_URL}/send_email_with_attachments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -310,6 +348,10 @@ export default function CardStudioPage() {
   const [generationProgress, setGenerationProgress] = useState<string>("");
   const [countdown, setCountdown] = useState<number>(0);
   const [countdownInterval, setCountdownInterval] = useState<NodeJS.Timeout | null>(null);
+  const [isCardCompleted, setIsCardCompleted] = useState<boolean>(false);
+
+  // Job tracking state
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
 
   // Helper function to format countdown as MM:SS
   const formatCountdown = (seconds: number): string => {
@@ -318,22 +360,342 @@ export default function CardStudioPage() {
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
+  // Job management functions
+  const saveJobToStorage = (jobId: string, jobData: any) => {
+    try {
+      localStorage.setItem(`cardJob_${jobId}`, JSON.stringify({
+        ...jobData,
+        id: jobId,
+        status: 'processing',
+        createdAt: Date.now()
+      }));
+      
+      // Also add to pending jobs list
+      const pendingJobs = JSON.parse(localStorage.getItem('pendingCardJobs') || '[]');
+      if (!pendingJobs.includes(jobId)) {
+        pendingJobs.push(jobId);
+        localStorage.setItem('pendingCardJobs', JSON.stringify(pendingJobs));
+      }
+    } catch (error) {
+      console.error('Failed to save job to localStorage:', error);
+    }
+  };
+
+  const removeJobFromStorage = (jobId: string) => {
+    try {
+      localStorage.removeItem(`cardJob_${jobId}`);
+      
+      // Remove from pending jobs list
+      const pendingJobs = JSON.parse(localStorage.getItem('pendingCardJobs') || '[]');
+      const updatedJobs = pendingJobs.filter((id: string) => id !== jobId);
+      localStorage.setItem('pendingCardJobs', JSON.stringify(updatedJobs));
+    } catch (error) {
+      console.error('Failed to remove job from localStorage:', error);
+    }
+  };
+
+  const checkJobStatus = async (jobId: string): Promise<any> => {
+    try {
+      const response = await fetch(`/api/job-status/${jobId}`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to check job status:', error);
+      return null;
+    }
+  };
+
+  // Recovery function - check for pending jobs on page load
+  const checkPendingJobs = async () => {
+    try {
+      const pendingJobs = JSON.parse(localStorage.getItem('pendingCardJobs') || '[]');
+      
+      for (const jobId of pendingJobs) {
+        const jobData = localStorage.getItem(`cardJob_${jobId}`);
+        if (!jobData) continue;
+        
+        const job = JSON.parse(jobData);
+        const statusResponse = await checkJobStatus(jobId);
+        
+        if (statusResponse && statusResponse.status === 'completed') {
+          // Job completed while user was away!
+          if (statusResponse.cardData) {
+            // Apply QR code to back cover before setting the card data
+            let cardWithQR = { ...statusResponse.cardData };
+            
+            try {
+              console.log('🔄 Starting QR overlay process for recovered card');
+              
+                             // Store card data first to get a shareable URL
+               if (cardWithQR.frontCover) {
+                 try {
+                   const cardStoreResponse = await fetch('/api/cards/store', {
+                     method: 'POST',
+                     headers: { 'Content-Type': 'application/json' },
+                     body: JSON.stringify({
+                       prompt: cardWithQR.prompt || '',
+                       frontCover: cardWithQR.frontCover || '',
+                       backCover: cardWithQR.backCover || '',
+                       leftPage: cardWithQR.leftPage || '',
+                       rightPage: cardWithQR.rightPage || ''
+                     })
+                   });
+                   
+                   if (cardStoreResponse.ok) {
+                     const cardStoreData = await cardStoreResponse.json();
+                     const actualShareUrl = cardStoreData.share_url;
+                     console.log('Using actual share URL for QR code (recovered):', actualShareUrl);
+                     
+                     // Apply QR code to back cover using the API-returned URL
+                     if (cardWithQR.backCover && actualShareUrl) {
+                       console.log('🔄 Applying QR overlay to recovered card...');
+                       const originalBackCover = cardWithQR.backCover;
+                       cardWithQR.backCover = await overlayQRCodeOnImage(originalBackCover, actualShareUrl);
+                       cardWithQR.shareUrl = actualShareUrl;
+                       console.log('✅ QR overlay complete for recovered card');
+                     }
+                   }
+                } catch (error) {
+                  console.error('❌ Failed to store card or overlay QR code (recovered):', error);
+                  // Continue without QR code if there's an error
+                }
+              }
+            } catch (error) {
+              console.error('❌ Error in QR code process (recovered):', error);
+              // Continue without QR code if there's an error
+            }
+            
+            setGeneratedCard(cardWithQR);
+            setGeneratedCards([cardWithQR]);
+            setIsCardCompleted(true);
+            
+            // Capture generation time from backend
+            if (statusResponse.cardData.generationTimeSeconds) {
+              setGenerationDuration(statusResponse.cardData.generationTimeSeconds);
+            }
+            
+            // Stop elapsed time tracking
+            stopElapsedTimeTracking();
+            
+            toast.success("🎉 Your card with QR code finished generating while you were away!");
+          }
+          removeJobFromStorage(jobId);
+        } else if (statusResponse && statusResponse.status === 'failed') {
+          // Job failed
+          toast.error("❌ A card generation job failed. Please try again.");
+          removeJobFromStorage(jobId);
+        } else if (statusResponse && statusResponse.status === 'processing') {
+          // Still processing - restore loading states and start polling
+          setIsGenerating(true);
+          setCurrentJobId(jobId);
+          setGenerationProgress("Resuming card generation...");
+          
+          // Start elapsed time tracking from when job was originally created
+          const jobStartTime = job.createdAt ? new Date(job.createdAt).getTime() : Date.now();
+          startElapsedTimeTracking(jobStartTime);
+          
+          // Restore section loading states based on job data
+          if (job.prompts) {
+            const loadingStates = {
+              frontCover: 'loading' as const,
+              backCover: 'loading' as const,
+              leftInterior: job.isFrontBackOnly ? 'idle' as const : 'loading' as const,
+              rightInterior: job.isFrontBackOnly ? 'idle' as const : 'loading' as const,
+            };
+            setSectionLoadingStates(loadingStates);
+          }
+          
+          // Initialize progress - will be updated by timer
+          setGenerationProgress("Resuming card generation...");
+          setProgressPercentage(0); // Will be calculated by timer based on elapsed time
+          
+          toast.info("🔄 Resuming card generation where you left off...");
+          pollJobStatus(jobId);
+        }
+        // If still processing, leave it in storage
+      }
+    } catch (error) {
+      console.error('Failed to check pending jobs:', error);
+    }
+  };
+
+  // Poll job status with exponential backoff
+  const pollJobStatus = async (jobId: string, attempt: number = 1) => {
+    try {
+      const statusResponse = await checkJobStatus(jobId);
+      
+      if (statusResponse && statusResponse.status === 'completed') {
+        if (statusResponse.cardData) {
+          // Apply QR code to back cover before setting the card data
+          let cardWithQR = { ...statusResponse.cardData };
+          
+          try {
+            setGenerationProgress("✨ Adding interactive QR code to your card...");
+            console.log('🔄 Starting QR overlay process for async generated card');
+            
+                         // Store card data first to get a shareable URL
+             if (cardWithQR.frontCover) {
+               try {
+                 const cardStoreResponse = await fetch('/api/cards/store', {
+                   method: 'POST',
+                   headers: { 'Content-Type': 'application/json' },
+                   body: JSON.stringify({
+                     prompt: cardWithQR.prompt || '',
+                     frontCover: cardWithQR.frontCover || '',
+                     backCover: cardWithQR.backCover || '',
+                     leftPage: cardWithQR.leftPage || '',
+                     rightPage: cardWithQR.rightPage || ''
+                   })
+                 });
+                 
+                 if (cardStoreResponse.ok) {
+                   const cardStoreData = await cardStoreResponse.json();
+                   const actualShareUrl = cardStoreData.share_url;
+                   console.log('Using actual share URL for QR code:', actualShareUrl);
+                   
+                   // Apply QR code to back cover using the API-returned URL
+                   if (cardWithQR.backCover && actualShareUrl) {
+                     console.log('🔄 Applying QR overlay to async generated card...');
+                     const originalBackCover = cardWithQR.backCover;
+                     cardWithQR.backCover = await overlayQRCodeOnImage(originalBackCover, actualShareUrl);
+                     cardWithQR.shareUrl = actualShareUrl;
+                     console.log('✅ QR overlay complete for async generated card');
+                   }
+                 }
+              } catch (error) {
+                console.error('❌ Failed to store card or overlay QR code:', error);
+                // Continue without QR code if there's an error
+              }
+            }
+          } catch (error) {
+            console.error('❌ Error in QR code process:', error);
+            // Continue without QR code if there's an error
+          }
+          
+          setGeneratedCard(cardWithQR);
+          setGeneratedCards([cardWithQR]);
+          setIsCardCompleted(true);
+          setIsGenerating(false);
+          setGenerationProgress("");
+          
+          // Set all sections as completed
+          setSectionLoadingStates({
+            frontCover: 'completed',
+            backCover: 'completed',
+            leftInterior: 'completed',
+            rightInterior: 'completed',
+          });
+          
+          // Capture generation time from backend
+          if (statusResponse.cardData.generationTimeSeconds) {
+            setGenerationDuration(statusResponse.cardData.generationTimeSeconds);
+          }
+          
+          // Stop elapsed time tracking
+          stopElapsedTimeTracking();
+          
+          // Set progress to 100%
+          setProgressPercentage(100);
+          setGenerationProgress("Card generation complete!");
+          
+          toast.success("🎉 Your card with QR code is ready!");
+        }
+        removeJobFromStorage(jobId);
+        setCurrentJobId(null);
+      } else if (statusResponse && statusResponse.status === 'failed') {
+        toast.error("❌ Card generation failed. Please try again.");
+        removeJobFromStorage(jobId);
+        setCurrentJobId(null);
+        setIsGenerating(false);
+        stopElapsedTimeTracking();
+        setGenerationProgress("");
+        setProgressPercentage(0);
+        
+        // Set all sections as error
+        setSectionLoadingStates({
+          frontCover: 'error',
+          backCover: 'error',
+          leftInterior: 'error',
+          rightInterior: 'error',
+        });
+      } else if (statusResponse && statusResponse.status === 'processing') {
+        // Continue polling every 3 seconds - near real-time updates for better UX
+        setTimeout(() => pollJobStatus(jobId, attempt + 1), 3000);
+      }
+    } catch (error) {
+      console.error('Failed to poll job status:', error);
+      // Retry after delay
+      setTimeout(() => pollJobStatus(jobId, attempt + 1), 10000);
+    }
+  };
+
   // Function to overlay QR code on back cover image
-  const overlayQRCodeOnImage = async (imageUrl: string, cardUrl: string): Promise<string> => {
+  const overlayQRCodeOnImage = async (imageUrl: string, cardUrl: string, logoUrl?: string): Promise<string> => {
     console.log('🔧 Starting QR overlay for:', cardUrl);
     try {
-      // Generate QR code as data URL
+      // Get the most recent saved logo if no specific logo provided
+      let qrLogoUrl = logoUrl;
+      if (!qrLogoUrl) {
+        try {
+          const logoResponse = await fetch('/api/logos');
+          if (logoResponse.ok) {
+            const logoData = await logoResponse.json();
+            if (logoData.status === 'success' && logoData.logos.length > 0) {
+              // Use the most recent logo
+              qrLogoUrl = logoData.logos[0].url;
+              console.log('🎨 Using saved logo for QR code:', qrLogoUrl);
+            }
+          }
+        } catch (logoError) {
+          console.log('No saved logos available, generating QR without logo');
+        }
+      }
+      
+      // Generate QR code as data URL with optional logo
       console.log('📱 Generating QR code...');
-      const qrCodeDataUrl = await QRCode.toDataURL(cardUrl, {
-        width: 120, // Size in pixels (roughly 1 inch at 120 DPI)
-        margin: 1,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        },
-        errorCorrectionLevel: 'M'
-      });
-      console.log('✅ QR code generated successfully');
+      let qrCodeDataUrl;
+      
+      if (qrLogoUrl) {
+        try {
+          // Generate QR with logo using the server endpoint
+          const qrResponse = await fetch('/api/generate-qr-with-logo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              url: cardUrl,
+              logo_url: qrLogoUrl,
+              size: 160,
+              seamless: true
+            })
+          });
+          
+          if (qrResponse.ok) {
+            const qrData = await qrResponse.json();
+            if (qrData.status === 'success') {
+              qrCodeDataUrl = qrData.qr_code;
+              console.log('✅ QR code with logo generated successfully');
+            }
+          }
+        } catch (logoQrError) {
+          console.log('Failed to generate QR with logo, falling back to simple QR:', logoQrError);
+        }
+      }
+      
+      // Fallback to simple QR code if logo generation failed
+      if (!qrCodeDataUrl) {
+        qrCodeDataUrl = await QRCode.toDataURL(cardUrl, {
+          width: 160, // Size in pixels (roughly 1.3 inches at 120 DPI)
+          margin: 1,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          },
+          errorCorrectionLevel: 'M'
+        });
+        console.log('✅ Simple QR code generated successfully');
+      }
 
       // Create canvas to composite the images
       const canvas = document.createElement('canvas');
@@ -362,7 +724,7 @@ export default function CardStudioPage() {
             console.log('📱 QR code image loaded, overlaying...');
             
             // Position QR code in bottom right corner with some padding
-            const qrSize = 120; // Size of QR code
+            const qrSize = 160; // Size of QR code
             const padding = 40; // Padding from edges
             const x = canvas.width - qrSize - padding;
             const y = canvas.height - qrSize - padding - 30; // Extra space for text
@@ -370,7 +732,7 @@ export default function CardStudioPage() {
             console.log('📍 QR position:', x, y, 'on canvas:', canvas.width, 'x', canvas.height);
             
             // Cut out a clean section for the QR code with rounded corners
-            const cutoutPadding = 15;
+            const cutoutPadding = 12;
             const cutoutX = x - cutoutPadding;
             const cutoutY = y - cutoutPadding;
             const cutoutWidth = qrSize + (cutoutPadding * 2);
@@ -392,10 +754,10 @@ export default function CardStudioPage() {
             
             // Add "Scan me :)" text
             ctx.fillStyle = '#666666';
-            ctx.font = '16px system-ui, -apple-system, sans-serif';
+            ctx.font = '18px system-ui, -apple-system, sans-serif';
             ctx.textAlign = 'center';
             const textX = x + qrSize / 2;
-            const textY = y + qrSize + 15;
+            const textY = y + qrSize + 18;
             ctx.fillText('Scan me :)', textX, textY);
             
             // Convert canvas to data URL and resolve
@@ -456,6 +818,9 @@ export default function CardStudioPage() {
     rightInterior: 'idle',
   });
 
+  // Clean progress tracking
+  const [progressPercentage, setProgressPercentage] = useState<number>(0);
+
   // Cleanup countdown interval on unmount
   useEffect(() => {
     return () => {
@@ -465,14 +830,105 @@ export default function CardStudioPage() {
     };
   }, [countdownInterval]);
 
+  // Track if initial load is complete
+  const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
+  
+  // Textarea expand state
+  const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
+  const [isMessageExpanded, setIsMessageExpanded] = useState(false);
+
+  // Message version control and refinement
+  const [messageHistory, setMessageHistory] = useState<string[]>([]);
+  const [currentMessageIndex, setCurrentMessageIndex] = useState(-1);
+  const [refinementPrompt, setRefinementPrompt] = useState("");
+  const [isRefiningMessage, setIsRefiningMessage] = useState(false);
+  const [showRefinementBox, setShowRefinementBox] = useState(false);
+
+  // Settings menu state
+  const [showSettings, setShowSettings] = useState(false);
+
+  // Template selection state
+  const [showTemplateGallery, setShowTemplateGallery] = useState(false);
+  const [availableTemplates, setAvailableTemplates] = useState<GeneratedCard[]>([]);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+
+  // Print confirmation dialog state
+  const [showPrintConfirmation, setShowPrintConfirmation] = useState(false);
+
+  // Generation time tracking
+  const [generationDuration, setGenerationDuration] = useState<number | null>(null);
+  const [generationStartTime, setGenerationStartTime] = useState<number | null>(null);
+  const [currentElapsedTime, setCurrentElapsedTime] = useState<number>(0);
+  const [elapsedTimeInterval, setElapsedTimeInterval] = useState<NodeJS.Timeout | null>(null);
+
+  // Helper function to format generation time
+  const formatGenerationTime = (durationSeconds: number) => {
+    const minutes = Math.floor(durationSeconds / 60);
+    const seconds = Math.floor(durationSeconds % 60);
+    
+    if (minutes > 0) {
+      return `${minutes}m ${seconds}s`;
+    }
+    return `${seconds}s`;
+  };
+
+  // Start elapsed time tracking
+  const startElapsedTimeTracking = (startTime?: number) => {
+    const start = startTime || Date.now();
+    setGenerationStartTime(start);
+    
+    // Save start time to localStorage for persistence
+    localStorage.setItem('generation-start-time', start.toString());
+    
+    // Clear any existing interval
+    if (elapsedTimeInterval) {
+      clearInterval(elapsedTimeInterval);
+    }
+    
+    // Start new interval to update elapsed time and progress every second
+    const interval = setInterval(() => {
+      const elapsed = (Date.now() - start) / 1000; // Convert to seconds
+      setCurrentElapsedTime(elapsed);
+      
+      // Smooth progress: estimate 150 seconds (2.5 minutes) total
+      const estimatedTotal = 150;
+      const percentage = Math.min((elapsed / estimatedTotal) * 100, 95); // Cap at 95% until completion
+      setProgressPercentage(percentage);
+    }, 1000);
+    
+    setElapsedTimeInterval(interval);
+  };
+
+  // Stop elapsed time tracking
+  const stopElapsedTimeTracking = () => {
+    if (elapsedTimeInterval) {
+      clearInterval(elapsedTimeInterval);
+      setElapsedTimeInterval(null);
+    }
+    localStorage.removeItem('generation-start-time');
+  };
+
+  // Restore elapsed time tracking from localStorage
+  const restoreElapsedTimeTracking = () => {
+    const savedStartTime = localStorage.getItem('generation-start-time');
+    if (savedStartTime && isGenerating) {
+      const startTime = parseInt(savedStartTime);
+      const elapsed = (Date.now() - startTime) / 1000;
+      setCurrentElapsedTime(elapsed);
+      startElapsedTimeTracking(startTime);
+    }
+  };
+
   // localStorage persistence hooks
   useEffect(() => {
     // Load saved state from localStorage on component mount
     const loadSavedState = () => {
       try {
         const savedFormData = localStorage.getItem('vibecarding-form-data');
+        console.log('🔍 Loading saved form data:', savedFormData);
         if (savedFormData) {
           const formData = JSON.parse(savedFormData);
+          console.log('📋 Parsed form data:', formData);
           setPrompt(formData.prompt || "");
           setFinalCardMessage(formData.finalCardMessage || "");
           setToField(formData.toField || "");
@@ -491,15 +947,32 @@ export default function CardStudioPage() {
           setIsFrontBackOnly(formData.isFrontBackOnly || false);
           setSelectedPaperSize(formData.selectedPaperSize || "standard");
           setShowAdvanced(formData.showAdvanced || false);
+          setHandwritingSampleUrl(formData.handwritingSampleUrl || "");
+          setIsTextareaExpanded(formData.isTextareaExpanded || false);
+          setIsMessageExpanded(formData.isMessageExpanded || false);
+          setMessageHistory(formData.messageHistory || []);
+          setCurrentMessageIndex(formData.currentMessageIndex || -1);
+          setShowRefinementBox(formData.showRefinementBox || false);
+          setShowSettings(formData.showSettings || false);
+          setShowPrintConfirmation(formData.showPrintConfirmation || false);
+          setIsCardCompleted(formData.isCardCompleted || false);
+          console.log('✅ Form data loaded successfully');
+        } else {
+          console.log('ℹ️ No saved form data found');
         }
 
         const savedCards = localStorage.getItem('vibecarding-generated-cards');
         if (savedCards) {
           const cardsData = JSON.parse(savedCards);
-          setGeneratedCards(cardsData.cards || []);
+          // Convert createdAt strings back to Date objects
+          const cardsWithDates = (cardsData.cards || []).map((card: any) => ({
+            ...card,
+            createdAt: new Date(card.createdAt)
+          }));
+          setGeneratedCards(cardsWithDates);
           setSelectedCardIndex(cardsData.selectedIndex || 0);
-          if (cardsData.cards && cardsData.cards.length > 0) {
-            setGeneratedCard(cardsData.cards[cardsData.selectedIndex || 0]);
+          if (cardsWithDates.length > 0) {
+            setGeneratedCard(cardsWithDates[cardsData.selectedIndex || 0]);
           }
         }
       } catch (error) {
@@ -508,10 +981,30 @@ export default function CardStudioPage() {
     };
 
     loadSavedState();
+    setIsInitialLoadComplete(true);
+  }, []);
+
+  // Cleanup elapsed time interval on unmount
+  useEffect(() => {
+    return () => {
+      if (elapsedTimeInterval) {
+        clearInterval(elapsedTimeInterval);
+      }
+    };
+  }, [elapsedTimeInterval]);
+
+  // Check for pending jobs and restore timer on page load
+  useEffect(() => {
+    checkPendingJobs();
+    // Restore elapsed time tracking if generation is in progress
+    restoreElapsedTimeTracking();
   }, []);
 
   // Save form data to localStorage whenever form state changes
   useEffect(() => {
+    // Only save after initial load is complete to avoid overwriting loaded data
+    if (!isInitialLoadComplete) return;
+    
     const saveFormData = () => {
       try {
         const formData = {
@@ -532,16 +1025,26 @@ export default function CardStudioPage() {
           isHandwrittenMessage,
           isFrontBackOnly,
           selectedPaperSize,
-          showAdvanced
+          showAdvanced,
+          handwritingSampleUrl,
+          isTextareaExpanded,
+          isMessageExpanded,
+          messageHistory,
+          currentMessageIndex,
+          showRefinementBox,
+          showSettings,
+          showPrintConfirmation,
+          isCardCompleted
         };
         localStorage.setItem('vibecarding-form-data', JSON.stringify(formData));
+        console.log('✅ Form data saved to localStorage:', formData);
       } catch (error) {
-        console.error('Error saving form data:', error);
+        console.error('❌ Error saving form data:', error);
       }
     };
 
     saveFormData();
-  }, [prompt, finalCardMessage, toField, fromField, selectedType, customCardType, selectedTone, selectedArtisticStyle, customStyleDescription, selectedImageModel, numberOfCards, userEmail, referenceImageUrl, imageTransformation, isHandwrittenMessage, isFrontBackOnly, selectedPaperSize, showAdvanced]);
+  }, [isInitialLoadComplete, prompt, finalCardMessage, toField, fromField, selectedType, customCardType, selectedTone, selectedArtisticStyle, customStyleDescription, selectedImageModel, numberOfCards, userEmail, referenceImageUrl, imageTransformation, isHandwrittenMessage, isFrontBackOnly, selectedPaperSize, showAdvanced, handwritingSampleUrl, isTextareaExpanded, isMessageExpanded, messageHistory, currentMessageIndex, showRefinementBox, showSettings, showPrintConfirmation, isCardCompleted]);
 
   // Save generated cards to localStorage whenever they change
   useEffect(() => {
@@ -562,6 +1065,23 @@ export default function CardStudioPage() {
     }
   }, [generatedCards, selectedCardIndex]);
 
+  // Track manual message changes for version control
+  useEffect(() => {
+    if (!isInitialLoadComplete) return;
+    
+    const timeoutId = setTimeout(() => {
+      if (finalCardMessage.trim() && 
+          messageHistory.length > 0 && 
+          finalCardMessage !== messageHistory[currentMessageIndex]) {
+        // User has manually edited the message, add to history
+        addMessageToHistory(finalCardMessage);
+      }
+    }, 2000); // Wait 2 seconds after user stops typing
+
+    return () => clearTimeout(timeoutId);
+  }, [finalCardMessage, isInitialLoadComplete]);
+
+
   // Clear saved data function
   const clearSavedData = () => {
     try {
@@ -574,13 +1094,258 @@ export default function CardStudioPage() {
     }
   };
 
-  // Writing Assistant
-    const handleGetMessageHelp = async () => {
-    if (!prompt.trim()) {
-      toast.error("Please describe your card first!");
+  // Template functions
+  const loadTemplates = async () => {
+    setIsLoadingTemplates(true);
+    try {
+      const response = await fetch('/api/cards/list?per_page=50'); // Get more templates
+      const data = await response.json();
+      
+      if (data.status === 'success') {
+        // Convert the API format to GeneratedCard format
+        const templates = data.cards.map((card: any) => ({
+          id: card.id,
+          prompt: card.prompt || '',
+          frontCover: card.frontCover || '',
+          backCover: card.backCover || '',
+          leftPage: card.leftPage || '',
+          rightPage: card.rightPage || '',
+          createdAt: new Date(card.createdAt * 1000), // Convert timestamp to Date
+          shareUrl: card.shareUrl
+        }));
+        setAvailableTemplates(templates);
+      } else {
+        throw new Error(data.message || 'Failed to load templates');
+      }
+    } catch (error) {
+      console.error('Error loading templates:', error);
+      toast.error("Failed to load card templates");
+    } finally {
+      setIsLoadingTemplates(false);
+    }
+  };
+
+  const applyTemplate = (template: GeneratedCard) => {
+    // Apply template data to form
+    setPrompt(template.prompt || "");
+    
+    // Try to extract card type from prompt
+    const promptLower = (template.prompt || "").toLowerCase();
+    let detectedType = "birthday"; // default
+    
+    cardTypes.forEach(type => {
+      if (type.id !== "custom" && promptLower.includes(type.id.toLowerCase())) {
+        detectedType = type.id;
+      }
+    });
+    
+    setSelectedType(detectedType);
+    
+    // Clear current generated cards since we're starting fresh with a template
+    setGeneratedCards([]);
+    setGeneratedCard(null);
+    setSelectedCardIndex(0);
+    setCurrentCardId(null);
+    
+    // Clear progress states
+    setGenerationProgress("");
+    setIsGenerating(false);
+    setIsCardCompleted(false);
+    
+    // Close template gallery
+    setShowTemplateGallery(false);
+    
+    toast.success(`✨ Template applied! "${template.prompt?.substring(0, 50)}${template.prompt && template.prompt.length > 50 ? '...' : ''}"`);
+  };
+
+  // Create new card function - clears all data
+  const handleCreateNewCard = () => {
+    // Clear all form fields
+    setPrompt("");
+    setFinalCardMessage("");
+    setToField("");
+    setFromField("");
+    setSelectedType("birthday");
+    setCustomCardType("");
+    setSelectedTone("funny");
+    setSelectedArtisticStyle("ai-smart-style");
+    setCustomStyleDescription("");
+    setSelectedImageModel("gpt-image-1");
+    setNumberOfCards(1);
+    setUserEmail("");
+    setReferenceImage(null);
+    setReferenceImageUrl(null);
+    setImageTransformation("");
+    setHandwritingSample(null);
+    setHandwritingSampleUrl(null);
+    setIsHandwrittenMessage(false);
+    setIsFrontBackOnly(false);
+    setSelectedPaperSize("standard");
+    
+    // Clear generated cards
+    setGeneratedCards([]);
+    setGeneratedCard(null);
+    setSelectedCardIndex(0);
+    setCurrentCardId(null);
+    
+    // Clear progress and states
+    setGenerationProgress("");
+    setIsGenerating(false);
+    setIsGeneratingMessage(false);
+    setIsCardCompleted(false);
+    setCountdown(0);
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      setCountdownInterval(null);
+    }
+    
+    // Clear message history
+    setMessageHistory([]);
+    setCurrentMessageIndex(-1);
+    setRefinementPrompt("");
+    setShowRefinementBox(false);
+    
+    // Clear localStorage
+    try {
+      localStorage.removeItem('vibecarding-form-data');
+      localStorage.removeItem('vibecarding-generated-cards');
+    } catch (error) {
+      console.error('Error clearing localStorage:', error);
+    }
+    
+    toast.success("✨ Ready to create a new card!");
+  };
+
+  // Regenerate with same prompt function
+  const handleRegenerateCard = () => {
+    // Keep all current settings but clear generated results
+    setGeneratedCards([]);
+    setGeneratedCard(null);
+    setSelectedCardIndex(0);
+    setCurrentCardId(null);
+    
+    // Clear progress and states
+    setGenerationProgress("");
+    setIsGenerating(false);
+    setIsGeneratingMessage(false);
+    setIsCardCompleted(false);
+    setCountdown(0);
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      setCountdownInterval(null);
+    }
+    
+    // Clear generated cards from localStorage but keep form data
+    try {
+      localStorage.removeItem('vibecarding-generated-cards');
+    } catch (error) {
+      console.error('Error clearing generated cards:', error);
+    }
+    
+    toast.success("🔄 Ready to regenerate with the same settings!");
+  };
+
+  // Message version control functions
+  const addMessageToHistory = (message: string) => {
+    if (message.trim() === "") return;
+    
+    // Safety check: Remove any MESSAGE tags that might have slipped through
+    const cleanMessage = message.replace(/<\/?MESSAGE>/g, '').trim();
+    if (cleanMessage === "") return;
+    
+    // Remove any future history if we're not at the end
+    const newHistory = messageHistory.slice(0, currentMessageIndex + 1);
+    newHistory.push(cleanMessage);
+    
+    // Keep only last 10 versions to prevent memory issues
+    if (newHistory.length > 10) {
+      newHistory.shift();
+    } else {
+      setCurrentMessageIndex(currentMessageIndex + 1);
+    }
+    
+    setMessageHistory(newHistory);
+    setCurrentMessageIndex(newHistory.length - 1);
+  };
+
+  const undoMessage = () => {
+    if (currentMessageIndex > 0) {
+      const newIndex = currentMessageIndex - 1;
+      setCurrentMessageIndex(newIndex);
+      setFinalCardMessage(messageHistory[newIndex]);
+    }
+  };
+
+  const redoMessage = () => {
+    if (currentMessageIndex < messageHistory.length - 1) {
+      const newIndex = currentMessageIndex + 1;
+      setCurrentMessageIndex(newIndex);
+      setFinalCardMessage(messageHistory[newIndex]);
+    }
+  };
+
+  // Handle message refinement
+  const handleRefineMessage = async () => {
+    if (!refinementPrompt.trim() || !finalCardMessage.trim()) {
+      toast.error("Please enter both a message and refinement instructions!");
       return;
     }
 
+    setIsRefiningMessage(true);
+
+    try {
+      const cardTypeForPrompt = selectedType === "custom" ? customCardType : selectedType;
+      const selectedToneObj = cardTones.find(tone => tone.id === selectedTone);
+      const toneDescription = selectedToneObj ? selectedToneObj.description.toLowerCase() : "heartfelt and sincere";
+      
+      const refinementAPIPrompt = `Please refine this greeting card message based on the user's instructions.
+
+Current Message: "${finalCardMessage}"
+
+Refinement Instructions: "${refinementPrompt}"
+
+Card Context:
+- Type: ${cardTypeForPrompt}
+- Tone: ${toneDescription}
+${toField ? `- Recipient: ${toField}` : ""}
+${fromField ? `- Sender: ${fromField}` : ""}
+
+Please provide only the refined message, maintaining the ${toneDescription} tone while implementing the requested changes.`;
+
+      const refinedMessage = await chatWithAI(refinementAPIPrompt, {
+        model: "gemini-2.5-pro",
+        includeThoughts: false
+      });
+
+      if (refinedMessage?.trim()) {
+        // Add current message to history before changing
+        addMessageToHistory(finalCardMessage);
+        
+        // Clean any potential MESSAGE tags from refined message (safety check)
+        const cleanedRefinedMessage = refinedMessage.trim().replace(/<\/?MESSAGE>/g, '').trim();
+        
+        // Set the new refined message
+        setFinalCardMessage(cleanedRefinedMessage);
+        
+        // Add the new message to history
+        addMessageToHistory(cleanedRefinedMessage);
+        
+        setRefinementPrompt("");
+        setShowRefinementBox(false);
+        toast.success("Message refined successfully!");
+      } else {
+        throw new Error('No message received');
+      }
+    } catch (error) {
+      console.error('Error refining message:', error);
+      toast.error("Failed to refine message. Please try again.");
+    } finally {
+      setIsRefiningMessage(false);
+    }
+  };
+
+  // Writing Assistant
+    const handleGetMessageHelp = async () => {
     // Validate custom card type if selected
     if (selectedType === "custom" && !customCardType.trim()) {
       toast.error("Please describe your custom card type first!");
@@ -594,9 +1359,12 @@ export default function CardStudioPage() {
       const selectedToneObj = cardTones.find(tone => tone.id === selectedTone);
       const toneDescription = selectedToneObj ? selectedToneObj.description.toLowerCase() : "heartfelt and sincere";
       
+      // Use effective prompt logic here too
+      const effectivePrompt = prompt.trim() || `A beautiful ${cardTypeForPrompt} card with ${toneDescription} style`;
+      
       const messagePrompt = `Create a ${toneDescription} message for a ${cardTypeForPrompt} greeting card.
 
-Card Theme/Description: "${prompt}"
+Card Theme/Description: "${effectivePrompt}"
 ${toField ? `Recipient: ${toField}` : "Recipient: [not specified]"}
 ${fromField ? `Sender: ${fromField}` : "Sender: [not specified]"}
 Card Tone: ${selectedToneObj ? selectedToneObj.label : "Heartfelt"} - ${toneDescription}
@@ -606,7 +1374,7 @@ Instructions:
 - ${toField ? `Address the message to ${toField} directly, using their name naturally` : "Write in a way that could be personalized to any recipient"}
 - ${fromField ? `Write as if ${fromField} is personally writing this message` : `Write in a ${toneDescription} tone`}
 - Match the ${toneDescription} tone and occasion of the ${cardTypeForPrompt} card type
-- Be inspired by the theme: "${prompt}"
+- Be inspired by the theme: "${effectivePrompt}"
 - Keep it concise but meaningful (2-4 sentences ideal)
 - Make it feel authentic, not generic
 - SAFETY: Never include brand names, character names, trademarked terms, or inappropriate content. If the theme references these, use generic alternatives or focus on the emotions/concepts instead
@@ -631,9 +1399,21 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
       if (generatedMessage?.trim()) {
         // Extract message content between <MESSAGE> tags using regex
         const messageMatch = generatedMessage.match(/<MESSAGE>([\s\S]*?)<\/MESSAGE>/);
-        const extractedMessage = messageMatch ? messageMatch[1].trim() : generatedMessage.trim();
+        let extractedMessage = messageMatch ? messageMatch[1].trim() : generatedMessage.trim();
+        
+        // Ensure no MESSAGE tags are included in the final message
+        extractedMessage = extractedMessage.replace(/<\/?MESSAGE>/g, '').trim();
+        
+        // Add current message to history if it exists and is different
+        if (finalCardMessage.trim() && finalCardMessage.trim() !== extractedMessage) {
+          addMessageToHistory(finalCardMessage);
+        }
         
         setFinalCardMessage(extractedMessage);
+        
+        // Add the new message to history
+        addMessageToHistory(extractedMessage);
+        
         toast.success("✨ Personalized message created!");
       }
     } catch (error) {
@@ -643,23 +1423,24 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
     }
   };
 
-  // Helper function to analyze reference image and get text description
+  // Helper function to analyze reference image and get text description for character creation
   const analyzeReferenceImage = async (imageUrl: string) => {
     try {
-      const analysisPrompt = `Analyze this reference photo and provide a detailed description of the people and visual elements that can be used to recreate them as stylized cartoon/illustrated characters in a greeting card.
+      const analysisPrompt = `Analyze this reference photo and provide a detailed description of the people that can be used to create cartoon/illustrated characters that look like them in a greeting card.
 
-Focus on:
-- Number of people and their approximate ages/relationships
-- Hair colors, styles, and lengths
-- Eye colors and facial features (in general terms)
-- Clothing colors and styles
-- Body language and poses
-- Background elements or setting
-- Overall mood and atmosphere
+Focus specifically on creating recognizable characters by describing:
+- Number of people and their approximate ages
+- Hair colors, styles, and lengths (be very specific)
+- Facial features that make each person distinctive
+- Eye colors and shapes
+- Skin tones
+- Clothing colors, styles, and any distinctive accessories
+- Body language, poses, and how they're positioned
+- Any unique characteristics that make each person recognizable
 
-Provide a detailed but concise description that would help an artist recreate these people as charming, stylized cartoon characters while maintaining their key identifying features. Avoid realistic depictions - focus on cartoon/illustration style descriptions.
+The goal is to create cartoon characters that someone would recognize as these specific people. Provide a detailed description that captures their distinctive features while being suitable for cartoon/illustration style character creation.
 
-Format as a single paragraph description suitable for an image generation prompt.`;
+Format as a single paragraph description suitable for creating recognizable cartoon characters.`;
 
       const response = await fetch('/internal/call_mcp_tool', {
         method: 'POST',
@@ -751,13 +1532,8 @@ Format as a single paragraph description suitable for an image generation prompt
     }
   };
 
-  // Main card generation
-  const handleGenerateCard = async () => {
-    if (!prompt.trim()) {
-      toast.error("Please describe your card");
-      return;
-    }
-
+  // New async card generation approach
+  const handleGenerateCardAsync = async () => {
     if (!userEmail.trim()) {
       toast.error("Please enter your email address");
       return;
@@ -776,10 +1552,331 @@ Format as a single paragraph description suitable for an image generation prompt
       return;
     }
 
+    setIsGenerating(true);
+    startElapsedTimeTracking();
+    setGenerationProgress("Creating your personalized card...");
+    setProgressPercentage(0);
+
+    try {
+      // Create job tracking
+      const jobId = uuidv4();
+      setCurrentJobId(jobId);
+      
+      // Generate all prompts client-side first
+      const cardTypeForPrompt = selectedType === "custom" ? customCardType : selectedType;
+      const selectedToneObj = cardTones.find(tone => tone.id === selectedTone);
+      const toneDescription = selectedToneObj ? selectedToneObj.description.toLowerCase() : "heartfelt and sincere";
+      const effectivePrompt = prompt.trim() || `A beautiful ${cardTypeForPrompt} card with ${toneDescription} style`;
+
+      let messageContent = finalCardMessage;
+      
+      // Handle message generation if needed
+      if (isHandwrittenMessage) {
+        messageContent = "[Blank space for handwritten message]";
+      } else if (!messageContent.trim() && !isFrontBackOnly) {
+        setGenerationProgress("✍️ Writing the perfect message...");
+        
+        // Auto-generate message (keeping existing logic)
+        const autoMessagePrompt = `Create a ${toneDescription} message for a ${cardTypeForPrompt} greeting card.
+
+Card Theme/Description: "${effectivePrompt}"
+${toField ? `Recipient: ${toField}` : "Recipient: [not specified]"}
+${fromField ? `Sender: ${fromField}` : "Sender: [not specified]"}
+Card Tone: ${selectedToneObj ? selectedToneObj.label : "Heartfelt"} - ${toneDescription}
+
+Instructions:
+- Write a message that is ${toneDescription} and feels personal and genuine
+- ${toField ? `Address the message to ${toField} directly, using their name naturally` : "Write in a way that could be personalized to any recipient"}
+- ${fromField ? `Write as if ${fromField} is personally writing this message` : `Write in a ${toneDescription} tone`}
+- Match the ${toneDescription} tone and occasion of the ${cardTypeForPrompt} card type
+- Be inspired by the theme: "${prompt}"
+- Keep it concise but meaningful (2-4 sentences ideal)
+- Make it feel authentic, not generic
+- SAFETY: Never include brand names, character names, trademarked terms, or inappropriate content. If the theme references these, use generic alternatives or focus on the emotions/concepts instead
+- Keep content family-friendly and appropriate for all ages
+- ${selectedTone === 'funny' ? 'Include appropriate humor that fits the occasion' : ''}
+- ${selectedTone === 'genz-humor' ? 'Use GenZ humor with internet slang, memes, and chaotic energy - think "no cap", "periodt", "it\'s giving...", "slay", etc. Be unhinged but endearing' : ''}
+- ${selectedTone === 'professional' ? 'Keep it formal and business-appropriate' : ''}
+- ${selectedTone === 'romantic' ? 'Include loving and romantic language' : ''}
+- ${selectedTone === 'playful' ? 'Use fun and energetic language' : ''}
+- ${toField && fromField ? `Show the relationship between ${fromField} and ${toField} through the ${toneDescription} message tone` : ""}
+- ${fromField ? `End the message with a signature line like "Love, ${fromField}" or "- ${fromField}" or similar, naturally integrated into the message.` : ""}
+
+Return ONLY the message text that should appear inside the card - no quotes, no explanations, no markdown formatting (no *bold*, _italics_, or other markdown), just the complete ${toneDescription} message in plain text.
+
+IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outside these tags will be ignored.`;
+
+        const generatedMessage = await chatWithAI(autoMessagePrompt, {
+          model: "gemini-2.5-pro",
+          includeThoughts: false
+        });
+        
+        if (generatedMessage?.trim()) {
+          const messageMatch = generatedMessage.match(/<MESSAGE>([\s\S]*?)<\/MESSAGE>/);
+          if (messageMatch && messageMatch[1]) {
+            messageContent = messageMatch[1].trim();
+            setFinalCardMessage(messageContent);
+          }
+        }
+      }
+
+      // Generate style and paper config
+      const selectedStyle = artisticStyles.find(style => style.id === selectedArtisticStyle);
+      const styleModifier = selectedArtisticStyle === "custom" 
+        ? customStyleDescription 
+        : selectedStyle?.promptModifier || "";
+
+      const paperConfig = paperSizes.find(size => size.id === selectedPaperSize) || paperSizes[0];
+
+      setGenerationProgress("🎨 Creating artistic vision for your card...");
+
+      // Generate prompts for all cards
+      const basePromptGenerationQuery = `You are an expert AI greeting card designer tasked with creating cohesive, visually stunning prompts for a ${cardTypeForPrompt} greeting card${numberOfCards > 1 ? ` (this is variant ${1} of ${numberOfCards} unique designs)` : ''}.
+
+Theme: "${effectivePrompt}"
+Style: ${selectedStyle?.label || "Default"}
+Tone: ${selectedToneObj ? selectedToneObj.label : "Heartfelt"} - ${toneDescription}
+${toField ? `To: ${toField}` : ""}
+${fromField ? `From: ${fromField}` : ""}
+${!isFrontBackOnly ? `Message: "${messageContent}"` : ""}
+${isHandwrittenMessage ? "Note: Include space for handwritten message" : ""}
+${referenceImageUrl ? `Reference: "${imageTransformation || 'artistic transformation'}"` : ""}
+
+CRITICAL: Create a cohesive visual narrative that flows chronologically through the card experience:
+1. FRONT COVER: First impression - sets the scene/introduces the story
+2. INTERIOR SPREAD: The heart of the experience - continuation and climax of the visual story
+3. BACK COVER: Conclusion - peaceful resolution or complementary ending
+
+Requirements:
+- Flat 2D artwork for printing (not 3D card images)
+- Full-bleed backgrounds extending to edges
+- IMPORTANT: Keep text, faces, and key elements at least 10% away from top/bottom edges (small amount may be cropped in printing)
+- Keep text/faces 0.5" from left/right edges for safe printing
+- CONSISTENT visual elements throughout: same characters, color palette, lighting, art style
+- Progressive visual storytelling from front → interior → back
+- Put any text in quotes and make it clear/readable
+- Each section should feel like part of the same artistic universe
+- TONE: Ensure the visual mood and atmosphere matches the ${toneDescription} tone throughout all sections
+- INTELLECTUAL PROPERTY SAFETY: If the user mentions specific characters, brands, logos, or products, automatically replace them with original generic alternatives in your prompts. For example: replace specific character names with "cartoon mouse character" or "superhero character", replace brand names with "colorful cereal" or "sports car", etc. Create inspired-by designs that capture the essence without referencing any protected names or specific copyrighted elements. Never include actual brand names, character names, or trademarked terms in the image generation prompts
+- CONTENT SAFETY: Ensure all prompts are family-friendly and appropriate for greeting cards. Avoid any content that could be flagged by safety systems including: violence, weapons, inappropriate imagery, political content, controversial topics, scary or disturbing elements, or anything not suitable for all ages. If the user requests something potentially inappropriate, redirect to positive, wholesome alternatives that capture their intent in a family-friendly way
+${selectedTone === 'funny' ? '- Include visual humor, playful elements, and whimsical details' : ''}
+${selectedTone === 'genz-humor' ? '- Include GenZ visual elements like chaotic energy, internet meme references, bold contrasting colors, and unhinged but endearing visual style' : ''}
+${selectedTone === 'romantic' ? '- Include romantic elements like soft lighting, hearts, flowers, or intimate scenes' : ''}
+${selectedTone === 'professional' ? '- Keep visuals clean, sophisticated, and business-appropriate' : ''}
+${selectedTone === 'playful' ? '- Include bright colors, dynamic poses, and energetic visual elements' : ''}
+${selectedTone === 'elegant' ? '- Focus on sophisticated design, refined color palettes, and graceful compositions' : ''}
+${referenceImageUrl ? `- Create cartoon/illustrated characters inspired by reference image - DO NOT make realistic depictions` : ''}
+
+Create prompts that flow chronologically:
+
+1. Front Cover (Opening Scene): BE GENUINELY CREATIVE AND UNIQUE! Include "${cardTypeForPrompt}" greeting text positioned safely in the center area (avoid top/bottom 10% of image). TEXT STYLE: Write the greeting text in beautiful, clearly readable handwritten cursive script that matches the elegant style used inside the card - legible, flowing, and graceful with natural character and warmth. ${referenceImageUrl ? `I have included my own reference image. Create a stylized cartoon/illustrated character inspired by the reference image - DO NOT make realistic depictions of real people, instead create charming cartoon-style characters with simplified, friendly features.` : 'Create charming cartoon-style or stylized illustrated figures if people are needed for the theme.'} This is the story opening - introduce key visual elements (colors, motifs, artistic style) that will continue throughout the other sections. Think of something unexpected, innovative, and memorable that will surprise and delight the recipient. Avoid generic designs! Style: ${styleModifier}
+
+2. ${!isFrontBackOnly ? `Left Interior (Story Development): UNLEASH YOUR CREATIVITY! You have complete creative freedom to design whatever you want for this left interior page! This is your artistic playground - create something genuinely innovative and unexpected that feels right for a ${cardTypeForPrompt} card with ${toneDescription} tone. You can include: scenes, landscapes, objects, patterns, quotes, text, illustrations, realistic art, abstract art, or anything else that inspires you - but NO PEOPLE or characters unless the user specifically mentioned wanting people in their card description. Position any text safely in center area (avoid top/bottom 10%). Think of something no one has done before! Surprise us with bold, imaginative, and memorable artistic choices while maintaining visual harmony with the overall card style and tone. Style: ${styleModifier}
+
+3. Right Interior (Story Climax): BE CREATIVE WITH MESSAGE DESIGN! ${isHandwrittenMessage ? `Design with elegant writing space that complements the visual story from left interior. Position decorative elements safely away from top/bottom edges. Create innovative and artistic decorative elements, borders, or flourishes that are unique and memorable - NO PEOPLE or characters.` : `Include message text: "${messageContent}" positioned safely in center area (avoid top/bottom 10% of image) integrated into beautiful, innovative decorative artwork. HANDWRITING STYLE: Write the message in beautiful, clearly readable handwritten cursive script that feels elegant and personal. The handwriting should be legible, flowing, and have natural character - not overly perfect but graceful and warm. Use a nice pen-style appearance with natural ink flow and slight variations in line weight. Think of sophisticated calligraphy that's still approachable and easy to read. Make the handwriting feel genuine and heartfelt. Think beyond typical florals and patterns - create something unexpected and artistic that perfectly frames the handwritten message - NO PEOPLE or characters.`} This should feel like the emotional peak of the card experience, harmonizing with the left interior as a cohesive spread. Avoid cliché designs and create something genuinely special!${handwritingSampleUrl ? ' Match the provided handwriting style sample exactly.' : ' Use the elegant cursive handwriting style described above.'} Style: ${styleModifier}
+
+4. ` : ''}Back Cover (Story Resolution): BE SUBTLY CREATIVE! Create a simple yet innovative decorative design that brings peaceful closure to the visual story. Reference subtle elements from the front cover but keep it minimal and serene - NO PEOPLE, just beautiful, unexpected artistic elements that go beyond typical patterns or florals. IMPORTANT: Leave the bottom-right corner area (approximately 1 inch square) completely clear and undecorated - this space is reserved for a QR code. Focus decorative elements toward the center and left side of the design. Think of something quietly beautiful and memorable that complements the overall design while being genuinely unique. This should feel like a peaceful, artistic ending that surprises with its subtle creativity. Style: ${styleModifier}
+
+VISUAL CONTINUITY CHECKLIST:
+- Same color palette across all sections
+- Consistent lighting/time of day
+- Same artistic techniques and brushwork
+- Recurring visual motifs or symbols (but make them unique and memorable!)
+- Progressive emotional journey from introduction to resolution
+- Front cover: stylized cartoon/illustrated characters if people are needed for the theme
+- Left interior: CREATIVE FREEDOM but NO PEOPLE unless user specifically requested people in their description
+- Right interior: focus on message space with innovative decorative elements (NO PEOPLE)
+- Back cover: simple yet creative decorative design without text or people
+- Use simplified, friendly, charming character design if including people (front cover only)
+- CREATIVITY PRIORITY: Always choose the more innovative, surprising, and memorable option over generic designs
+
+Return JSON:
+{
+  "frontCover": "detailed prompt with story opening elements",
+  "backCover": "detailed prompt with story conclusion elements"${!isFrontBackOnly ? ',\n  "leftInterior": "detailed prompt with story development elements",\n  "rightInterior": "detailed prompt with story climax elements"' : ''}
+}`;
+
+      const generatedPrompts = await chatWithAI(basePromptGenerationQuery, {
+        jsonSchema: {
+          type: "object",
+          properties: {
+            frontCover: { type: "string" },
+            backCover: { type: "string" },
+            ...(isFrontBackOnly ? {} : { 
+              leftInterior: { type: "string" },
+              rightInterior: { type: "string" }
+            })
+          },
+          required: ["frontCover", "backCover", ...(isFrontBackOnly ? [] : ["leftInterior", "rightInterior"])]
+        },
+        model: "gemini-2.5-pro"
+      });
+
+      if (!generatedPrompts || !generatedPrompts.frontCover) {
+        throw new Error("Failed to generate image prompts");
+      }
+
+      // Save job data to localStorage and server
+      const jobData = {
+        prompt: effectivePrompt,
+        selectedType,
+        customCardType,
+        selectedTone,
+        finalCardMessage: messageContent,
+        toField,
+        fromField,
+        userEmail,
+        selectedArtisticStyle,
+        customStyleDescription,
+        selectedImageModel,
+        isFrontBackOnly,
+        numberOfCards,
+        selectedPaperSize,
+        prompts: generatedPrompts,
+        paperConfig
+      };
+      
+      saveJobToStorage(jobId, jobData);
+      
+      // Create job on server and start async generation
+      setGenerationProgress("🚀 Starting background generation - you can safely leave this page!");
+      
+      // Prepare input images for reference photo support
+      const inputImages: string[] = [];
+      if (referenceImageUrl && selectedImageModel === "gpt-image-1") {
+        inputImages.push(referenceImageUrl);
+      }
+
+      const response = await fetch('/api/generate-card-async', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobId,
+          prompts: generatedPrompts,
+          config: {
+            userNumber: "+17145986105",
+            modelVersion: selectedImageModel,
+            aspectRatio: paperConfig.aspectRatio,
+            quality: "low",
+            outputFormat: "jpeg",
+            outputCompression: 100,
+            moderation: "low",
+            dimensions: paperConfig.dimensions,
+            isFrontBackOnly,
+            userEmail,
+            cardType: cardTypeForPrompt,
+            toField,
+            fromField,
+            ...(inputImages.length > 0 && { input_images: [inputImages] })
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.status !== 'processing') {
+        throw new Error(result.message || 'Failed to start card generation');
+      }
+
+      // Start polling for completion
+      setGenerationProgress("✨ Bringing your vision to life with artistic precision...");
+      toast.success("🎉 Card generation started! You can leave this page and return later.");
+      
+      pollJobStatus(jobId);
+
+    } catch (error) {
+      console.error('Card generation error:', error);
+      toast.error("Failed to start card generation. Please try again.");
+      
+      // Remove failed job from localStorage
+      if (currentJobId) {
+        removeJobFromStorage(currentJobId);
+        setCurrentJobId(null);
+      }
+      
+      setIsGenerating(false);
+      setGenerationProgress("");
+    }
+  };
+
+  // Original synchronous card generation (keep as fallback)
+  const handleGenerateCard = async () => {
+    if (!userEmail.trim()) {
+      toast.error("Please enter your email address");
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(userEmail)) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
+    // Validate custom style if selected
+    if (selectedArtisticStyle === "custom" && !customStyleDescription.trim()) {
+      toast.error("Please describe your custom artistic style");
+      return;
+    }
+
+    // Create job tracking
+    const jobId = uuidv4();
+    setCurrentJobId(jobId);
+    
+    // Save job to localStorage and server
+    const jobData = {
+      prompt: prompt.trim() || `A beautiful ${selectedType === "custom" ? customCardType : selectedType} card`,
+      selectedType,
+      customCardType,
+      selectedTone,
+      finalCardMessage,
+      toField,
+      fromField,
+      userEmail,
+      selectedArtisticStyle,
+      customStyleDescription,
+      selectedImageModel,
+      isFrontBackOnly,
+      numberOfCards,
+      selectedPaperSize
+    };
+    saveJobToStorage(jobId, jobData);
+    
+    // Also save to server
+    try {
+      await fetch('/api/create-job', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId, jobData })
+      });
+    } catch (error) {
+      console.error('Failed to create server job:', error);
+      // Continue anyway - localStorage tracking will still work
+    }
+
+    // Initialize progress tracking
+    setGenerationProgress("Analyzing your request...");
+    setProgressPercentage(5);
+
+    // Reset section loading states
+    setSectionLoadingStates({
+      frontCover: 'idle',
+      backCover: 'idle',
+      leftInterior: 'idle',
+      rightInterior: 'idle',
+    });
+
     // Use custom card type if selected, otherwise use the standard type
     const cardTypeForPrompt = selectedType === "custom" ? customCardType : selectedType;
     const selectedToneObj = cardTones.find(tone => tone.id === selectedTone);
     const toneDescription = selectedToneObj ? selectedToneObj.description.toLowerCase() : "heartfelt and sincere";
+
+    // Use a default prompt if none provided
+    const effectivePrompt = prompt.trim() || `A beautiful ${cardTypeForPrompt} card with ${toneDescription} style`;
 
     let messageContent = finalCardMessage;
     
@@ -790,10 +1887,13 @@ Format as a single paragraph description suitable for an image generation prompt
       // Auto-generate message if empty (but not for front/back only cards)
       setGenerationProgress("✍️ Penning the perfect words just for you...");
       setIsGeneratingMessage(true); // Show "Crafting the perfect message..." in button
+      
+      // Update progress for message generation
+      setGenerationProgress("Creating your message...");
       try {
         const autoMessagePrompt = `Create a ${toneDescription} message for a ${cardTypeForPrompt} greeting card.
 
-Card Theme/Description: "${prompt}"
+Card Theme/Description: "${effectivePrompt}"
 ${toField ? `Recipient: ${toField}` : "Recipient: [not specified]"}
 ${fromField ? `Sender: ${fromField}` : "Sender: [not specified]"}
 Card Tone: ${selectedToneObj ? selectedToneObj.label : "Heartfelt"} - ${toneDescription}
@@ -827,18 +1927,23 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
         if (generatedMessage?.trim()) {
           // Extract message content between <MESSAGE> tags using regex
           const messageMatch = generatedMessage.match(/<MESSAGE>([\s\S]*?)<\/MESSAGE>/);
-          const extractedMessage = messageMatch ? messageMatch[1].trim() : generatedMessage.trim();
+          let extractedMessage = messageMatch ? messageMatch[1].trim() : generatedMessage.trim();
+          
+          // Ensure no MESSAGE tags are included in the final message
+          extractedMessage = extractedMessage.replace(/<\/?MESSAGE>/g, '').trim();
           
           messageContent = extractedMessage;
           setFinalCardMessage(messageContent);
           setGenerationProgress("✅ Perfect message crafted! Now for the magic visuals...");
           toast.success("✨ Generated a personalized message for your card!");
         } else {
-          messageContent = prompt;
+          messageContent = effectivePrompt;
         }
         setIsGeneratingMessage(false); // Reset message generation state
+        
+        // Message generation complete
       } catch {
-        messageContent = prompt;
+        messageContent = effectivePrompt;
         setIsGeneratingMessage(false); // Reset message generation state on error
       }
     }
@@ -864,12 +1969,15 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
       // Handle AI Smart Style - let AI choose the best style
       if (selectedArtisticStyle === "ai-smart-style") {
         setGenerationProgress("✨ Style experts selecting the perfect look...");
+        
+        // Style selection progress
+        
         try {
           const styleSelectionPrompt = `You are an expert art director specializing in beautiful, heartfelt greeting cards. Your job is to choose the perfect artistic style that will create a warm, emotional, and memorable card.
 
 Card Details:
 - Type: ${cardTypeForPrompt}
-- Theme/Description: "${prompt}"
+- Theme/Description: "${effectivePrompt}"
 ${toField ? `- Recipient: ${toField}` : ""}
 ${fromField ? `- Sender: ${fromField}` : ""}
 ${referenceImageUrl ? `- Has reference photo for transformation` : ""}
@@ -935,7 +2043,7 @@ Make it feel like something created with love for someone special.`;
 
 🎨 CREATIVITY MANDATE: Be genuinely creative, unique, and innovative! Avoid generic or cliché designs. Think outside the box, surprise with unexpected elements, use bold artistic choices, and create something truly memorable and special. Push creative boundaries while staying appropriate for the card type and tone.
 
-Theme: "${prompt}"
+Theme: "${effectivePrompt}"
 Style: ${selectedStyle?.label || "Default"}
 Tone: ${selectedToneObj ? selectedToneObj.label : "Heartfelt"} - ${toneDescription}
 ${toField ? `To: ${toField}` : ""}
@@ -971,13 +2079,13 @@ ${referenceImageUrl ? `- Create cartoon/illustrated characters inspired by refer
 
 Create prompts that flow chronologically:
 
-1. Front Cover (Opening Scene): BE GENUINELY CREATIVE AND UNIQUE! Include "${cardTypeForPrompt}" greeting text positioned safely in the center area (avoid top/bottom 10% of image). ${referenceImageUrl ? `I have included my own reference image. Create a stylized cartoon/illustrated character inspired by the reference image - DO NOT make realistic depictions of real people, instead create charming cartoon-style characters with simplified, friendly features.` : 'Create charming cartoon-style or stylized illustrated figures if people are needed for the theme.'} This is the story opening - introduce key visual elements (colors, motifs, artistic style) that will continue throughout the other sections. Think of something unexpected, innovative, and memorable that will surprise and delight the recipient. Avoid generic designs! Style: ${styleModifier}
+1. Front Cover (Opening Scene): BE GENUINELY CREATIVE AND UNIQUE! Include "${cardTypeForPrompt}" greeting text positioned safely in the center area (avoid top/bottom 10% of image). TEXT STYLE: Write the greeting text in beautiful, clearly readable handwritten cursive script that matches the elegant style used inside the card - legible, flowing, and graceful with natural character and warmth. ${referenceImageUrl ? `I have included my own reference image. Create a stylized cartoon/illustrated character inspired by the reference image - DO NOT make realistic depictions of real people, instead create charming cartoon-style characters with simplified, friendly features.` : 'Create charming cartoon-style or stylized illustrated figures if people are needed for the theme.'} This is the story opening - introduce key visual elements (colors, motifs, artistic style) that will continue throughout the other sections. Think of something unexpected, innovative, and memorable that will surprise and delight the recipient. Avoid generic designs! Style: ${styleModifier}
 
 2. ${!isFrontBackOnly ? `Left Interior (Story Development): UNLEASH YOUR CREATIVITY! You have complete creative freedom to design whatever you want for this left interior page! This is your artistic playground - create something genuinely innovative and unexpected that feels right for a ${cardTypeForPrompt} card with ${toneDescription} tone. You can include: scenes, landscapes, objects, patterns, quotes, text, illustrations, realistic art, abstract art, or anything else that inspires you - but NO PEOPLE or characters unless the user specifically mentioned wanting people in their card description. Position any text safely in center area (avoid top/bottom 10%). Think of something no one has done before! Surprise us with bold, imaginative, and memorable artistic choices while maintaining visual harmony with the overall card style and tone. Style: ${styleModifier}
 
-3. Right Interior (Story Climax): BE CREATIVE WITH MESSAGE DESIGN! ${isHandwrittenMessage ? `Design with elegant writing space that complements the visual story from left interior. Position decorative elements safely away from top/bottom edges. Create innovative and artistic decorative elements, borders, or flourishes that are unique and memorable - NO PEOPLE or characters.` : `Include message text: "${messageContent}" positioned safely in center area (avoid top/bottom 10% of image) integrated into beautiful, innovative decorative artwork. Think beyond typical florals and patterns - create something unexpected and artistic that perfectly frames the message - NO PEOPLE or characters.`} This should feel like the emotional peak of the card experience, harmonizing with the left interior as a cohesive spread. Avoid cliché designs and create something genuinely special!${handwritingSampleUrl ? ' Match handwriting style.' : ''} Style: ${styleModifier}
+3. Right Interior (Story Climax): BE CREATIVE WITH MESSAGE DESIGN! ${isHandwrittenMessage ? `Design with elegant writing space that complements the visual story from left interior. Position decorative elements safely away from top/bottom edges. Create innovative and artistic decorative elements, borders, or flourishes that are unique and memorable - NO PEOPLE or characters.` : `Include message text: "${messageContent}" positioned safely in center area (avoid top/bottom 10% of image) integrated into beautiful, innovative decorative artwork. HANDWRITING STYLE: Write the message in beautiful, clearly readable handwritten cursive script that feels elegant and personal. The handwriting should be legible, flowing, and have natural character - not overly perfect but graceful and warm. Use a nice pen-style appearance with natural ink flow and slight variations in line weight. Think of sophisticated calligraphy that's still approachable and easy to read. Make the handwriting feel genuine and heartfelt. Think beyond typical florals and patterns - create something unexpected and artistic that perfectly frames the handwritten message - NO PEOPLE or characters.`} This should feel like the emotional peak of the card experience, harmonizing with the left interior as a cohesive spread. Avoid cliché designs and create something genuinely special!${handwritingSampleUrl ? ' Match the provided handwriting style sample exactly.' : ' Use the elegant cursive handwriting style described above.'} Style: ${styleModifier}
 
-4. ` : ''}Back Cover (Story Resolution): BE SUBTLY CREATIVE! Create a simple yet innovative decorative design that brings peaceful closure to the visual story. Reference subtle elements from the front cover but keep it minimal and serene - NO PEOPLE, just beautiful, unexpected artistic elements that go beyond typical patterns or florals. Think of something quietly beautiful and memorable that complements the overall design while being genuinely unique. This should feel like a peaceful, artistic ending that surprises with its subtle creativity. Style: ${styleModifier}
+4. ` : ''}Back Cover (Story Resolution): BE SUBTLY CREATIVE! Create a simple yet innovative decorative design that brings peaceful closure to the visual story. Reference subtle elements from the front cover but keep it minimal and serene - NO PEOPLE, just beautiful, unexpected artistic elements that go beyond typical patterns or florals. IMPORTANT: Leave the bottom-right corner area (approximately 1 inch square) completely clear and undecorated - this space is reserved for a QR code. Focus decorative elements toward the center and left side of the design. Think of something quietly beautiful and memorable that complements the overall design while being genuinely unique. This should feel like a peaceful, artistic ending that surprises with its subtle creativity. Style: ${styleModifier}
 
 VISUAL CONTINUITY CHECKLIST:
 - Same color palette across all sections
@@ -1074,27 +2182,45 @@ Return JSON:
       // Generate all images in parallel
       setGenerationProgress(`🖼️ Generating your ${numberOfCards} card${numberOfCards > 1 ? 's' : ''} with ${isFrontBackOnly ? '2' : '4'} images each...`);
       
-      // Analyze reference image first if provided
-      let referenceImageDescription = null;
-      if (referenceImageUrl) {
-        setGenerationProgress(`🔍 Analyzing reference photo...`);
-        toast.info("Analyzing reference photo...");
-        
-        referenceImageDescription = await analyzeReferenceImage(referenceImageUrl);
-        
-        if (referenceImageDescription) {
-          setGenerationProgress(`✨ Reference photo analyzed.`);
-          toast.success("📝 Reference photo analyzed successfully!");
-        } else {
-          toast.info("Using reference photo as-is (analysis not available)");
-        }
-      }
+      // Starting image generation
       
-      // Prepare input images for each section (now only for handwriting, not reference)
+      // Set section states to loading
+      setSectionLoadingStates({
+        frontCover: 'loading',
+        backCover: 'idle',
+        leftInterior: isFrontBackOnly ? 'idle' : 'idle',
+        rightInterior: isFrontBackOnly ? 'idle' : 'idle',
+      });
+      
+      // Prepare input images for each section
       const frontCoverInputImages: string[] = [];
       const backCoverInputImages: string[] = [];
       const leftInteriorInputImages: string[] = [];
       const rightInteriorInputImages: string[] = [];
+      
+      // Handle reference images based on model capabilities
+      let referenceImageDescription = null;
+      if (referenceImageUrl) {
+        if (selectedImageModel === "gpt-image-1") {
+          // GPT-1 supports direct image input - pass reference image directly
+          frontCoverInputImages.push(referenceImageUrl);
+          setGenerationProgress(`✨ Reference photo will be used directly for character creation...`);
+          toast.success("📸 Reference photo ready for character creation!");
+        } else {
+          // Other models require text description - analyze first
+          setGenerationProgress(`🔍 Analyzing reference photo for ${selectedImageModel}...`);
+          toast.info("Analyzing reference photo...");
+          
+          referenceImageDescription = await analyzeReferenceImage(referenceImageUrl);
+          
+          if (referenceImageDescription) {
+            setGenerationProgress(`✨ Reference photo analyzed for text-based generation.`);
+            toast.success("📝 Reference photo analyzed successfully!");
+          } else {
+            toast.info("Using reference photo description fallback");
+          }
+        }
+      }
       
       if (selectedImageModel === "gpt-image-1") {
         // Add handwriting sample to right interior for message styling
@@ -1108,25 +2234,44 @@ Return JSON:
       
       // Create payloads for each card with its unique prompts
       allGeneratedPrompts.forEach((generatedPrompts, cardIndex) => {
-        // Enhance front cover prompt with reference image description if available
+        // Enhance front cover prompt with reference image instructions if available
         let enhancedFrontCoverPrompt = generatedPrompts.frontCover;
-        if (referenceImageDescription) {
-          enhancedFrontCoverPrompt = `${generatedPrompts.frontCover}\n\nIMPORTANT: Based on this detailed description of people from the reference photo, create stylized cartoon/illustrated characters with these specific features: "${referenceImageDescription}". Transform these real people into charming, friendly cartoon-style characters while maintaining their key identifying characteristics (hair color, clothing, poses, etc.).`;
+        if (referenceImageUrl) {
+          if (selectedImageModel === "gpt-image-1") {
+            // GPT-1 with direct image input - focus on character creation
+            enhancedFrontCoverPrompt = `${generatedPrompts.frontCover}\n\nCRITICAL CHARACTER REFERENCE INSTRUCTIONS: I have provided a reference photo as input image. You MUST create cartoon/illustrated characters that accurately represent the people in this reference photo with high fidelity to their appearance.
+
+MANDATORY CHARACTER MATCHING REQUIREMENTS:
+- EXACT hair color, hair style, and hair length from the reference photo
+- PRECISE facial features: eye color, eye shape, nose shape, face structure, skin tone
+- ACCURATE clothing: replicate the EXACT clothing items, colors, patterns, and styles worn in the reference photo
+- COMPLETE accessories: include ALL accessories visible (glasses, jewelry, hats, watches, bags, etc.)
+- CORRECT body proportions and posture as shown in the reference
+- FAITHFUL age representation and gender presentation
+- AUTHENTIC facial expressions and poses from the reference image
+
+${imageTransformation || 'Study every detail of the people in the reference image and recreate them as stylized cartoon characters while maintaining 100% accuracy to their distinctive visual features. The characters must be immediately recognizable as the same people from the reference photo. Pay special attention to clothing details, accessories, and unique personal style elements that make each person distinctive.'}
+
+The cartoon style should be charming and artistic while preserving complete visual accuracy to the reference photo. Every person in the reference must be represented with their exact appearance, clothing, and accessories.`;
+          } else if (referenceImageDescription) {
+            // Other models with text description - focus on character creation
+            enhancedFrontCoverPrompt = `${generatedPrompts.frontCover}\n\nIMPORTANT: Create cartoon/illustrated characters that look like the people described here: "${referenceImageDescription}". Make characters that would be recognizable as these specific people, maintaining their distinctive features like hair color, hair style, facial features, clothing, and overall appearance in a charming cartoon art style.`;
+          }
         }
         
         const cardPayloads = [
           {
             tool_name: "generate_images_with_prompts",
             arguments: {
-              user_number: "+17145986105",
-              prompts: [enhancedFrontCoverPrompt],
-              model_version: selectedImageModel,
-              aspect_ratio: paperConfig.aspectRatio,
-              quality: "high",
-              output_format: "jpeg",
-              output_compression: 100,
-              moderation: "auto"
-              // Never pass reference image directly - always use text description
+                              user_number: "+17145986105",
+                prompts: [enhancedFrontCoverPrompt],
+                model_version: selectedImageModel,
+                aspect_ratio: paperConfig.aspectRatio,
+                quality: "high",
+                output_format: "jpeg",
+                output_compression: 100,
+                moderation: "low",
+                ...(frontCoverInputImages.length > 0 && { input_images: [frontCoverInputImages] })
             },
             user_id_context: "+17145986105",
             cardIndex,
@@ -1143,7 +2288,7 @@ Return JSON:
               quality: "high",
               output_format: "jpeg",
               output_compression: 100,
-              moderation: "auto",
+              moderation: "low",
               ...(backCoverInputImages.length > 0 && { input_images: [backCoverInputImages] })
             },
             user_id_context: "+17145986105",
@@ -1166,7 +2311,7 @@ Return JSON:
                 quality: "high",
                 output_format: "jpeg",
                 output_compression: 100,
-                moderation: "auto",
+                moderation: "low",
                 ...(leftInteriorInputImages.length > 0 && { input_images: [leftInteriorInputImages] })
               },
               user_id_context: "+17145986105",
@@ -1184,7 +2329,7 @@ Return JSON:
                 quality: "high",
                 output_format: "jpeg",
                 output_compression: 100,
-                moderation: "auto",
+                moderation: "low",
                 ...(rightInteriorInputImages.length > 0 && { input_images: [rightInteriorInputImages] })
               },
               user_id_context: "+17145986105",
@@ -1321,6 +2466,26 @@ Return only the rewritten prompt, no explanations.`;
             const totalImages = allCardPayloads.length;
             setGenerationProgress(`🎨 ${completedCount}/${totalImages} masterpieces complete! Just finished Card ${cardIndex + 1} ${sectionName}...`);
             
+            // Update section loading states and progress
+            const progressPercentage = 30 + Math.floor((completedCount / totalImages) * 50); // 30-80% for image generation
+            
+            // Update individual section states
+            setSectionLoadingStates(prev => {
+              const newState = { ...prev };
+              if (sectionName === "Front Cover") {
+                newState.frontCover = 'completed';
+              } else if (sectionName === "Back Cover") {
+                newState.backCover = 'completed';
+              } else if (sectionName === "Left Interior") {
+                newState.leftInterior = 'completed';
+              } else if (sectionName === "Right Interior") {
+                newState.rightInterior = 'completed';
+              }
+              return newState;
+            });
+            
+            // Section completion logged
+            
             // Check if this card is now complete
             const sectionsPerCard = isFrontBackOnly ? 2 : 4;
             const cardStartIndex = cardIndex * sectionsPerCard;
@@ -1353,7 +2518,7 @@ Return only the rewritten prompt, no explanations.`;
                   };
                 }
                 
-                const updatedCard: GeneratedCard = { ...updatedCards[cardIndex] };
+                                const updatedCard: GeneratedCard = { ...updatedCards[cardIndex] };
                 
                 // Set all images for this completed card
                 updatedCard.frontCover = completedImages.get(`${cardIndex}-0`) || "";
@@ -1367,6 +2532,17 @@ Return only the rewritten prompt, no explanations.`;
                   updatedCard.leftPage = updatedCard.backCover;
                   updatedCard.rightPage = updatedCard.frontCover;
                 }
+
+                // Update prompt to use effective prompt
+                updatedCard.prompt = effectivePrompt;
+
+                // Store the generated prompts for factory use
+                updatedCard.generatedPrompts = {
+                  frontCover: allGeneratedPrompts[cardIndex].frontCover,
+                  backCover: allGeneratedPrompts[cardIndex].backCover,
+                  leftInterior: !isFrontBackOnly ? allGeneratedPrompts[cardIndex].leftInterior : undefined,
+                  rightInterior: !isFrontBackOnly ? allGeneratedPrompts[cardIndex].rightInterior : undefined,
+                };
 
                 updatedCards[cardIndex] = updatedCard;
                 
@@ -1403,17 +2579,26 @@ Return only the rewritten prompt, no explanations.`;
       // Wait for all to complete
       await Promise.all(imagePromises);
 
+      // Finalizing images
+
       // Build final cards from completed images for email use
       const finalCards: GeneratedCard[] = [];
       for (let cardIndex = 0; cardIndex < numberOfCards; cardIndex++) {
         const card: GeneratedCard = {
           id: `card-${cardIndex}-${Date.now()}`,
-          prompt: basePromptGenerationQuery,
+          prompt: effectivePrompt,
           frontCover: completedImages.get(`${cardIndex}-0`) || "",
           backCover: completedImages.get(`${cardIndex}-1`) || "",
           leftPage: isFrontBackOnly ? (completedImages.get(`${cardIndex}-1`) || "") : (completedImages.get(`${cardIndex}-2`) || ""),
           rightPage: isFrontBackOnly ? (completedImages.get(`${cardIndex}-0`) || "") : (completedImages.get(`${cardIndex}-3`) || ""),
-          createdAt: new Date()
+          createdAt: new Date(),
+          // Include the generated prompts for factory use
+          generatedPrompts: {
+            frontCover: allGeneratedPrompts[cardIndex].frontCover,
+            backCover: allGeneratedPrompts[cardIndex].backCover,
+            leftInterior: !isFrontBackOnly ? allGeneratedPrompts[cardIndex].leftInterior : undefined,
+            rightInterior: !isFrontBackOnly ? allGeneratedPrompts[cardIndex].rightInterior : undefined,
+          }
         };
         finalCards.push(card);
       }
@@ -1435,12 +2620,44 @@ Return only the rewritten prompt, no explanations.`;
 
       // Display cards will be updated after successful API storage and QR code application
 
-      setGenerationProgress("");
+      setGenerationProgress("✅ Card completed, preview down below!");
+      setIsCardCompleted(true);
+      
+      // Generation complete
+      setProgressPercentage(100);
+      setGenerationProgress("Generation complete!");
+
+      // Complete and remove job from localStorage and server
+      if (currentJobId) {
+        // Store completion result on server
+        try {
+          await fetch('/api/store-job-result', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jobId: currentJobId,
+              status: 'completed',
+              cardData: generatedCards[0] || generatedCard
+            })
+          });
+        } catch (error) {
+          console.error('Failed to store job result on server:', error);
+        }
+        
+        removeJobFromStorage(currentJobId);
+        setCurrentJobId(null);
+      }
+      
       if (numberOfCards === 1) {
         toast.success("🎉 Your complete card with QR code is ready!");
       } else {
         toast.success(`🎉 All ${numberOfCards} cards with QR codes are ready! Choose your favorite below.`);
       }
+      
+      // Clear the completion message after 3 seconds but keep isCardCompleted true
+      setTimeout(() => {
+        setGenerationProgress("");
+      }, 3000);
       
       // Send thank you email if user provided email
       if (userEmail.trim()) {
@@ -1459,7 +2676,7 @@ Return only the rewritten prompt, no explanations.`;
           // Store card data with pre-generated card ID
           const cardData = {
             id: cardId, // Use pre-generated card ID
-            prompt: basePromptGenerationQuery,
+            prompt: effectivePrompt,
             frontCover: cardToStore.frontCover || '',
             backCover: cardToStore.backCover || '',
             leftPage: cardToStore.leftPage || '',
@@ -1545,6 +2762,27 @@ Return only the rewritten prompt, no explanations.`;
       setGenerationProgress("");
       toast.error("Failed to generate card. Please try again.");
       console.error("Card generation error:", error);
+      
+      // Remove failed job from localStorage and update server
+      if (currentJobId) {
+        // Store failure result on server
+        try {
+          await fetch('/api/store-job-result', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jobId: currentJobId,
+              status: 'failed',
+              error: error instanceof Error ? error.message : 'Unknown error'
+            })
+          });
+        } catch (serverError) {
+          console.error('Failed to store job failure on server:', serverError);
+        }
+        
+        removeJobFromStorage(currentJobId);
+        setCurrentJobId(null);
+      }
     } finally {
       setIsGenerating(false);
       // Clear countdown timer
@@ -1557,8 +2795,17 @@ Return only the rewritten prompt, no explanations.`;
   };
 
 
-  const handlePrint = async () => {
+  // Show print confirmation dialog
+  const handlePrintClick = () => {
     if (!generatedCard) return;
+    setShowPrintConfirmation(true);
+  };
+
+  // Actual print function after confirmation
+  const handleConfirmPrint = async () => {
+    if (!generatedCard) return;
+    
+    setShowPrintConfirmation(false);
     
     try {
       // Send complete card data for PDF creation and printing
@@ -1567,7 +2814,7 @@ Return only the rewritten prompt, no explanations.`;
         back_cover: generatedCard.backCover,
         left_page: generatedCard.leftPage,
         right_page: generatedCard.rightPage,
-        card_name: prompt.substring(0, 50) + (prompt.length > 50 ? '...' : ''),
+        card_name: (generatedCard.prompt || 'Custom Card').substring(0, 50) + ((generatedCard.prompt || '').length > 50 ? '...' : ''),
         paper_size: selectedPaperSize,
         is_front_back_only: isFrontBackOnly,
         copies: 1,
@@ -1657,8 +2904,61 @@ Return only the rewritten prompt, no explanations.`;
                   </h1>
                 </div>
               </div>
+              <Link href="/card-gallery">
+                <Button variant="ghost" size="sm" className="gap-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">
+                  <Eye className="w-4 h-4" />
+                  <span className="hidden sm:inline">Gallery</span>
+                </Button>
+              </Link>
             </div>
-            <ModeToggle />
+            {/* Settings Menu */}
+            <Popover open={showSettings} onOpenChange={setShowSettings}>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
+                  <Settings2 className="h-4 w-4" />
+                  <span className="sr-only">Settings</span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-0" align="end">
+                <div className="p-4 space-y-4">
+                  <div className="space-y-2">
+                    <h4 className="font-medium leading-none">Settings</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Configure your card creation preferences
+                    </p>
+                  </div>
+                  
+                  {/* Theme Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <div className="text-sm font-medium">Theme</div>
+                      <div className="text-xs text-muted-foreground">Switch between light and dark mode</div>
+                    </div>
+                    <ModeToggle />
+                  </div>
+                  
+                  <Separator />
+                  
+                  {/* Advanced Options Toggle */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <div className="text-sm font-medium">Advanced Options</div>
+                        <div className="text-xs text-muted-foreground">Show additional card settings</div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowAdvanced(!showAdvanced)}
+                        className="h-8"
+                      >
+                        {showAdvanced ? "Hide" : "Show"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
       </header>
@@ -1667,13 +2967,35 @@ Return only the rewritten prompt, no explanations.`;
         {/* Main Form */}
         <Card className="shadow-lg mb-6">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-blue-600" />
-                  Create Your Card
-                </CardTitle>
-                <CardDescription>
-              Describe your card and we'll create it for you
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-blue-600" />
+                      Create Your Card
+                    </CardTitle>
+                    <CardDescription className="flex items-center justify-between">
+                      <span>Describe your card and we'll create it for you</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setShowTemplateGallery(true);
+                          loadTemplates();
+                        }}
+                        className="gap-2 text-xs"
+                      >
+                        <Eye className="w-3 h-3" />
+                        Use Template
+                      </Button>
+                    </CardDescription>
+                  </div>
+                  {(prompt || toField || fromField || generatedCards.length > 0) && (
+                    <div className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      Auto-saved
+                    </div>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-6">
             {/* Card Type */}
@@ -1722,7 +3044,7 @@ Return only the rewritten prompt, no explanations.`;
                         Describe Your Card Type
                       </label>
                       <Input
-                        placeholder="e.g., Promotion, Moving Away, First Day of School..."
+                        placeholder="✨ E.g., 'Promotion at work', 'Moving away', 'First day of school'"
                         value={customCardType}
                         onChange={(e) => setCustomCardType(e.target.value)}
                         style={{ fontSize: '16px' }}
@@ -1815,7 +3137,7 @@ Return only the rewritten prompt, no explanations.`;
                   To
                     </label>
                     <Input
-                  placeholder="Sarah"
+                  placeholder="🎯 To"
                       value={toField}
                       onChange={(e) => setToField(e.target.value)}
                       style={{ fontSize: '16px' }}
@@ -1826,7 +3148,7 @@ Return only the rewritten prompt, no explanations.`;
                   From
                     </label>
                     <Input
-                  placeholder="Alex"
+                  placeholder="📝 From"
                       value={fromField}
                       onChange={(e) => setFromField(e.target.value)}
                       style={{ fontSize: '16px' }}
@@ -1841,7 +3163,7 @@ Return only the rewritten prompt, no explanations.`;
               </label>
               <Input
                 type="email"
-                placeholder="your.email@example.com"
+                placeholder="📧 your.email@example.com (we'll send you the card!)"
                 required
                 value={userEmail}
                 onChange={(e) => setUserEmail(e.target.value)}
@@ -1854,17 +3176,40 @@ Return only the rewritten prompt, no explanations.`;
 
             {/* Main Description */}
                 <div>
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-                Describe Your Card
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Describe Your Card (Optional)
+                    </label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsTextareaExpanded(!isTextareaExpanded)}
+                      className="gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                    >
+                      {isTextareaExpanded ? (
+                        <>
+                          <ChevronDown className="w-3 h-3" />
+                          Collapse
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="w-3 h-3 rotate-180" />
+                          Expand
+                        </>
+                      )}
+                    </Button>
+                  </div>
               <Textarea
-                placeholder="A cheerful birthday card with flowers and sunshine for my best friend who loves gardening..."
+                placeholder="💡 Optional: Be specific! E.g., 'Birthday card with cute cats and rainbow colors for my sister who loves anime' (or leave blank for a beautiful default design)"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                rows={3}
-                className="resize-none"
+                rows={isTextareaExpanded ? 8 : 5}
+                className={isTextareaExpanded ? "resize-y" : "resize-none"}
                 style={{ fontSize: '16px' }}
               />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                💡 <strong>Tip:</strong> Add details like colors, style, recipient's interests, and specific themes for personalized results, or leave blank for a beautiful default card!
+              </p>
                 </div>
 
             {/* Message Section */}
@@ -1873,26 +3218,140 @@ Return only the rewritten prompt, no explanations.`;
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   Card Message
                   </label>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleGetMessageHelp}
-                  disabled={isGeneratingMessage || !prompt.trim() || isHandwrittenMessage}
-                  className="gap-1 text-xs"
-                >
-                  <MessageSquarePlus className="w-3 h-3" />
-                  {isGeneratingMessage ? "Writing..." : "Help me write"}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsMessageExpanded(!isMessageExpanded)}
+                    className="gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                  >
+                    {isMessageExpanded ? (
+                      <>
+                        <ChevronDown className="w-3 h-3" />
+                        Collapse
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="w-3 h-3 rotate-180" />
+                        Expand
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleGetMessageHelp}
+                    disabled={isGeneratingMessage || isHandwrittenMessage}
+                    className="gap-1 text-xs"
+                  >
+                    <MessageSquarePlus className="w-3 h-3" />
+                    {isGeneratingMessage ? "Writing..." : "Help me write"}
+                  </Button>
+                </div>
                           </div>
                   <Textarea
-                placeholder={isHandwrittenMessage ? "Leave blank - you'll handwrite your message" : "Write your message here, or click 'Help me write' for inspiration..."}
+                placeholder={isHandwrittenMessage ? "✍️ Leave blank - you'll handwrite your message" : "💝 Your personal message here... (or click 'Help me write' for AI assistance)"}
                 value={finalCardMessage}
                 onChange={(e) => setFinalCardMessage(e.target.value)}
-                    rows={3}
-                    className="resize-none"
+                    rows={isMessageExpanded ? 8 : 5}
+                    className={isMessageExpanded ? "resize-y" : "resize-none"}
                     style={{ fontSize: '16px' }}
                 disabled={isHandwrittenMessage}
                   />
+                  
+                  {/* Message Version Control and Refinement */}
+                  {finalCardMessage.trim() && (
+                    <div className="mt-3 space-y-3">
+                      {/* Version Control Buttons */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={undoMessage}
+                            disabled={currentMessageIndex <= 0}
+                            className="gap-1 text-xs flex-shrink-0"
+                          >
+                            <Undo2 className="w-3 h-3" />
+                            <span className="hidden sm:inline">Undo</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={redoMessage}
+                            disabled={currentMessageIndex >= messageHistory.length - 1}
+                            className="gap-1 text-xs flex-shrink-0"
+                          >
+                            <Redo2 className="w-3 h-3" />
+                            <span className="hidden sm:inline">Redo</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowRefinementBox(!showRefinementBox)}
+                            className="gap-1 text-xs flex-shrink-0"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span className="hidden sm:inline">Refine</span>
+                            <span className="sm:hidden">Edit</span>
+                          </Button>
+                        </div>
+                        {messageHistory.length > 0 && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 text-center sm:text-left truncate">
+                            <span className="hidden sm:inline">Version {currentMessageIndex + 1} of {messageHistory.length}</span>
+                            <span className="sm:hidden">{currentMessageIndex + 1}/{messageHistory.length}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Refinement Box */}
+                      {showRefinementBox && (
+                        <div className="border rounded-lg p-3 bg-gray-50 dark:bg-gray-800/50">
+                          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                            How would you like to refine this message?
+                          </label>
+                          <div className="space-y-2">
+                            <Input
+                              placeholder="🔧 E.g., 'Make it funnier', 'Add mention of their hobby', 'More formal tone'"
+                              value={refinementPrompt}
+                              onChange={(e) => setRefinementPrompt(e.target.value)}
+                              style={{ fontSize: '16px' }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handleRefineMessage();
+                                }
+                              }}
+                            />
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              📱 <strong>Quick tips:</strong> "Shorter", "Add emoji", "More personal", "Different tone" work great!
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                onClick={handleRefineMessage}
+                                disabled={isRefiningMessage || !refinementPrompt.trim()}
+                                className="gap-1"
+                              >
+                                <RefreshCw className={`w-3 h-3 ${isRefiningMessage ? 'animate-spin' : ''}`} />
+                                {isRefiningMessage ? "Refining..." : "Apply Changes"}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setShowRefinementBox(false);
+                                  setRefinementPrompt("");
+                                }}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   
                   {/* Handwritten Message Option */}
                   <div className="flex items-center space-x-2 mt-2">
@@ -1916,15 +3375,15 @@ Return only the rewritten prompt, no explanations.`;
 
             {/* Reference Photo */}
             <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-                Reference Photo (Optional)
-              </label>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                Upload a photo to transform into stylized card artwork!
-              </p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
-                ✨ For your privacy, photos are transformed into cartoon or illustrated style - not exact replicas
-              </p>
+                          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+              Reference Photo (Optional)
+            </label>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+              Upload a photo to create cartoon characters that look like the people in your photo!
+            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+              ✨ For your privacy, photos are turned into cartoon/illustrated characters - not realistic depictions
+            </p>
               {!referenceImage ? (
                 <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center">
                   <input
@@ -1938,7 +3397,7 @@ Return only the rewritten prompt, no explanations.`;
                   <label htmlFor="reference-upload" className="cursor-pointer">
                     <Wand2 className="w-6 h-6 mx-auto mb-2 text-gray-400" />
                     <div className="text-sm text-gray-600 dark:text-gray-400">
-                      {isUploading ? "Uploading..." : "Upload photo to transform"}
+                      {isUploading ? "Uploading..." : "Upload photo to create characters"}
                     </div>
                   </label>
                 </div>
@@ -1962,49 +3421,48 @@ Return only the rewritten prompt, no explanations.`;
                     </Button>
                   </div>
                   <Textarea
-                    placeholder="How should we transform your photo? (e.g., 'Turn us into cute cartoon characters while keeping our faces recognizable')"
+                    placeholder="Character style instructions (optional): e.g., 'Make us look like anime characters' or 'Keep our exact outfits and accessories but in watercolor style'"
                     value={imageTransformation}
                     onChange={(e) => setImageTransformation(e.target.value)}
-                    rows={2}
+                    rows={3}
                     className="resize-none"
                     style={{ fontSize: '16px' }}
                   />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    💡 <strong>Tip:</strong> Leave blank to keep exact clothing & accessories, or specify style changes like "anime style" or "vintage cartoon look"
+                  </p>
                 </div>
               )}
             </div>
 
-            {/* Advanced Options */}
-            <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" className="w-full justify-between p-0 h-auto">
-                  <span className="flex items-center gap-2 text-sm font-medium">
-                    <Settings className="w-4 h-4" />
-                    Advanced Options
-                  </span>
-                  <ChevronDown className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="space-y-4 mt-4">
-                {/* Model Selection */}
-                  <div>
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-                    Image Model
-                    </label>
+            {/* Advanced Options - Controlled by Settings Menu */}
+            {showAdvanced && (
+              <div className="space-y-4 p-4 border rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                <div className="flex items-center gap-2 mb-4">
+                  <Settings className="w-4 h-4" />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Advanced Options</span>
+                </div>
+
+                {/* Image Model Selection */}
+                <div>
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                    Image Generation Model
+                  </label>
                   <Select value={selectedImageModel} onValueChange={setSelectedImageModel}>
                     <SelectTrigger>
-                      <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {imageModels.map((model) => (
-                          <SelectItem key={model.id} value={model.id}>
+                      <SelectValue placeholder="Choose image model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {imageModels.map((model) => (
+                        <SelectItem key={model.id} value={model.id}>
                           <div>
                             <div className="font-medium">{model.label}</div>
                             <div className="text-xs text-muted-foreground">{model.description}</div>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Paper Size Selection */}
@@ -2039,108 +3497,57 @@ Return only the rewritten prompt, no explanations.`;
                       <SelectValue placeholder="Choose number of cards" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1">
-                        <div>
-                          <div className="font-medium">1 Card</div>
-                          <div className="text-xs text-muted-foreground">Single card generation</div>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="2">
-                        <div>
-                          <div className="font-medium">2 Cards</div>
-                          <div className="text-xs text-muted-foreground">Generate 2 variations to choose from</div>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="3">
-                        <div>
-                          <div className="font-medium">3 Cards</div>
-                          <div className="text-xs text-muted-foreground">Generate 3 variations to choose from</div>
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="4">
-                        <div>
-                          <div className="font-medium">4 Cards</div>
-                          <div className="text-xs text-muted-foreground">Generate 4 variations to choose from</div>
-                        </div>
-                      </SelectItem>
+                      {[1, 2, 3, 4, 5].map((num) => (
+                        <SelectItem key={num} value={num.toString()}>
+                          {num} Card{num > 1 ? 's' : ''}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
-                  {numberOfCards > 1 && (
-                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
-                      ✨ Multiple cards will be generated in parallel with the same prompt for creative variety
-                    </p>
-                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Generate multiple card variations to choose from
+                  </p>
                 </div>
 
                 {/* Print Options */}
-                <div>
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">
-                    Print Options
-                  </label>
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="front-back-only"
-                        checked={isFrontBackOnly}
-                        onChange={(e) => setIsFrontBackOnly(e.target.checked)}
-                        className="rounded"
-                      />
-                      <label htmlFor="front-back-only" className="text-sm text-gray-600 dark:text-gray-400">
-                        Front/Back only (for single-sided printers)
-                      </label>
-                    </div>
-                    {isFrontBackOnly && (
-                      <p className="text-xs text-amber-600 dark:text-amber-400 ml-6">
-                        💡 Perfect for single-sided printers - you can write your message inside the folded card
-                      </p>
-                    )}
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="front-back-only"
+                      checked={isFrontBackOnly}
+                      onChange={(e) => setIsFrontBackOnly(e.target.checked)}
+                      className="rounded"
+                    />
+                    <label htmlFor="front-back-only" className="text-sm text-gray-700 dark:text-gray-300">
+                      Front and back only (no interior pages)
+                    </label>
                   </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Perfect for postcards or simple greeting cards
+                  </p>
                 </div>
 
-                {/* Handwriting Sample */}
+                {/* Clear Saved Data Section */}
                 <div>
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-                    Handwriting Sample (Optional)
+                    Data Management
                   </label>
-                  {!handwritingSample ? (
-                    <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0], 'handwriting')}
-                        disabled={isUploading}
-                        className="hidden"
-                        id="handwriting-upload"
-                      />
-                      <label htmlFor="handwriting-upload" className="cursor-pointer">
-                        <Upload className="w-6 h-6 mx-auto mb-2 text-gray-400" />
-                        <div className="text-sm text-gray-600 dark:text-gray-400">
-                          {isUploading ? "Uploading..." : "Upload handwriting sample"}
-                        </div>
-                      </label>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <Edit3 className="w-4 h-4 text-green-600" />
-                        <span className="text-sm text-green-800 dark:text-green-200">{handwritingSample.name}</span>
-                      </div>
-                      <Button 
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setHandwritingSample(null);
-                          setHandwritingSampleUrl(null);
-                        }}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={clearSavedData}
+                    className="w-full gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  >
+                    <X className="w-4 h-4" />
+                    Clear Saved Data
+                  </Button>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Remove all saved form data and generated cards from your browser
+                  </p>
                 </div>
-              </CollapsibleContent>
-            </Collapsible>
+              </div>
+            )}
 
                 {/* Privacy & Terms Section */}
                 <Collapsible className="space-y-2">
@@ -2206,38 +3613,100 @@ Return only the rewritten prompt, no explanations.`;
                   </CollapsibleContent>
                 </Collapsible>
 
+                {/* Clean Progress Indicator */}
+                {(isGenerating || isGeneratingMessage) && (
+                  <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/30 dark:to-cyan-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <div className="space-y-3">
+                      {/* Progress Message */}
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                        <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                          {generationProgress || "Generating your card..."}
+                        </span>
+                      </div>
+
+                      {/* Clean Progress Bar */}
+                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                        <div 
+                          className="bg-gradient-to-r from-blue-500 to-cyan-500 h-3 rounded-full transition-all duration-1000 ease-out"
+                          style={{ width: `${Math.min(progressPercentage, 100)}%` }}
+                        />
+                      </div>
+
+                      {/* Progress Text and Time Display */}
+                      <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
+                        <span className="font-medium">
+                          {Math.round(progressPercentage)}% Complete
+                        </span>
+                        <div className="flex items-center gap-3">
+                          {currentElapsedTime > 0 && (
+                            <span className="text-blue-600 dark:text-blue-400">
+                              ⏱️ {formatGenerationTime(currentElapsedTime)}
+                            </span>
+                          )}
+                          <span className="text-gray-500">
+                            ~2-3 min expected
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Generate Button */}
                 <Button
-                  onClick={handleGenerateCard}
-                  disabled={isGenerating || isGeneratingMessage || !prompt.trim() || !userEmail.trim()}
-              className="w-full bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 h-12"
+                  onClick={handleGenerateCardAsync}
+                  disabled={isGenerating || isGeneratingMessage || !userEmail.trim()}
+                  className={`w-full h-12 transition-all duration-300 ${
+                    isCardCompleted 
+                      ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700' 
+                      : 'bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700'
+                  }`}
                   size="lg"
                 >
                   {isGenerating || isGeneratingMessage ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
                       {isGeneratingMessage ? (
-                        <span>✨ Crafting the perfect message...</span>
-                      ) : countdown > 0 ? (
-                        <div className="flex items-center">
-                          <Clock className="w-4 h-4 mr-2" />
-                          <span className={countdown <= 10 ? 'text-yellow-200 animate-pulse' : ''}>
-                            ✨ {formatCountdown(countdown)} of magic remaining
-                          </span>
-                        </div>
-                      ) : generationProgress ? (
-                        <span>{generationProgress}</span>
+                        <span>Writing your message...</span>
                       ) : (
-                        <span>✨ Crafting magic...</span>
+                        <span>Creating your card...</span>
                       )}
                     </>
+                  ) : isCardCompleted ? (
+                    <div className="flex items-center justify-center w-full">
+                      <div className="w-5 h-5 mr-2 text-white">✅</div>
+                      <span>Card Completed!</span>
+                    </div>
                   ) : (
                     <>
-                  <Sparkles className="w-5 h-5 mr-2" />
-                  {numberOfCards > 1 ? `Create ${numberOfCards} Cards` : 'Create Card'}
+                      <Sparkles className="w-5 h-5 mr-2" />
+                      {numberOfCards > 1 ? `Create ${numberOfCards} Cards` : 'Create Card'}
                     </>
                   )}
                 </Button>
+                
+                {/* Action buttons when card is completed */}
+                {isCardCompleted && (
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <Button
+                      onClick={handleRegenerateCard}
+                      variant="outline"
+                      className="flex items-center gap-2 border-blue-200 hover:border-blue-300 hover:bg-blue-50 dark:border-blue-800 dark:hover:border-blue-700 dark:hover:bg-blue-900/20"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Regenerate Same
+                    </Button>
+                    <Button
+                      onClick={handleCreateNewCard}
+                      variant="outline"
+                      className="flex items-center gap-2 border-green-200 hover:border-green-300 hover:bg-green-50 dark:border-green-800 dark:hover:border-green-700 dark:hover:bg-green-900/20"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      Create New Card
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -2247,12 +3716,33 @@ Return only the rewritten prompt, no explanations.`;
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <div>
-                          <CardTitle>
+                          <CardTitle className="flex items-center gap-2">
+                            {isCardCompleted && (
+                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                                <span className="text-white text-sm">✓</span>
+                              </div>
+                            )}
                             {numberOfCards > 1 ? `Your Cards (${generatedCards.length} Generated)` : 'Your Card'}
                           </CardTitle>
                           <CardDescription>
-                            Created {generatedCard.createdAt.toLocaleDateString()}
-                            {numberOfCards > 1 && ` • Viewing Card ${selectedCardIndex + 1} of ${generatedCards.length}`}
+                            {isCardCompleted ? (
+                              <span className="text-green-600 dark:text-green-400 font-medium">
+                                🎉 Card generation complete! Your card is ready for printing or sharing.
+                                {generationDuration && (
+                                  <>
+                                    <br />
+                                    <span className="text-sm text-gray-500 dark:text-gray-400">
+                                      ⚡ Generated in {formatGenerationTime(generationDuration)}
+                                    </span>
+                                  </>
+                                )}
+                              </span>
+                            ) : (
+                              <>
+                                Created {new Date(generatedCard.createdAt).toLocaleDateString()}
+                                {numberOfCards > 1 && ` • Viewing Card ${selectedCardIndex + 1} of ${generatedCards.length}`}
+                              </>
+                            )}
                           </CardDescription>
                         </div>
 
@@ -2316,9 +3806,14 @@ Return only the rewritten prompt, no explanations.`;
                           });
                         }}
                         isFrontBackOnly={isFrontBackOnly}
-                        onPrint={handlePrint}
+                        onPrint={handlePrintClick}
                         paperConfig={paperSizes.find(size => size.id === selectedPaperSize) || paperSizes[0]}
                         sectionLoadingStates={sectionLoadingStates}
+                        // Pass paper size control props
+                        selectedPaperSize={selectedPaperSize}
+                        onPaperSizeChange={setSelectedPaperSize}
+                        paperSizes={paperSizes}
+                        isCardCompleted={isCardCompleted}
                       />
                     </CardContent>
                   </Card>
@@ -2340,6 +3835,170 @@ Return only the rewritten prompt, no explanations.`;
                 </CardContent>
               </Card>
             )}
+
+        {/* Template Gallery Dialog */}
+        <Dialog open={showTemplateGallery} onOpenChange={setShowTemplateGallery}>
+          <DialogContent className="sm:max-w-4xl max-h-[80vh] overflow-hidden">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Eye className="w-5 h-5 text-blue-600" />
+                Choose a Template
+              </DialogTitle>
+              <DialogDescription>
+                Browse existing cards and use them as templates for your new card
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="flex-1 overflow-auto">
+              {isLoadingTemplates ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="bg-gray-100 rounded-lg animate-pulse">
+                      <div className="aspect-[2/3] bg-gray-200 rounded-t-lg"></div>
+                      <div className="p-3 space-y-2">
+                        <div className="h-4 bg-gray-200 rounded"></div>
+                        <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : availableTemplates.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Eye className="w-8 h-8 text-gray-400" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">No Templates Available</h3>
+                  <p className="text-gray-600">Create your first card to start building a template library!</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 max-h-[60vh] overflow-y-auto">
+                  {availableTemplates.map((template) => (
+                    <div
+                      key={template.id}
+                      className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
+                      onClick={() => applyTemplate(template)}
+                    >
+                      <div className="aspect-[2/3] relative overflow-hidden bg-gray-100">
+                        {template.frontCover ? (
+                          <img
+                            src={template.frontCover}
+                            alt="Template preview"
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                            <div className="text-center text-gray-500">
+                              <Eye className="w-8 h-8 mx-auto mb-2" />
+                              <p className="text-sm">No preview</p>
+                            </div>
+                          </div>
+                        )}
+                        <div className="absolute top-2 right-2">
+                          <span className="bg-black/50 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
+                            Use Template
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="p-3">
+                        <h3 className="font-medium text-gray-900 text-sm line-clamp-2 mb-1">
+                          {template.prompt || 'Untitled Template'}
+                        </h3>
+                        <p className="text-xs text-gray-500">
+                          Created {template.createdAt.toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div className="flex justify-between items-center pt-4 border-t">
+              <p className="text-sm text-gray-500">
+                Click any card to use it as a template for your new creation
+              </p>
+              <Button
+                variant="outline"
+                onClick={() => setShowTemplateGallery(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Print Confirmation Dialog */}
+        <Dialog open={showPrintConfirmation} onOpenChange={setShowPrintConfirmation}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-500" />
+                Confirm Print
+              </DialogTitle>
+              <DialogDescription>
+                Are you ready to print your greeting card?
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <Printer className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-blue-900 dark:text-blue-100">
+                      Physical Print Service
+                    </h4>
+                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                      This will send your card to our on-site printer. Your physical greeting card will be ready for pickup shortly after printing.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span>Card will be printed in high quality color</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span>
+                    {isFrontBackOnly ? 'Front and back only' : 'Full greeting card with interior pages'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span>Ready for pickup in a few minutes</span>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg">
+                <p className="text-sm text-amber-800 dark:text-amber-200">
+                  <strong>Please confirm:</strong> You are ready to pick up your printed card from our location.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => setShowPrintConfirmation(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleConfirmPrint}
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+              >
+                <Printer className="w-4 h-4 mr-2" />
+                Print Card
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
