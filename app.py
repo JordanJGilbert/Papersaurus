@@ -12,6 +12,7 @@ import uuid
 from dotenv import load_dotenv
 from routes.signal_bot import signal_bp, init_signal_bot
 # Note: Using sync_read_data and sync_write_data defined in this file for Flask routes
+from fast_card_cache import get_cache
 import anthropic
 import asyncio
 import threading
@@ -96,6 +97,11 @@ init_signal_bot()
 # since we're using a separate service
 
 DATA_DIR = 'data'
+CARDS_DIR = os.path.join(DATA_DIR, 'cards')
+
+# Ensure directories exist
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(CARDS_DIR, exist_ok=True)
 STATIC_DIR = 'static'
 
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
@@ -157,6 +163,11 @@ def qr_test():
 def card_gallery():
     """Serve the card gallery page"""
     return render_template('card_gallery.html')
+
+@app.route('/delete-cards')
+def delete_cards_page():
+    """Serve the card deletion management page"""
+    return render_template('delete_cards.html')
 
 @app.route('/chat')
 def chatbot_ui():
@@ -400,6 +411,81 @@ def upload_file():
     except Exception as e:
         print(f"Error uploading file: {str(e)}")
         return jsonify({"error": f"Upload failed: {str(e)}"}), 500
+
+@app.route('/generate_thumbnail', methods=['POST'])
+def generate_thumbnail():
+    """Generate optimized thumbnail version of card images"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+        
+        image_url = data.get('image_url')
+        if not image_url:
+            return jsonify({"error": "Missing 'image_url' parameter"}), 400
+        
+        # Default thumbnail dimensions (maintain 2:3 aspect ratio for cards)
+        thumb_width = data.get('width', 400)
+        thumb_height = data.get('height', 600)
+        quality = data.get('quality', 85)
+        
+        # Download the original image
+        try:
+            response = requests.get(image_url, timeout=30)
+            response.raise_for_status()
+            img_data = response.content
+        except Exception as e:
+            return jsonify({"error": f"Failed to download image: {str(e)}"}), 400
+        
+        # Process the image
+        try:
+            img = Image.open(BytesIO(img_data))
+            
+            # Resize while maintaining aspect ratio
+            img.thumbnail((thumb_width, thumb_height), Image.Resampling.LANCZOS)
+            
+            # Convert to RGB if necessary (for WebP support)
+            if img.mode in ('RGBA', 'LA', 'P'):
+                img = img.convert('RGB')
+            
+            # Save as WebP for better compression
+            output = BytesIO()
+            img.save(output, format='WebP', quality=quality, optimize=True)
+            output.seek(0)
+            
+            # Generate unique key for thumbnail
+            thumb_key = f"thumb_{hashlib.md5(f'{image_url}_{thumb_width}x{thumb_height}_{quality}'.encode()).hexdigest()}"
+            
+            # Store thumbnail data
+            thumb_data = {
+                'content_type': 'image/webp',
+                'data': base64.b64encode(output.getvalue()).decode('utf-8'),
+                'original_url': image_url,
+                'dimensions': f"{thumb_width}x{thumb_height}",
+                'quality': quality,
+                'created_timestamp': time.time(),
+                'read_count': 0
+            }
+            
+            file_path = get_file_path(thumb_key)
+            with open(file_path, 'w') as f:
+                json.dump(thumb_data, f)
+            
+            # Return the thumbnail URL
+            thumbnail_url = f"/file/{thumb_key}"
+            return jsonify({
+                "thumbnail_url": thumbnail_url,
+                "original_url": image_url,
+                "dimensions": f"{img.width}x{img.height}",
+                "file_size_kb": round(len(output.getvalue()) / 1024, 2)
+            })
+            
+        except Exception as e:
+            return jsonify({"error": f"Failed to process image: {str(e)}"}), 500
+            
+    except Exception as e:
+        print(f"Error generating thumbnail: {str(e)}")
+        return jsonify({"error": f"Thumbnail generation failed: {str(e)}"}), 500
 
 @app.route('/mcp/status', methods=['GET'])
 def mcp_status():
@@ -4739,18 +4825,14 @@ def sync_read_data(key):
 # Card sharing routes
 @app.route('/api/cards/store', methods=['POST'])
 def store_card():
-    """Store a card for sharing and return shareable URL"""
+    """Store a new greeting card"""
     try:
-        data = request.json
-        if not data:
-            return jsonify({'error': 'No card data provided'}), 400
+        data = request.get_json()
         
-        # Generate friendly card ID
-        card_id = generate_friendly_card_id()
+        # Generate card ID if not provided
+        card_id = data.get('id') or str(uuid.uuid4())
         
-        print(f"Storing card {card_id} with data: {data}")
-        
-        # Store card data using existing database system
+        # Create card data structure
         card_data = {
             'id': card_id,
             'prompt': data.get('prompt', ''),
@@ -4759,15 +4841,19 @@ def store_card():
             'leftPage': data.get('leftPage', ''),
             'rightPage': data.get('rightPage', ''),
             'createdAt': time.time(),
-            'expiresAt': time.time() + (30 * 24 * 60 * 60)  # 30 days from now
+            'expiresAt': time.time() + (365 * 24 * 60 * 60),  # 1 year expiry
+            'version': 1
         }
         
-        # Store card data using synchronous database function
-        sync_write_data(f"shared_card_{card_id}", card_data)
+        # Store in dedicated cards directory
+        card_filename = f"card_{card_id}.json"
+        card_path = os.path.join(CARDS_DIR, card_filename)
         
-        # Return shareable URL
+        with open(card_path, 'w') as f:
+            json.dump(card_data, f, indent=2)
+        
+        # Generate share URL
         domain = DOMAIN_FROM_ENV or 'https://vibecarding.com'
-        # Remove https:// if already present to avoid double protocol
         if domain.startswith('https://'):
             share_url = f"{domain}/card/{card_id}"
         else:
@@ -4776,16 +4862,122 @@ def store_card():
         return jsonify({
             'status': 'success',
             'card_id': card_id,
-            'share_url': share_url
+            'share_url': share_url,
+            'message': 'Card stored successfully'
         })
         
     except Exception as e:
         print(f"Error storing card: {str(e)}")
         return jsonify({
-            'error': 'Failed to store card',
-            'details': str(e)
+            'status': 'error',
+            'message': str(e)
         }), 500
 
+@app.route('/api/cards/list', methods=['GET'])
+def list_all_cards():
+    """List all stored cards with pagination and filtering"""
+    try:
+        # Check if this is a template request (lighter payload)
+        template_mode = request.args.get('template_mode', 'false').lower() == 'true'
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 20))
+        search = request.args.get('search', '').lower()
+        
+        cards = []
+        
+        # Read all card files from the dedicated cards directory
+        if os.path.exists(CARDS_DIR):
+            for filename in os.listdir(CARDS_DIR):
+                if not filename.startswith('card_') or not filename.endswith('.json'):
+                    continue
+                    
+                card_path = os.path.join(CARDS_DIR, filename)
+                try:
+                    with open(card_path, 'r') as f:
+                        card_data = json.load(f)
+                    
+                    # Skip expired cards
+                    if card_data.get('expiresAt', 0) < time.time():
+                        continue
+                    
+                    # Apply search filter if provided
+                    if search:
+                        prompt = card_data.get('prompt', '').lower()
+                        card_id = card_data.get('id', '').lower()
+                        if search not in prompt and search not in card_id:
+                            continue
+                    
+                    # Format creation date
+                    created_at = card_data.get('createdAt', 0)
+                    from datetime import datetime
+                    created_formatted = datetime.fromtimestamp(created_at).strftime('%B %d, %Y at %I:%M %p') if created_at else 'Unknown'
+                    
+                    # Generate share URL
+                    domain = DOMAIN_FROM_ENV or 'https://vibecarding.com'
+                    if domain.startswith('https://'):
+                        share_url = f"{domain}/card/{card_data.get('id')}"
+                    else:
+                        share_url = f"https://{domain}/card/{card_data.get('id')}"
+                    
+                    if template_mode:
+                        # Lighter payload for template requests
+                        cards.append({
+                            'id': card_data.get('id'),
+                            'prompt': card_data.get('prompt', ''),
+                            'frontCover': card_data.get('frontCover', ''),
+                            'createdAt': created_at,
+                            'createdAtFormatted': created_formatted,
+                            'hasImages': bool(card_data.get('frontCover'))
+                        })
+                    else:
+                        # Full payload for gallery requests
+                        cards.append({
+                            'id': card_data.get('id'),
+                            'prompt': card_data.get('prompt', ''),
+                            'frontCover': card_data.get('frontCover', ''),
+                            'backCover': card_data.get('backCover', ''),
+                            'leftPage': card_data.get('leftPage', ''),
+                            'rightPage': card_data.get('rightPage', ''),
+                            'createdAt': created_at,
+                            'createdAtFormatted': created_formatted,
+                            'shareUrl': share_url,
+                            'hasImages': bool(card_data.get('frontCover') or card_data.get('backCover') or 
+                                           card_data.get('leftPage') or card_data.get('rightPage'))
+                        })
+                        
+                except (json.JSONDecodeError, IOError, KeyError) as e:
+                    print(f"Error reading card file {filename}: {str(e)}")
+                    continue
+        
+        # Sort by creation time (newest first)
+        cards.sort(key=lambda x: x.get('createdAt', 0), reverse=True)
+        
+        # Apply pagination
+        total_cards = len(cards)
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        paginated_cards = cards[start_idx:end_idx]
+        
+        return jsonify({
+            'status': 'success',
+            'cards': paginated_cards,
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total': total_cards,
+                'pages': (total_cards + per_page - 1) // per_page,
+                'has_next': end_idx < total_cards,
+                'has_prev': page > 1
+            },
+            'search': search if search else None
+        })
+        
+    except Exception as e:
+        print(f"Error listing cards: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
 
 @app.route('/api/cards/send-email', methods=['POST'])
 def send_card_email():
@@ -4849,13 +5041,21 @@ vibecarding@ast.engineer""",
 def view_shared_card(card_id):
     """Serve standalone card viewer page"""
     try:
-        # Retrieve card data using synchronous database function
-        card_data = sync_read_data(f"shared_card_{card_id}")
+        # Try to load card from new cards directory structure
+        card_path = os.path.join(CARDS_DIR, f"card_{card_id}.json")
+        card_data = None
         
-        print(f"Retrieving card {card_id}, found data: {card_data}")
+        if os.path.exists(card_path):
+            with open(card_path, 'r') as f:
+                card_data = json.load(f)
+        else:
+            # Fallback: try old storage method for backward compatibility
+            card_data = sync_read_data(f"shared_card_{card_id}")
+        
+        print(f"Retrieving card {card_id}, found data: {bool(card_data)}")
         
         if not card_data:
-            print(f"Card {card_id} not found in database")
+            print(f"Card {card_id} not found")
             abort(404)
         
         # Check if card has expired
@@ -5707,111 +5907,117 @@ def generate_qr_with_logo(url: str, logo_path: str = None, size: int = 160, seam
         print(f"❌ Error generating QR code: {e}")
         return None
 
-@app.route('/api/cards/list', methods=['GET'])
-def list_all_cards():
-    """List all stored cards with pagination and filtering"""
-    # Check if this is a template request (lighter payload)
-    template_mode = request.args.get('template_mode', 'false').lower() == 'true'
-    """List all stored cards with pagination and filtering"""
+# Removed static JSON endpoint - using dynamic list endpoint for always-current data
+
+@app.route('/api/cards/delete/<card_id>', methods=['DELETE'])
+def delete_card(card_id):
+    """Delete a card from both new and old storage systems"""
     try:
-        page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 20))
-        search = request.args.get('search', '').lower()
+        deleted_from = []
         
-        cards = []
+        # Try to delete from new centralized storage
+        new_card_path = os.path.join(CARDS_DIR, f"card_{card_id}.json")
+        if os.path.exists(new_card_path):
+            os.remove(new_card_path)
+            deleted_from.append("new_storage")
         
-        # Search through all files for shared card entries
-        for root, dirs, files in os.walk(DATA_DIR):
-            for file in files:
-                file_path = os.path.join(root, file)
-                try:
-                    with open(file_path, 'r') as f:
-                        data = json.load(f)
-                    
-                    # Check if this is a shared card entry
-                    if (data.get('key', '').startswith('shared_card_') and 
-                        isinstance(data.get('value'), dict)):
-                        
-                        card_data = data['value']
-                        card_id = data['key'].replace('shared_card_', '')
-                        
-                        # Skip expired cards
-                        if card_data.get('expiresAt', 0) < time.time():
-                            continue
-                        
-                        # Apply search filter if provided
-                        if search:
-                            prompt = card_data.get('prompt', '').lower()
-                            if search not in prompt and search not in card_id.lower():
-                                continue
-                        
-                        # Format creation date
-                        created_at = card_data.get('createdAt', 0)
-                        from datetime import datetime
-                        created_formatted = datetime.fromtimestamp(created_at).strftime('%B %d, %Y at %I:%M %p') if created_at else 'Unknown'
-                        
-                        # Generate share URL
-                        domain = DOMAIN_FROM_ENV or 'https://vibecarding.com'
-                        if domain.startswith('https://'):
-                            share_url = f"{domain}/card/{card_id}"
-                        else:
-                            share_url = f"https://{domain}/card/{card_id}"
-                        
-                        if template_mode:
-                            # Lighter payload for template requests
-                            cards.append({
-                                'id': card_id,
-                                'prompt': card_data.get('prompt', ''),
-                                'frontCover': card_data.get('frontCover', ''),
-                                'createdAt': created_at,
-                                'createdAtFormatted': created_formatted,
-                                'hasImages': bool(card_data.get('frontCover'))
-                            })
-                        else:
-                            # Full payload for gallery requests
-                            cards.append({
-                                'id': card_id,
-                                'prompt': card_data.get('prompt', ''),
-                                'frontCover': card_data.get('frontCover', ''),
-                                'backCover': card_data.get('backCover', ''),
-                                'leftPage': card_data.get('leftPage', ''),
-                                'rightPage': card_data.get('rightPage', ''),
-                                'createdAt': created_at,
-                                'createdAtFormatted': created_formatted,
-                                'shareUrl': share_url,
-                                'hasImages': bool(card_data.get('frontCover') or card_data.get('backCover') or 
-                                               card_data.get('leftPage') or card_data.get('rightPage'))
-                            })
-                        
-                except (json.JSONDecodeError, IOError, KeyError):
-                    continue
+        # Try to delete from old hash-based storage
+        old_card_key = f"shared_card_{card_id}"
+        old_card_path = get_file_path(old_card_key)
+        if os.path.exists(old_card_path):
+            os.remove(old_card_path)
+            deleted_from.append("old_storage")
         
-        # Sort by creation time (newest first)
-        cards.sort(key=lambda x: x.get('createdAt', 0), reverse=True)
-        
-        # Apply pagination
-        total_cards = len(cards)
-        start_idx = (page - 1) * per_page
-        end_idx = start_idx + per_page
-        paginated_cards = cards[start_idx:end_idx]
+        if not deleted_from:
+            return jsonify({
+                'status': 'error',
+                'message': f'Card with ID "{card_id}" not found in any storage system'
+            }), 404
         
         return jsonify({
             'status': 'success',
-            'cards': paginated_cards,
-            'pagination': {
-                'page': page,
-                'per_page': per_page,
-                'total': total_cards,
-                'pages': (total_cards + per_page - 1) // per_page,
-                'has_next': end_idx < total_cards,
-                'has_prev': page > 1
-            },
-            'search': search if search else None
+            'message': f'Card "{card_id}" deleted successfully',
+            'deleted_from': deleted_from,
+            'card_id': card_id
         })
         
     except Exception as e:
-        print(f"Error listing cards: {str(e)}")
+        print(f"Error deleting card {card_id}: {str(e)}")
         return jsonify({
             'status': 'error',
-            'message': str(e)
+            'message': f'Failed to delete card: {str(e)}'
+        }), 500
+
+@app.route('/api/cards/delete', methods=['POST'])
+def bulk_delete_cards():
+    """Delete multiple cards at once"""
+    try:
+        data = request.get_json()
+        if not data or 'card_ids' not in data:
+            return jsonify({
+                'status': 'error',
+                'message': 'Missing card_ids array'
+            }), 400
+        
+        card_ids = data['card_ids']
+        if not isinstance(card_ids, list):
+            return jsonify({
+                'status': 'error',
+                'message': 'card_ids must be an array'
+            }), 400
+        
+        results = []
+        total_deleted = 0
+        
+        for card_id in card_ids:
+            try:
+                deleted_from = []
+                
+                # Try to delete from new centralized storage
+                new_card_path = os.path.join(CARDS_DIR, f"card_{card_id}.json")
+                if os.path.exists(new_card_path):
+                    os.remove(new_card_path)
+                    deleted_from.append("new_storage")
+                
+                # Try to delete from old hash-based storage
+                old_card_key = f"shared_card_{card_id}"
+                old_card_path = get_file_path(old_card_key)
+                if os.path.exists(old_card_path):
+                    os.remove(old_card_path)
+                    deleted_from.append("old_storage")
+                
+                if deleted_from:
+                    results.append({
+                        'card_id': card_id,
+                        'status': 'success',
+                        'deleted_from': deleted_from
+                    })
+                    total_deleted += 1
+                else:
+                    results.append({
+                        'card_id': card_id,
+                        'status': 'not_found',
+                        'message': 'Card not found'
+                    })
+                    
+            except Exception as e:
+                results.append({
+                    'card_id': card_id,
+                    'status': 'error',
+                    'message': str(e)
+                })
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Processed {len(card_ids)} cards, deleted {total_deleted}',
+            'total_processed': len(card_ids),
+            'total_deleted': total_deleted,
+            'results': results
+        })
+        
+    except Exception as e:
+        print(f"Error in bulk delete: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Bulk delete failed: {str(e)}'
         }), 500

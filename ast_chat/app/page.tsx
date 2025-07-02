@@ -11,13 +11,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Sparkles, Printer, Heart, Gift, GraduationCap, Calendar, Wand2, MessageSquarePlus, ChevronDown, Settings, Zap, Palette, Edit3, Upload, X, Cake, ThumbsUp, PartyPopper, Trophy, TreePine, Stethoscope, CloudRain, Baby, Church, Home, MessageCircle, Eye, Wrench, Clock, Undo2, Redo2, RefreshCw, Settings2, AlertTriangle, CheckCircle, Circle } from "lucide-react";
+import { ArrowLeft, Sparkles, Printer, Heart, Gift, GraduationCap, Calendar, Wand2, MessageSquarePlus, ChevronDown, Settings, Zap, Palette, Edit3, Upload, X, Cake, ThumbsUp, PartyPopper, Trophy, TreePine, Stethoscope, CloudRain, Baby, Church, Home, MessageCircle, Eye, Wrench, Clock, Undo2, Redo2, RefreshCw, Settings2, AlertTriangle, CheckCircle, Circle, Image as ImageIcon } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import CardPreview from "@/components/CardPreview";
 import * as QRCode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
 import { ModeToggle } from "@/components/mode-toggle";
+import RecentCardsPreview from "@/components/RecentCardsPreview";
+import FastHorizontalGallery from "@/components/FastHorizontalGallery";
+import CriticalResourcePreloader from "@/components/CriticalResourcePreloader";
+import EarlyCardPreloader from "@/components/EarlyCardPreloader";
+import { useCardCache } from "@/hooks/useCardCache";
 
 // Configuration for the backend API endpoint
 const BACKEND_API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'https://vibecarding.com';
@@ -37,6 +42,13 @@ interface GeneratedCard {
     backCover: string;
     leftInterior?: string;
     rightInterior?: string;
+  };
+  // Thumbnail URLs for faster loading
+  thumbnails?: {
+    frontCover?: string;
+    backCover?: string;
+    leftPage?: string;
+    rightPage?: string;
   };
 }
 
@@ -352,6 +364,9 @@ export default function CardStudioPage() {
 
   // Job tracking state
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+
+  // Fast preview mode state
+  const [fastPreviewMode, setFastPreviewMode] = useState<boolean>(true);
 
   // Helper function to format countdown as MM:SS
   const formatCountdown = (seconds: number): string => {
@@ -849,8 +864,14 @@ export default function CardStudioPage() {
 
   // Template selection state
   const [showTemplateGallery, setShowTemplateGallery] = useState(false);
-  const [availableTemplates, setAvailableTemplates] = useState<GeneratedCard[]>([]);
-  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+  const [templateSearchQuery, setTemplateSearchQuery] = useState("");
+  const [isSearchingTemplates, setIsSearchingTemplates] = useState(false);
+  const [aiFilteredCards, setAiFilteredCards] = useState<any[]>([]);
+  const [searchMode, setSearchMode] = useState<'text' | 'ai' | 'hybrid'>('text');
+  const [textFilteredCards, setTextFilteredCards] = useState<any[]>([]);
+  
+  // Preload template cards for instant access
+  const { preloadAllCards, getCachedCards, totalCards } = useCardCache();
 
   // Print confirmation dialog state
   const [showPrintConfirmation, setShowPrintConfirmation] = useState(false);
@@ -982,7 +1003,10 @@ export default function CardStudioPage() {
 
     loadSavedState();
     setIsInitialLoadComplete(true);
-  }, []);
+    
+    // Start preloading template cards immediately on page load
+    preloadAllCards();
+  }, [preloadAllCards]);
 
   // Cleanup elapsed time interval on unmount
   useEffect(() => {
@@ -998,8 +1022,6 @@ export default function CardStudioPage() {
     checkPendingJobs();
     // Restore elapsed time tracking if generation is in progress
     restoreElapsedTimeTracking();
-    // Preload templates in the background
-    loadTemplates();
   }, []);
 
   // Save form data to localStorage whenever form state changes
@@ -1117,91 +1139,6 @@ export default function CardStudioPage() {
     }
   };
 
-  // Template functions
-  const loadTemplates = async (forceRefresh = false) => {
-    // Check cache first unless force refresh
-    if (!forceRefresh) {
-      try {
-        const cachedTemplates = localStorage.getItem('vibecarding-templates');
-        const cacheTimestamp = localStorage.getItem('vibecarding-templates-timestamp');
-        
-        if (cachedTemplates && cacheTimestamp) {
-          const cacheAge = Date.now() - parseInt(cacheTimestamp);
-          const fiveMinutes = 5 * 60 * 1000;
-          
-          // Use cache if less than 5 minutes old
-          if (cacheAge < fiveMinutes) {
-            const templates = JSON.parse(cachedTemplates).map((template: any) => ({
-              ...template,
-              createdAt: new Date(template.createdAt)
-            }));
-            setAvailableTemplates(templates);
-            return; // Exit early with cached data
-          }
-        }
-      } catch (error) {
-        console.log('Cache read failed, fetching fresh templates');
-      }
-    }
-
-    setIsLoadingTemplates(true);
-    try {
-      const response = await fetch('/api/cards/list?per_page=20&template_mode=true'); // Reduced for mobile compatibility
-      const data = await response.json();
-      
-      if (data.status === 'success') {
-        // Convert the API format to GeneratedCard format
-        const templates = data.cards.map((card: any) => ({
-          id: card.id,
-          prompt: card.prompt || '',
-          frontCover: card.frontCover || '',
-          backCover: card.backCover || '',
-          leftPage: card.leftPage || '',
-          rightPage: card.rightPage || '',
-          createdAt: new Date(card.createdAt * 1000), // Convert timestamp to Date
-          shareUrl: card.shareUrl
-        }));
-        
-        setAvailableTemplates(templates);
-        
-        // Cache the templates with storage management
-        try {
-          const templatesData = JSON.stringify(templates);
-          const dataSize = new Blob([templatesData]).size;
-          
-          // Check if data is too large (>3MB for safety margin)
-          if (dataSize > 3 * 1024 * 1024) {
-            console.warn('Template data too large, reducing cache size');
-            // Keep only the first 15 templates
-            const reducedTemplates = templates.slice(0, 15);
-            localStorage.setItem('vibecarding-templates', JSON.stringify(reducedTemplates));
-          } else {
-            localStorage.setItem('vibecarding-templates', templatesData);
-          }
-          localStorage.setItem('vibecarding-templates-timestamp', Date.now().toString());
-        } catch (error) {
-          console.log('Failed to cache templates, likely storage full:', error);
-          // Try with fewer templates
-          try {
-            const reducedTemplates = templates.slice(0, 10);
-            localStorage.setItem('vibecarding-templates', JSON.stringify(reducedTemplates));
-            localStorage.setItem('vibecarding-templates-timestamp', Date.now().toString());
-          } catch (retryError) {
-            console.log('Storage critically full, skipping template cache');
-          }
-        }
-      } else {
-        throw new Error(data.message || 'Failed to load templates');
-      }
-    } catch (error) {
-      console.error('Error loading templates:', error);
-      if (!forceRefresh) {
-        toast.error("Failed to load card templates");
-      }
-    } finally {
-      setIsLoadingTemplates(false);
-    }
-  };
 
   const applyTemplate = (template: GeneratedCard) => {
     // Apply template data to form
@@ -2880,6 +2817,388 @@ Return only the rewritten prompt, no explanations.`;
   };
 
   // Actual print function after confirmation
+  // Extracted AI Analysis Logic for Reuse
+  const performAIAnalysis = async (cardsToAnalyze: any[], searchQuery: string) => {
+    const adaptiveBatchSize = Math.min(
+      Math.max(10, Math.floor(cardsToAnalyze.length / 8)), // 8 batches max
+      searchQuery.split(' ').length > 3 ? 15 : 25 // Smaller batches for complex queries
+    );
+    
+    const batches = [];
+    for (let i = 0; i < cardsToAnalyze.length; i += adaptiveBatchSize) {
+      batches.push(cardsToAnalyze.slice(i, i + adaptiveBatchSize));
+    }
+    
+    const analysisPrompt = `User is searching for: "${searchQuery}"
+
+Analyze each greeting card image and rate how well it matches the user's search query on a scale of 1-100.
+
+Consider:
+- Visual style matching (watercolor, cartoon, realistic, etc.)
+- Colors and themes
+- Subject matter (people, animals, objects, nature, etc.)
+- Mood and atmosphere
+- Occasion appropriateness
+- Overall relevance to the search query
+
+Rate each card from 1-100 where:
+- 90-100: Perfect match for the search query
+- 70-89: Very good match with most elements matching
+- 50-69: Good match with some relevant elements
+- 30-49: Partial match with few relevant elements  
+- 1-29: Poor match, not relevant to search
+
+Return only the numeric score (1-100) for each image.`;
+
+    // Process ALL batches in parallel for maximum speed
+    const batchPromises = batches.map(async (batch: any[], batchIndex: number) => {
+      const validCards = batch.filter(card => card.frontCover);
+      const urls = validCards.map(card => card.frontCover);
+      
+      const batchResults: Array<{
+        id: string;
+        card: any;
+        score: number;
+        analysis: string;
+      }> = [];
+      
+      if (urls.length === 0) {
+        batch.forEach(card => {
+          const textScore = card.prompt?.toLowerCase().includes(searchQuery.toLowerCase()) ? 60 : 20;
+          batchResults.push({
+            id: card.id,
+            card: card,
+            score: textScore,
+            analysis: "No image available"
+          });
+        });
+        return batchResults;
+      }
+
+      try {
+        const response = await fetch('/internal/call_mcp_tool', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tool_name: 'analyze_images',
+            arguments: {
+              urls: urls,
+              analysis_prompt: analysisPrompt
+            }
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.error && data.error !== "None" && data.error !== null) {
+            throw new Error(data.error);
+          }
+          
+          let result;
+          if (typeof data.result === 'string') {
+            try {
+              result = JSON.parse(data.result);
+            } catch {
+              result = { status: 'error', message: 'Invalid JSON response' };
+            }
+          } else {
+            result = data.result;
+          }
+          
+          if (result.status === 'success' && result.results) {
+            result.results.forEach((analysisResult: any, index: number) => {
+              if (index < validCards.length) {
+                const card = validCards[index];
+                
+                if (analysisResult.status === 'success' && analysisResult.analysis) {
+                  const scoreMatch = analysisResult.analysis.match(/\b(\d{1,3})\b/);
+                  const score = scoreMatch ? parseInt(scoreMatch[1]) : 0;
+                  
+                  batchResults.push({
+                    id: card.id,
+                    card: card,
+                    score: Math.min(Math.max(score, 0), 100),
+                    analysis: analysisResult.analysis
+                  });
+                } else {
+                  const textScore = card.prompt?.toLowerCase().includes(searchQuery.toLowerCase()) ? 60 : 20;
+                  batchResults.push({
+                    id: card.id,
+                    card: card,
+                    score: textScore,
+                    analysis: "Analysis failed, using text fallback"
+                  });
+                }
+              }
+            });
+          } else {
+            throw new Error('Invalid result structure');
+          }
+        } else {
+          throw new Error(`HTTP ${response.status}`);
+        }
+      } catch (error) {
+        console.error(`Failed to analyze batch ${batchIndex + 1}:`, error);
+        
+        batch.forEach(card => {
+          const textScore = card.prompt?.toLowerCase().includes(searchQuery.toLowerCase()) ? 60 : 20;
+          batchResults.push({
+            id: card.id,
+            card: card,
+            score: textScore,
+            analysis: "Batch analysis failed, using text fallback"
+          });
+        });
+      }
+      
+      return batchResults;
+    });
+
+    const allBatchResults = await Promise.all(batchPromises);
+    return allBatchResults.flat();
+  };
+
+  // Text-based Template Search Function (Instant)
+  const handleTextTemplateSearch = () => {
+    if (!templateSearchQuery.trim()) {
+      toast.error("Please enter a search query!");
+      return;
+    }
+
+    // Get all available cards first
+    const allCards = getCachedCards(1, Math.max(totalCards, 1000));
+    
+    if (allCards.length === 0) {
+      toast.error("No templates available to search");
+      return;
+    }
+
+    const searchTerms = templateSearchQuery.toLowerCase().split(' ').filter(term => term.length > 1);
+    
+    // Score cards based on text relevance
+    const scoredCards = allCards.map(card => {
+      const cardText = (card.prompt || '').toLowerCase();
+      let score = 0;
+      
+      searchTerms.forEach(term => {
+        // Exact word match
+        if (cardText.includes(term)) {
+          score += term.length > 3 ? 10 : 5;
+        }
+        // Partial match
+        else if (cardText.includes(term.substring(0, Math.max(3, term.length - 1)))) {
+          score += 3;
+        }
+      });
+      
+      // Boost for cards that match multiple terms
+      const matchedTerms = searchTerms.filter(term => cardText.includes(term)).length;
+      if (matchedTerms > 1) {
+        score += matchedTerms * 5;
+      }
+      
+      return {
+        ...card,
+        textScore: score
+      };
+    });
+
+    // Filter and sort by relevance
+    const filteredCards = scoredCards
+      .filter(card => card.textScore > 0)
+      .sort((a, b) => b.textScore - a.textScore)
+      .slice(0, 20); // Top 20 text matches
+
+    setTextFilteredCards(filteredCards);
+    
+    if (filteredCards.length > 0) {
+      const avgScore = Math.round(filteredCards.reduce((sum, card) => sum + card.textScore, 0) / filteredCards.length);
+      toast.success(`📝 Found ${filteredCards.length} text matches for "${templateSearchQuery}"! Average relevance: ${avgScore}`);
+    } else {
+      toast.info("🤔 No templates found matching your text search. Try different keywords!");
+    }
+  };
+
+  // AI Template Search Function with Parallel Image Analysis
+  const handleAITemplateSearch = async () => {
+    if (!templateSearchQuery.trim()) {
+      toast.error("Please enter a search query!");
+      return;
+    }
+
+    setIsSearchingTemplates(true);
+    
+    try {
+      // Get all available cards first
+      const allCards = getCachedCards(1, Math.max(totalCards, 1000));
+      
+      if (allCards.length === 0) {
+        toast.error("No templates available to search");
+        return;
+      }
+
+      // Smart pre-filtering: First filter by text relevance to reduce AI analysis load
+      const textFilteredCards = allCards.filter(card => {
+        const searchTerms = templateSearchQuery.toLowerCase().split(' ');
+        const cardText = (card.prompt || '').toLowerCase();
+        
+        // Include cards that match any search term or have high general relevance
+        return searchTerms.some(term => 
+          cardText.includes(term) || 
+          term.length <= 3 || // Include short terms (colors, etc.)
+          ['card', 'birthday', 'funny', 'cute', 'love'].some(common => cardText.includes(common))
+        );
+      });
+      
+      // If pre-filtering removes too many cards, fall back to analyzing all
+      const cardsToAnalyze = textFilteredCards.length >= Math.min(50, allCards.length * 0.3) 
+        ? textFilteredCards 
+        : allCards;
+      
+      const filterMessage = textFilteredCards.length < allCards.length 
+        ? ` (pre-filtered from ${allCards.length} based on text relevance)`
+        : '';
+      
+      toast.info(`🔍 AI analyzing ${cardsToAnalyze.length} card images for "${templateSearchQuery}"${filterMessage}...`);
+
+      // Adaptive batch sizing based on query complexity and number of cards
+      const queryComplexity = templateSearchQuery.split(' ').length;
+      const adaptiveBatchSize = Math.min(
+        Math.max(10, Math.floor(cardsToAnalyze.length / 8)), // 8 batches max
+        queryComplexity > 3 ? 15 : 25 // Smaller batches for complex queries
+      );
+      
+      console.log(`🧠 Using adaptive batch size: ${adaptiveBatchSize} (query complexity: ${queryComplexity} terms)`);
+      
+      const batches = [];
+      
+      for (let i = 0; i < cardsToAnalyze.length; i += adaptiveBatchSize) {
+        batches.push(cardsToAnalyze.slice(i, i + adaptiveBatchSize));
+      }
+      
+      console.log(`🚀 Processing ${cardsToAnalyze.length} images in ${batches.length} batches (adaptive size: ${adaptiveBatchSize})`);
+      
+      // Use the extracted AI analysis function
+      console.log(`🚀 Processing ALL ${batches.length} batches in parallel!`);
+      toast.info(`🚀 Processing ${batches.length} batches in parallel (${cardsToAnalyze.length} images total)...`);
+      
+      const analysisResults = await performAIAnalysis(cardsToAnalyze, templateSearchQuery);
+      
+      // Sort by score (highest first) and filter out low scores
+      const rankedResults = analysisResults
+        .filter(result => result.score >= 30) // Only show cards with score 30+
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 10); // Top 10 results
+
+      if (rankedResults.length > 0) {
+        const filteredCards = rankedResults.map(result => ({
+          ...result.card,
+          aiScore: result.score,
+          aiAnalysis: result.analysis
+        }));
+        
+        setAiFilteredCards(filteredCards);
+        
+        const avgScore = Math.round(rankedResults.reduce((sum, r) => sum + r.score, 0) / rankedResults.length);
+        toast.success(`🎯 Found ${filteredCards.length} matches for "${templateSearchQuery}"! Average relevance: ${avgScore}%`);
+      } else {
+        toast.info("🤔 No templates found matching your search. Try a different query!");
+        setAiFilteredCards([]);
+      }
+      
+    } catch (error) {
+      console.error('AI template search failed:', error);
+      toast.error("AI search failed. Please try again.");
+      setAiFilteredCards([]);
+    } finally {
+      setIsSearchingTemplates(false);
+    }
+  };
+
+  // Hybrid Search Function (Text + AI Enhancement)
+  const handleHybridTemplateSearch = async () => {
+    if (!templateSearchQuery.trim()) {
+      toast.error("Please enter a search query!");
+      return;
+    }
+
+    setIsSearchingTemplates(true);
+    
+    try {
+      // Phase 1: Fast text search for immediate results
+      toast.info(`🚀 Phase 1: Fast text search...`);
+      handleTextTemplateSearch();
+      
+      // Phase 2: AI enhancement on text results
+      const allCards = getCachedCards(1, Math.max(totalCards, 1000));
+      const searchTerms = templateSearchQuery.toLowerCase().split(' ').filter(term => term.length > 1);
+      
+      // Get text-filtered cards for AI analysis
+      const textCandidates = allCards.filter(card => {
+        const cardText = (card.prompt || '').toLowerCase();
+        return searchTerms.some(term => cardText.includes(term)) || searchTerms.length === 0;
+      });
+      
+      // If text filtering gives us a reasonable subset, use it; otherwise use all cards
+      const cardsToAnalyze = textCandidates.length > 0 && textCandidates.length < allCards.length * 0.8 
+        ? textCandidates 
+        : allCards;
+      
+      toast.info(`🎨 Phase 2: AI visual analysis on ${cardsToAnalyze.length} candidates...`);
+      
+             // Run AI analysis on the candidates
+       const analysisResults = await performAIAnalysis(cardsToAnalyze, templateSearchQuery);
+      
+             // Combine text and AI scores for final ranking
+       const hybridResults = analysisResults.map((result: any) => ({
+         ...result,
+         hybridScore: (result.score * 0.7) + ((result.card.textScore || 0) * 0.3) // 70% AI, 30% text
+       })).sort((a: any, b: any) => b.hybridScore - a.hybridScore);
+       
+       const finalResults = hybridResults.slice(0, 10).map((result: any) => ({
+         ...result.card,
+         aiScore: Math.round(result.hybridScore),
+         aiAnalysis: `Hybrid: ${result.analysis}`
+       }));
+       
+       setAiFilteredCards(finalResults);
+       
+       if (finalResults.length > 0) {
+         const avgScore = Math.round(hybridResults.reduce((sum: number, r: any) => sum + r.hybridScore, 0) / hybridResults.length);
+         toast.success(`🎯 Hybrid search complete! Found ${finalResults.length} matches for "${templateSearchQuery}"! Average relevance: ${avgScore}%`);
+       } else {
+         toast.info("🤔 No templates found matching your search. Try a different query!");
+       }
+      
+    } catch (error) {
+      console.error('Hybrid template search failed:', error);
+      toast.error("Hybrid search failed. Please try again.");
+    } finally {
+      setIsSearchingTemplates(false);
+    }
+  };
+
+  // Main search handler that routes to appropriate search method
+  const handleTemplateSearch = () => {
+    switch (searchMode) {
+      case 'text':
+        handleTextTemplateSearch();
+        break;
+      case 'ai':
+        handleAITemplateSearch();
+        break;
+      case 'hybrid':
+        handleHybridTemplateSearch();
+        break;
+    }
+  };
+
+  const clearTemplateSearch = () => {
+    setTemplateSearchQuery("");
+    setAiFilteredCards([]);
+    setTextFilteredCards([]);
+  };
+
   const handleConfirmPrint = async () => {
     if (!generatedCard) return;
     
@@ -2961,6 +3280,8 @@ Return only the rewritten prompt, no explanations.`;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 dark:from-gray-900 dark:via-slate-800 dark:to-gray-800">
+      <CriticalResourcePreloader />
+      <EarlyCardPreloader />
       {/* Simplified Header */}
       <header className="border-b bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-3">
@@ -2982,10 +3303,10 @@ Return only the rewritten prompt, no explanations.`;
                   </h1>
                 </div>
               </div>
-              <Link href="/card-gallery">
+              <Link href="/gallery">
                 <Button variant="ghost" size="sm" className="gap-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">
                   <Eye className="w-4 h-4" />
-                  <span className="hidden sm:inline">Gallery</span>
+                  <span className="hidden sm:inline">Infinite Gallery</span>
                 </Button>
               </Link>
             </div>
@@ -3058,7 +3379,6 @@ Return only the rewritten prompt, no explanations.`;
                         size="sm"
                         onClick={() => {
                           setShowTemplateGallery(true);
-                          loadTemplates();
                         }}
                         className="gap-2 text-xs"
                       >
@@ -3892,6 +4212,9 @@ Return only the rewritten prompt, no explanations.`;
                         onPaperSizeChange={setSelectedPaperSize}
                         paperSizes={paperSizes}
                         isCardCompleted={isCardCompleted}
+                        // Fast preview functionality
+                        fastPreviewMode={fastPreviewMode && !isCardCompleted}
+                        onViewFullCard={() => setFastPreviewMode(false)}
                       />
                     </CardContent>
                   </Card>
@@ -3914,107 +4237,277 @@ Return only the rewritten prompt, no explanations.`;
               </Card>
             )}
 
+        {/* Recent Cards Preview - Only show when no card is generated */}
+        {!generatedCard && (
+          <div className="mt-8">
+            <RecentCardsPreview 
+              maxCards={6}
+              onCardSelect={(card) => {
+                // When a card is selected from the preview, open it in a new tab
+                window.open(card.shareUrl, '_blank');
+              }}
+            />
+          </div>
+        )}
+
         {/* Template Gallery Dialog */}
         <Dialog open={showTemplateGallery} onOpenChange={setShowTemplateGallery}>
-          <DialogContent className="sm:max-w-4xl max-h-[80vh] overflow-hidden">
+          <DialogContent className="sm:max-w-6xl max-h-[90vh] overflow-hidden">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Eye className="w-5 h-5 text-blue-600" />
                 Choose a Template
               </DialogTitle>
               <DialogDescription>
-                Browse existing cards and use them as templates for your new card
+                Use AI to find perfect templates or browse all existing cards. Click any card to use as a template!
               </DialogDescription>
             </DialogHeader>
             
-            <div className="flex-1 overflow-auto">
-              {isLoadingTemplates ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="bg-gray-100 rounded-lg animate-pulse">
-                      <div className="aspect-[2/3] bg-gray-200 rounded-t-lg"></div>
-                      <div className="p-3 space-y-2">
-                        <div className="h-4 bg-gray-200 rounded"></div>
-                        <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+            {/* Template Search Section */}
+            <div className="space-y-4 pb-4 border-b">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Template Search</span>
+                </div>
+                
+                {/* Search Mode Toggle */}
+                <Select value={searchMode} onValueChange={(value: 'text' | 'ai' | 'hybrid') => setSearchMode(value)}>
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="text">
+                      <div className="flex items-center gap-2">
+                        <span>📝</span>
+                        <span>Text</span>
                       </div>
-                    </div>
-                  ))}
+                    </SelectItem>
+                    <SelectItem value="ai">
+                      <div className="flex items-center gap-2">
+                        <span>🎨</span>
+                        <span>AI Vision</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="hybrid">
+                      <div className="flex items-center gap-2">
+                        <span>⚡</span>
+                        <span>Hybrid</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              {/* Search Mode Description */}
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {searchMode === 'text' && "📝 Fast keyword search through card descriptions (instant results)"}
+                {searchMode === 'ai' && "🎨 AI analyzes card images for visual style, colors, and themes (10-15 seconds)"}
+                {searchMode === 'hybrid' && "⚡ Combines fast text search with AI visual analysis for best results"}
+              </div>
+              
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <Input
+                    placeholder={
+                      searchMode === 'text' 
+                        ? "🎯 e.g., 'birthday dog', 'funny anniversary', 'watercolor'..."
+                        : searchMode === 'ai'
+                        ? "🎯 e.g., 'watercolor style', 'cute animals', 'bright colors'..."
+                        : "🎯 e.g., 'birthday and dogs', 'funny anniversary', 'watercolor flowers'..."
+                    }
+                    value={templateSearchQuery}
+                    onChange={(e) => setTemplateSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleTemplateSearch();
+                      }
+                    }}
+                    disabled={isSearchingTemplates}
+                    style={{ fontSize: '16px' }}
+                  />
                 </div>
-              ) : availableTemplates.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Eye className="w-8 h-8 text-gray-400" />
+                <Button
+                  onClick={handleTemplateSearch}
+                  disabled={isSearchingTemplates || !templateSearchQuery.trim()}
+                  className={`gap-2 ${
+                    searchMode === 'text' 
+                      ? 'bg-blue-600 hover:bg-blue-700' 
+                      : searchMode === 'ai'
+                      ? 'bg-purple-600 hover:bg-purple-700'
+                      : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
+                  } text-white`}
+                >
+                  {isSearchingTemplates ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      {searchMode === 'hybrid' ? 'Analyzing...' : 'Searching...'}
+                    </>
+                  ) : (
+                    <>
+                      {searchMode === 'text' && <span>📝</span>}
+                      {searchMode === 'ai' && <Zap className="w-4 h-4" />}
+                      {searchMode === 'hybrid' && <span>⚡</span>}
+                      {searchMode === 'text' ? 'Text Search' : searchMode === 'ai' ? 'AI Search' : 'Hybrid Search'}
+                    </>
+                  )}
+                </Button>
+                {(templateSearchQuery || aiFilteredCards.length > 0 || textFilteredCards.length > 0) && (
+                  <Button
+                    variant="outline"
+                    onClick={clearTemplateSearch}
+                    className="gap-2"
+                  >
+                    <X className="w-4 h-4" />
+                    Clear
+                  </Button>
+                )}
+              </div>
+              
+              {/* Results Summary */}
+              {aiFilteredCards.length > 0 && (searchMode === 'ai' || searchMode === 'hybrid') && (
+                <div className="flex items-center gap-2 text-sm text-purple-600 dark:text-purple-400">
+                  <Sparkles className="w-4 h-4" />
+                  <span>
+                    {searchMode === 'hybrid' ? 'Hybrid analysis' : 'AI vision'} found {aiFilteredCards.length} matches for "{templateSearchQuery}"
+                  </span>
+                </div>
+              )}
+              
+              {textFilteredCards.length > 0 && searchMode === 'text' && (
+                <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
+                  <span>📝</span>
+                  <span>Text search found {textFilteredCards.length} matches for "{templateSearchQuery}"</span>
+                </div>
+              )}
+            </div>
+            
+            <div className="flex-1 overflow-auto">
+              {aiFilteredCards.length > 0 ? (
+                // Show AI-filtered results
+                <div className="space-y-4">
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    🎯 AI-Selected Templates (ranked by relevance)
                   </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">No Templates Available</h3>
-                  <p className="text-gray-600">Create your first card to start building a template library!</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 max-h-[60vh] overflow-y-auto">
-                  {availableTemplates.map((template) => (
-                    <div
-                      key={template.id}
-                      className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
-                      onClick={() => applyTemplate(template)}
-                    >
-                      <div className="aspect-[2/3] relative overflow-hidden bg-gray-100">
-                        {template.frontCover ? (
-                          <img
-                            src={template.frontCover}
-                            alt="Template preview"
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                            <div className="text-center text-gray-500">
-                              <Eye className="w-8 h-8 mx-auto mb-2" />
-                              <p className="text-sm">No preview</p>
+                  <div 
+                    className="flex overflow-x-auto gap-4 pb-4"
+                    style={{
+                      scrollBehavior: 'smooth',
+                      WebkitOverflowScrolling: 'touch',
+                      scrollbarWidth: 'thin',
+                      scrollSnapType: 'x mandatory'
+                    }}
+                  >
+                    {aiFilteredCards.map((card, index) => {
+                      const frontImage = card.frontCover || card.backCover || card.leftPage || card.rightPage;
+                      
+                      return (
+                        <div
+                          key={card.id}
+                          className="flex-shrink-0 w-64 cursor-pointer"
+                          style={{ scrollSnapAlign: 'start' }}
+                          onClick={() => {
+                            // Convert GalleryCard to GeneratedCard format for applyTemplate
+                            const template: GeneratedCard = {
+                              id: card.id,
+                              prompt: card.prompt || '',
+                              frontCover: card.frontCover || '',
+                              backCover: card.backCover || '',
+                              leftPage: card.leftPage || '',
+                              rightPage: card.rightPage || '',
+                              createdAt: new Date(card.createdAt * 1000),
+                              shareUrl: card.shareUrl
+                            };
+                            applyTemplate(template);
+                          }}
+                        >
+                                                     <div className="bg-gradient-to-br from-purple-900 to-blue-900 rounded-xl p-2 shadow-inner space-y-2 h-full border-2 border-purple-400 relative">
+                             {/* AI Score badge */}
+                             <div className="absolute top-2 left-2 z-10 flex gap-1">
+                               <Badge className="bg-purple-600 text-white text-xs">
+                                 #{index + 1}
+                               </Badge>
+                               {card.aiScore && (
+                                 <Badge className="bg-green-600 text-white text-xs">
+                                   {card.aiScore}%
+                                 </Badge>
+                               )}
+                             </div>
+                            
+                            {frontImage ? (
+                                                             <img
+                                 src={frontImage}
+                                 alt={`Template: ${card.prompt || 'Untitled'}`}
+                                 className="rounded-lg shadow-lg w-full h-auto object-cover select-none pointer-events-none"
+                                 loading="lazy"
+                                 style={{
+                                   userSelect: 'none'
+                                 }}
+                              />
+                            ) : (
+                              <div className="w-full h-48 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center">
+                                <div className="text-center text-gray-500">
+                                  <ImageIcon className="w-8 h-8 mx-auto mb-2" />
+                                  <p className="text-sm">No preview</p>
+                                </div>
+                              </div>
+                            )}
+                            
+                            <div className="text-xs text-purple-100 px-2 py-1 bg-purple-800/50 rounded">
+                              {card.prompt?.substring(0, 60) || 'Untitled'}
+                              {card.prompt && card.prompt.length > 60 && '...'}
                             </div>
                           </div>
-                        )}
-                        <div className="absolute top-2 right-2">
-                          <span className="bg-black/50 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
-                            Use Template
-                          </span>
                         </div>
-                      </div>
-                      
-                      <div className="p-3">
-                        <h3 className="font-medium text-gray-900 text-sm line-clamp-2 mb-1">
-                          {template.prompt || 'Untitled Template'}
-                        </h3>
-                        <p className="text-xs text-gray-500">
-                          Created {template.createdAt.toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                // Show all templates
+                <div className="space-y-4">
+                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    📚 All Templates
+                  </div>
+                  <FastHorizontalGallery
+                    templateMode={true}
+                    onCardSelect={(card) => {
+                      // Convert GalleryCard to GeneratedCard format for applyTemplate
+                      const template: GeneratedCard = {
+                        id: card.id,
+                        prompt: card.prompt || '',
+                        frontCover: card.frontCover || '',
+                        backCover: card.backCover || '',
+                        leftPage: card.leftPage || '',
+                        rightPage: card.rightPage || '',
+                        createdAt: new Date(card.createdAt * 1000),
+                        shareUrl: card.shareUrl
+                      };
+                      applyTemplate(template);
+                    }}
+                    className="max-h-[50vh]"
+                  />
                 </div>
               )}
             </div>
             
             <div className="flex justify-between items-center pt-4 border-t">
               <p className="text-sm text-gray-500">
-                Click any card to use it as a template for your new creation
+                {aiFilteredCards.length > 0 
+                  ? "AI has ranked these templates by relevance to your search"
+                  : "Use AI search above or click any card to use it as a template"
+                }
               </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => loadTemplates(true)}
-                  disabled={isLoadingTemplates}
-                  className="gap-2"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isLoadingTemplates ? 'animate-spin' : ''}`} />
-                  Refresh
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowTemplateGallery(false)}
-                >
-                  Cancel
-                </Button>
-              </div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowTemplateGallery(false);
+                  clearTemplateSearch();
+                }}
+              >
+                Cancel
+              </Button>
             </div>
           </DialogContent>
         </Dialog>

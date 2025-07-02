@@ -24,6 +24,10 @@ from google.genai import types
 import replicate
 # import base64 # Already imported globally
 
+# Simple in-memory cache for image analysis results (speeds up repeated requests)
+_analysis_cache = {}
+_cache_max_size = 1000  # Limit cache size to prevent memory issues
+
 mcp = FastMCP("Image, Video, Music, and Speech Services Server")
 
 print("Image, Video, Music, and Speech Services Server ready - Google GenAI clients will be initialized on first use")
@@ -75,6 +79,7 @@ print("Image, Video, Music, and Speech Services Server ready - Google GenAI clie
 async def analyze_images(urls: list, analysis_prompt: str = "Describe this image in detail.") -> dict:
     """
     Analyzes a list of images by downloading each from its URL and using Gemini to interpret its contents.
+    OPTIMIZED for speed with concurrent processing, image compression, and batch operations.
     Args:
         urls (list): List of image URLs to analyze.
         analysis_prompt (str): Instructions for how Gemini should analyze the images.
@@ -82,51 +87,119 @@ async def analyze_images(urls: list, analysis_prompt: str = "Describe this image
         dict: {"status": "success", "results": [ ... ]} or {"status": "error", "message": ...}
     """
     from llm_adapters import get_llm_adapter, StandardizedMessage, StandardizedLLMConfig, AttachmentPart
+    import aiohttp
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
 
-    async def analyze_single_image(url):
-        try:
-            response = await asyncio.to_thread(requests.get, url, timeout=10)
-            response.raise_for_status()
-            content_type = response.headers.get('Content-Type', '')
-            if not content_type.startswith('image/'):
-                return {"status": "error", "message": f"URL does not point to an image (content type: {content_type})", "url": url}
-            image_bytes_io = BytesIO(response.content)
-            image = await asyncio.to_thread(Image.open, image_bytes_io)
-            img_bytes_for_gemini = BytesIO()
-            img_format = image.format if image.format and image.format.upper() in Image.SAVE.keys() else "PNG"
-            await asyncio.to_thread(image.save, img_bytes_for_gemini, format=img_format)
-            img_bytes_for_gemini.seek(0)
+    # Use a shared HTTP session for connection pooling
+    connector = aiohttp.TCPConnector(limit=50, limit_per_host=10)
+    timeout = aiohttp.ClientTimeout(total=8)  # Reduced timeout for faster failures
+    
+    async def analyze_single_image(session, url, semaphore):
+        async with semaphore:  # Limit concurrent operations
+            try:
+                # Check cache first for speed
+                cache_key = hashlib.md5(f"{url}:{analysis_prompt}".encode()).hexdigest()
+                if cache_key in _analysis_cache:
+                    print(f"🚀 Cache hit for image analysis: {url[:50]}...")
+                    return _analysis_cache[cache_key]
+                
+                # Faster HTTP download with aiohttp
+                async with session.get(url, timeout=timeout) as response:
+                    if response.status != 200:
+                        return {"status": "error", "message": f"HTTP {response.status}", "url": url}
+                    
+                    content_type = response.headers.get('Content-Type', '')
+                    if not content_type.startswith('image/'):
+                        return {"status": "error", "message": f"Not an image (content type: {content_type})", "url": url}
+                    
+                    # Read image data
+                    image_data = await response.read()
+                    
+                    # Quick size check before processing
+                    if len(image_data) > 10 * 1024 * 1024:  # 10MB limit for speed
+                        return {"status": "error", "message": "Image too large (>10MB)", "url": url}
 
-            # Use the adapter for Gemini LLM call
-            adapter = get_llm_adapter("gemini-2.5-flash-preview-05-20")  # Will be forced to Flash in the adapter
-            attachment = AttachmentPart(mime_type=content_type, data=img_bytes_for_gemini.getvalue(), name=url)
-            history = [
-                StandardizedMessage(
-                    role="user",
-                    content=analysis_prompt,
-                    attachments=[attachment]
+                # Process image in thread pool for CPU-bound operations
+                def process_image():
+                    try:
+                        image = Image.open(BytesIO(image_data))
+                        
+                        # Resize large images for faster processing (maintain aspect ratio)
+                        max_size = 1024  # Reduced from original size for speed
+                        if max(image.size) > max_size:
+                            ratio = max_size / max(image.size)
+                            new_size = tuple(int(dim * ratio) for dim in image.size)
+                            image = image.resize(new_size, Image.Resampling.LANCZOS)
+                        
+                        # Convert to RGB if needed and compress
+                        if image.mode in ('RGBA', 'LA', 'P'):
+                            rgb_image = Image.new('RGB', image.size, (255, 255, 255))
+                            if image.mode == 'P':
+                                image = image.convert('RGBA')
+                            if image.mode in ('RGBA', 'LA'):
+                                rgb_image.paste(image, mask=image.split()[-1])
+                            image = rgb_image
+                        
+                        # Save as compressed JPEG for faster transmission
+                        img_bytes_io = BytesIO()
+                        image.save(img_bytes_io, format='JPEG', quality=75, optimize=True)  # Reduced quality for speed
+                        return img_bytes_io.getvalue()
+                    except Exception as e:
+                        raise Exception(f"Image processing error: {e}")
+
+                # Process image in thread pool
+                with ThreadPoolExecutor(max_workers=4) as executor:
+                    img_bytes = await asyncio.get_event_loop().run_in_executor(executor, process_image)
+
+                # Use the adapter for Gemini LLM call - using Flash-Lite for faster analysis
+                adapter = get_llm_adapter("gemini-2.5-flash-lite-preview-06-17")
+                attachment = AttachmentPart(mime_type="image/jpeg", data=img_bytes, name=url)
+                history = [
+                    StandardizedMessage(
+                        role="user",
+                        content=analysis_prompt,
+                        attachments=[attachment]
+                    )
+                ]
+                llm_config = StandardizedLLMConfig()
+                llm_response = await adapter.generate_content(
+                    model_name="gemini-2.5-flash-lite-preview-06-17",
+                    history=history,
+                    tools=None,
+                    config=llm_config
                 )
-            ]
-            llm_config = StandardizedLLMConfig()
-            llm_response = await adapter.generate_content(
-                model_name="gemini-2.5-flash-preview-05-20",
-                history=history,
-                tools=None,
-                config=llm_config
-            )
-            analysis = llm_response.text_content
-            if llm_response.error:
-                return {"status": "error", "message": f"LLM error: {llm_response.error}", "url": url}
-            return {"status": "success", "analysis": analysis, "url": url}
-        except requests.exceptions.RequestException as e:
-            return {"status": "error", "message": f"Error downloading image: {str(e)}", "url": url}
-        except Exception as e:
-            return {"status": "error", "message": f"Error analyzing image: {str(e)}", "url": url}
+                analysis = llm_response.text_content
+                if llm_response.error:
+                    return {"status": "error", "message": f"LLM error: {llm_response.error}", "url": url}
+                
+                # Cache successful result for future requests
+                result = {"status": "success", "analysis": analysis, "url": url}
+                
+                # Manage cache size
+                if len(_analysis_cache) >= _cache_max_size:
+                    # Remove oldest entries (simple FIFO)
+                    oldest_key = next(iter(_analysis_cache))
+                    del _analysis_cache[oldest_key]
+                
+                _analysis_cache[cache_key] = result
+                return result
+                
+            except asyncio.TimeoutError:
+                return {"status": "error", "message": "Request timeout", "url": url}
+            except Exception as e:
+                return {"status": "error", "message": f"Error analyzing image: {str(e)}", "url": url}
 
     if not isinstance(urls, list):
         return {"status": "error", "message": "urls must be a list of image URLs."}
-    tasks = [analyze_single_image(url) for url in urls]
-    results = await asyncio.gather(*tasks)
+    
+    # Limit concurrent operations to prevent overwhelming the system
+    semaphore = asyncio.Semaphore(10)  # Process up to 10 images concurrently
+    
+    async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+        tasks = [analyze_single_image(session, url, semaphore) for url in urls]
+        results = await asyncio.gather(*tasks, return_exceptions=False)
+    
     return {"status": "success", "results": results}
 
 def download_and_encode_image(url):
@@ -191,7 +264,8 @@ def strip_markdown(text):
 
 async def qa_check_spelling(image_url: str, original_prompt: str) -> dict:
     """
-    Check an image for spelling mistakes using Gemini 2.5 Pro vision.
+    Check an image for spelling mistakes using Gemini 2.5 Flash-Lite vision.
+    OPTIMIZED for speed with faster downloads and compressed images.
     
     Args:
         image_url: URL of the image to check
@@ -202,41 +276,71 @@ async def qa_check_spelling(image_url: str, original_prompt: str) -> dict:
     """
     try:
         from llm_adapters import get_llm_adapter, StandardizedMessage, StandardizedLLMConfig, AttachmentPart
+        import aiohttp
+        from concurrent.futures import ThreadPoolExecutor
         
-        # Download the image for analysis
-        response = await asyncio.to_thread(requests.get, image_url, timeout=10)
-        response.raise_for_status()
+        # Faster HTTP download with aiohttp
+        timeout = aiohttp.ClientTimeout(total=6)  # Reduced timeout for QA checks
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(image_url) as response:
+                if response.status != 200:
+                    return {"has_errors": False, "errors": [], "analysis": f"Could not download image: HTTP {response.status}"}
+                
+                content_type = response.headers.get('Content-Type', '')
+                if not content_type.startswith('image/'):
+                    return {"has_errors": False, "errors": [], "analysis": "Could not analyze: not an image"}
+                
+                image_data = await response.read()
         
-        content_type = response.headers.get('Content-Type', '')
-        if not content_type.startswith('image/'):
-            return {"has_errors": False, "errors": [], "analysis": "Could not analyze: not an image"}
+        # Process image for faster analysis
+        def compress_image():
+            try:
+                image = Image.open(BytesIO(image_data))
+                
+                # Resize for faster QA processing (text is still readable at smaller sizes)
+                max_size = 800  # Smaller size for QA checks
+                if max(image.size) > max_size:
+                    ratio = max_size / max(image.size)
+                    new_size = tuple(int(dim * ratio) for dim in image.size)
+                    image = image.resize(new_size, Image.Resampling.LANCZOS)
+                
+                # Convert to RGB and compress for faster transmission
+                if image.mode in ('RGBA', 'LA', 'P'):
+                    rgb_image = Image.new('RGB', image.size, (255, 255, 255))
+                    if image.mode == 'P':
+                        image = image.convert('RGBA')
+                    if image.mode in ('RGBA', 'LA'):
+                        rgb_image.paste(image, mask=image.split()[-1])
+                    image = rgb_image
+                
+                # Compress for faster analysis
+                img_bytes_io = BytesIO()
+                image.save(img_bytes_io, format='JPEG', quality=85, optimize=True)
+                return img_bytes_io.getvalue()
+            except Exception as e:
+                raise Exception(f"Image compression error: {e}")
         
-        # Create analysis prompt
-        analysis_prompt = f"""Carefully examine this image for any spelling mistakes in any visible text.
+        # Compress image in thread pool
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            compressed_image_data = await asyncio.get_event_loop().run_in_executor(executor, compress_image)
+        
+        # Create shorter, more focused analysis prompt for speed
+        analysis_prompt = f"""Quick spelling check for this image.
 
-Original prompt used to generate this image: "{original_prompt}"
+Original prompt: "{original_prompt[:200]}..."
 
-Please:
-1. Identify ALL visible text in the image
-2. Check each word for correct spelling
-3. Note any misspelled words, typos, or incorrect letter combinations
-4. Consider context - some stylized text or artistic fonts might look unusual but be correct
-5. Ignore decorative symbols, non-English text, or intentionally stylized text unless clearly misspelled
+Check for spelling errors in visible text. Respond with:
+- "SPELLING_ERRORS_FOUND" if errors exist
+- "NO_SPELLING_ERRORS" if text is correct  
+- "NO_TEXT_VISIBLE" if no readable text
 
-Respond with:
-- "SPELLING_ERRORS_FOUND" if there are any spelling mistakes
-- "NO_SPELLING_ERRORS" if all text is spelled correctly
-- "NO_TEXT_VISIBLE" if there's no readable text in the image
+Be quick and focus only on obvious spelling mistakes."""
 
-Then list any specific errors found, if any.
-
-Focus only on actual spelling mistakes, not font choices or styling."""
-
-        # Use Gemini 2.5 Pro for analysis
-        adapter = get_llm_adapter("gemini-2.5-pro-preview-06-05")
+        # Use Gemini 2.5 Flash-Lite for faster analysis
+        adapter = get_llm_adapter("gemini-2.5-flash-lite-preview-06-17")
         attachment = AttachmentPart(
-            mime_type=content_type, 
-            data=response.content, 
+            mime_type="image/jpeg", 
+            data=compressed_image_data, 
             name=f"qa_check_{image_url.split('/')[-1]}"
         )
         
@@ -250,7 +354,7 @@ Focus only on actual spelling mistakes, not font choices or styling."""
         
         llm_config = StandardizedLLMConfig()
         llm_response = await adapter.generate_content(
-            model_name="gemini-2.5-pro-preview-06-05",
+            model_name="gemini-2.5-flash-lite-preview-06-17",
             history=history,
             tools=None,
             config=llm_config

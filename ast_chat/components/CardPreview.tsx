@@ -5,9 +5,14 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, Play, Pause, RotateCcw, Maximize2, X, Edit3, Wand2, Loader2, Printer, CheckCircle, AlertCircle, Share2, Mail, Copy } from "lucide-react";
+import { ChevronLeft, ChevronRight, Play, Pause, RotateCcw, Maximize2, X, Edit3, Wand2, Loader2, Printer, CheckCircle, AlertCircle, Share2, Mail, Copy, Eye } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import ProgressiveImage from "./ProgressiveImage";
+import { generateSizesAttribute, preloadCriticalImages, generateMultipleThumbnails } from "../utils/imageUtils";
+
+// Configuration for the backend API endpoint
+const BACKEND_API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'https://vibecarding.com';
 
 interface GeneratedCard {
   id: string;
@@ -24,6 +29,13 @@ interface GeneratedCard {
     backCover: string;
     leftInterior?: string;
     rightInterior?: string;
+  };
+  // Thumbnail URLs for faster loading
+  thumbnails?: {
+    frontCover?: string;
+    backCover?: string;
+    leftPage?: string;
+    rightPage?: string;
   };
 }
 
@@ -54,6 +66,9 @@ interface CardPreviewProps {
   onPaperSizeChange?: (paperSize: string) => void;
   paperSizes?: PaperConfig[];
   isCardCompleted?: boolean;
+  // Fast preview mode - show only front cover for quick loading
+  fastPreviewMode?: boolean;
+  onViewFullCard?: () => void;
 }
 
 const slideVariants = {
@@ -91,7 +106,9 @@ export default function CardPreview({
   selectedPaperSize,
   onPaperSizeChange,
   paperSizes,
-  isCardCompleted
+  isCardCompleted,
+  fastPreviewMode = false,
+  onViewFullCard
 }: CardPreviewProps) {
   
   // Check if we're in a loading state (when card is null but we have loading states)
@@ -137,6 +154,87 @@ export default function CardPreview({
   
   // Factory state
   const [isSendingToFactory, setIsSendingToFactory] = useState(false);
+
+  // Thumbnail generation state
+  const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
+
+  // Generate thumbnail for an image
+  const generateThumbnail = async (imageUrl: string): Promise<string | null> => {
+    try {
+      // Check if thumbnail already exists
+      if (thumbnailUrls[imageUrl]) {
+        return thumbnailUrls[imageUrl];
+      }
+
+      const response = await fetch('/generate_thumbnail', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          image_url: imageUrl,
+          width: 400,
+          height: 600,
+          quality: 85
+        })
+      });
+
+      if (!response.ok) {
+        console.warn('Failed to generate thumbnail:', response.statusText);
+        return null;
+      }
+
+      const data = await response.json();
+      const thumbnailUrl = data.thumbnail_url;
+      
+      // Cache the thumbnail URL
+      setThumbnailUrls(prev => ({
+        ...prev,
+        [imageUrl]: thumbnailUrl
+      }));
+
+      return thumbnailUrl;
+    } catch (error) {
+      console.warn('Error generating thumbnail:', error);
+      return null;
+    }
+  };
+
+  // Generate thumbnails for all card images and preload critical ones
+  useEffect(() => {
+    if (displayCard && !isLoadingCard) {
+      const images = [
+        displayCard.frontCover,
+        displayCard.backCover,
+        displayCard.leftPage,
+        displayCard.rightPage
+      ].filter(Boolean);
+
+      // Preload the front cover as it's most critical
+      if (displayCard.frontCover) {
+        preloadCriticalImages([displayCard.frontCover]);
+      }
+
+      // Generate thumbnails in background for all images
+      images.forEach(async (imageUrl) => {
+        await generateThumbnail(imageUrl);
+        
+        // Generate multiple responsive thumbnails for better performance
+        if (imageUrl === displayCard.frontCover) {
+          // Only generate multiple sizes for front cover to save bandwidth
+          const responsiveThumbnails = await generateMultipleThumbnails(imageUrl);
+          setThumbnailUrls(prev => ({
+            ...prev,
+            ...Object.fromEntries(
+              Object.entries(responsiveThumbnails).map(([size, url]) => 
+                [`${imageUrl}_${size}`, url]
+              )
+            )
+          }));
+        }
+      });
+    }
+  }, [displayCard, isLoadingCard]);
 
   // Helper function to get the current image (from version history if available, otherwise original)
   const getCurrentImage = (sectionId: string, originalImage: string) => {
@@ -712,6 +810,79 @@ ${displayCard.generatedPrompts.rightInterior}
     }
   };
 
+  // Fast preview mode - only show front cover for quick loading
+  if (fastPreviewMode && displayCard.frontCover) {
+    return (
+      <motion.div 
+        className="space-y-4"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+      >
+        {/* Fast Preview Header */}
+        <div className="text-center">
+          <h3 className="text-lg font-bold mb-1">Quick Preview</h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Front cover preview - loading faster for you
+          </p>
+        </div>
+
+        {/* Front Cover Preview */}
+        <div className="relative bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-2xl p-6 shadow-lg">
+          <div className="relative aspect-[2/3] max-w-sm mx-auto">
+            <div className="w-full h-full relative bg-white rounded-lg overflow-hidden shadow-xl group">
+              <ProgressiveImage
+                src={displayCard.frontCover}
+                thumbnailSrc={thumbnailUrls[displayCard.frontCover]}
+                alt="Card front cover"
+                className="w-full h-full object-contain"
+                priority={true}
+                sizes={generateSizesAttribute()}
+              />
+              
+              {/* Quick actions overlay */}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-all duration-200 flex items-center justify-center">
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                  {onViewFullCard && (
+                    <Button
+                      onClick={onViewFullCard}
+                      className="bg-white/90 hover:bg-white text-gray-700 shadow-lg"
+                    >
+                      <Eye className="w-4 h-4 mr-2" />
+                      View Full Card
+                    </Button>
+                  )}
+                </div>
+              </div>
+              
+              {/* Loading state indicator */}
+              {renderLoadingIndicator(getLoadingState('front-cover'))}
+            </div>
+          </div>
+          
+          {/* Fast preview description */}
+          <p className="text-sm text-gray-600 dark:text-gray-400 text-center mt-4">
+            The front cover design that recipients will see first
+          </p>
+        </div>
+
+        {/* View Full Card Button */}
+        {onViewFullCard && (
+          <div className="flex justify-center">
+            <Button
+              onClick={onViewFullCard}
+              variant="outline"
+              className="border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+            >
+              <Eye className="w-4 h-4 mr-2" />
+              View Complete Card
+            </Button>
+          </div>
+        )}
+      </motion.div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -846,11 +1017,13 @@ ${displayCard.generatedPrompts.rightInterior}
                       onClick={openFullscreen}
                       title="Click to view fullscreen"
                     >
-                      <img
+                      <ProgressiveImage
                         src={slides[currentSlide].image}
+                        thumbnailSrc={thumbnailUrls[slides[currentSlide].image]}
                         alt={slides[currentSlide].title}
                         className="w-full h-full object-contain bg-white"
-                        draggable={false}
+                        priority={currentSlide === 0} // Only prioritize front cover
+                        sizes={generateSizesAttribute()}
                       />
                       
                       {/* Fullscreen hint overlay */}
@@ -1295,12 +1468,15 @@ ${displayCard.generatedPrompts.rightInterior}
                     >
                       <div className="h-full flex items-center justify-center">
                         {slides[currentSlide].image ? (
-                          <img
-                            src={slides[currentSlide].image}
-                            alt={slides[currentSlide].title}
-                            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-                            draggable={false}
-                          />
+                          <div className="max-w-full max-h-full">
+                            <ProgressiveImage
+                              src={slides[currentSlide].image}
+                              thumbnailSrc={thumbnailUrls[slides[currentSlide].image]}
+                              alt={slides[currentSlide].title}
+                              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+                              priority={true} // Always prioritize in fullscreen
+                            />
+                          </div>
                         ) : (
                           <div className="flex items-center justify-center bg-gray-800 rounded-lg p-8">
                             <p className="text-white/70">Loading section...</p>
@@ -1408,8 +1584,9 @@ ${displayCard.generatedPrompts.rightInterior}
                     // Show both interior images for context
                     <div className="flex h-64">
                       <div className="w-1/2 relative">
-                        <img
+                        <ProgressiveImage
                           src={getCurrentImage("left-interior", card.leftPage)}
+                          thumbnailSrc={thumbnailUrls[getCurrentImage("left-interior", card.leftPage)]}
                           alt="Left Interior"
                           className="w-full h-full object-contain"
                         />
@@ -1419,8 +1596,9 @@ ${displayCard.generatedPrompts.rightInterior}
                       </div>
                       <div className="w-px bg-gray-300"></div>
                       <div className="w-1/2 relative">
-                        <img
+                        <ProgressiveImage
                           src={getCurrentImage("right-interior", card.rightPage)}
+                          thumbnailSrc={thumbnailUrls[getCurrentImage("right-interior", card.rightPage)]}
                           alt="Right Interior"
                           className="w-full h-full object-contain"
                         />
@@ -1430,8 +1608,9 @@ ${displayCard.generatedPrompts.rightInterior}
                       </div>
                     </div>
                   ) : (
-                    <img
+                    <ProgressiveImage
                       src={slides.find(s => s.id === editingSection)?.image || ""}
+                      thumbnailSrc={thumbnailUrls[slides.find(s => s.id === editingSection)?.image || ""]}
                       alt="Current section"
                       className="w-full h-64 object-contain"
                     />
