@@ -5710,6 +5710,9 @@ def generate_qr_with_logo(url: str, logo_path: str = None, size: int = 160, seam
 @app.route('/api/cards/list', methods=['GET'])
 def list_all_cards():
     """List all stored cards with pagination and filtering"""
+    # Check if this is a template request (lighter payload)
+    template_mode = request.args.get('template_mode', 'false').lower() == 'true'
+    """List all stored cards with pagination and filtering"""
     try:
         page = int(request.args.get('page', 1))
         per_page = int(request.args.get('per_page', 20))
@@ -5754,19 +5757,31 @@ def list_all_cards():
                         else:
                             share_url = f"https://{domain}/card/{card_id}"
                         
-                        cards.append({
-                            'id': card_id,
-                            'prompt': card_data.get('prompt', ''),
-                            'frontCover': card_data.get('frontCover', ''),
-                            'backCover': card_data.get('backCover', ''),
-                            'leftPage': card_data.get('leftPage', ''),
-                            'rightPage': card_data.get('rightPage', ''),
-                            'createdAt': created_at,
-                            'createdAtFormatted': created_formatted,
-                            'shareUrl': share_url,
-                            'hasImages': bool(card_data.get('frontCover') or card_data.get('backCover') or 
-                                           card_data.get('leftPage') or card_data.get('rightPage'))
-                        })
+                        if template_mode:
+                            # Lighter payload for template requests
+                            cards.append({
+                                'id': card_id,
+                                'prompt': card_data.get('prompt', ''),
+                                'frontCover': card_data.get('frontCover', ''),
+                                'createdAt': created_at,
+                                'createdAtFormatted': created_formatted,
+                                'hasImages': bool(card_data.get('frontCover'))
+                            })
+                        else:
+                            # Full payload for gallery requests
+                            cards.append({
+                                'id': card_id,
+                                'prompt': card_data.get('prompt', ''),
+                                'frontCover': card_data.get('frontCover', ''),
+                                'backCover': card_data.get('backCover', ''),
+                                'leftPage': card_data.get('leftPage', ''),
+                                'rightPage': card_data.get('rightPage', ''),
+                                'createdAt': created_at,
+                                'createdAtFormatted': created_formatted,
+                                'shareUrl': share_url,
+                                'hasImages': bool(card_data.get('frontCover') or card_data.get('backCover') or 
+                                               card_data.get('leftPage') or card_data.get('rightPage'))
+                            })
                         
                 except (json.JSONDecodeError, IOError, KeyError):
                     continue

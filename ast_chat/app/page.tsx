@@ -998,6 +998,8 @@ export default function CardStudioPage() {
     checkPendingJobs();
     // Restore elapsed time tracking if generation is in progress
     restoreElapsedTimeTracking();
+    // Preload templates in the background
+    loadTemplates();
   }, []);
 
   // Save form data to localStorage whenever form state changes
@@ -1087,6 +1089,8 @@ export default function CardStudioPage() {
     try {
       localStorage.removeItem('vibecarding-form-data');
       localStorage.removeItem('vibecarding-generated-cards');
+      localStorage.removeItem('vibecarding-templates');
+      localStorage.removeItem('vibecarding-templates-timestamp');
       toast.success("Saved data cleared!");
     } catch (error) {
       console.error('Error clearing saved data:', error);
@@ -1094,11 +1098,55 @@ export default function CardStudioPage() {
     }
   };
 
+  // Storage management function
+  const getStorageUsage = () => {
+    try {
+      let totalSize = 0;
+      for (let key in localStorage) {
+        if (localStorage.hasOwnProperty(key) && key.startsWith('vibecarding-')) {
+          totalSize += localStorage[key].length;
+        }
+      }
+      return {
+        used: totalSize,
+        usedMB: (totalSize / (1024 * 1024)).toFixed(2),
+        percentage: Math.round((totalSize / (5 * 1024 * 1024)) * 100) // Assume 5MB limit
+      };
+    } catch (error) {
+      return { used: 0, usedMB: '0', percentage: 0 };
+    }
+  };
+
   // Template functions
-  const loadTemplates = async () => {
+  const loadTemplates = async (forceRefresh = false) => {
+    // Check cache first unless force refresh
+    if (!forceRefresh) {
+      try {
+        const cachedTemplates = localStorage.getItem('vibecarding-templates');
+        const cacheTimestamp = localStorage.getItem('vibecarding-templates-timestamp');
+        
+        if (cachedTemplates && cacheTimestamp) {
+          const cacheAge = Date.now() - parseInt(cacheTimestamp);
+          const fiveMinutes = 5 * 60 * 1000;
+          
+          // Use cache if less than 5 minutes old
+          if (cacheAge < fiveMinutes) {
+            const templates = JSON.parse(cachedTemplates).map((template: any) => ({
+              ...template,
+              createdAt: new Date(template.createdAt)
+            }));
+            setAvailableTemplates(templates);
+            return; // Exit early with cached data
+          }
+        }
+      } catch (error) {
+        console.log('Cache read failed, fetching fresh templates');
+      }
+    }
+
     setIsLoadingTemplates(true);
     try {
-      const response = await fetch('/api/cards/list?per_page=50'); // Get more templates
+      const response = await fetch('/api/cards/list?per_page=20&template_mode=true'); // Reduced for mobile compatibility
       const data = await response.json();
       
       if (data.status === 'success') {
@@ -1113,13 +1161,43 @@ export default function CardStudioPage() {
           createdAt: new Date(card.createdAt * 1000), // Convert timestamp to Date
           shareUrl: card.shareUrl
         }));
+        
         setAvailableTemplates(templates);
+        
+        // Cache the templates with storage management
+        try {
+          const templatesData = JSON.stringify(templates);
+          const dataSize = new Blob([templatesData]).size;
+          
+          // Check if data is too large (>3MB for safety margin)
+          if (dataSize > 3 * 1024 * 1024) {
+            console.warn('Template data too large, reducing cache size');
+            // Keep only the first 15 templates
+            const reducedTemplates = templates.slice(0, 15);
+            localStorage.setItem('vibecarding-templates', JSON.stringify(reducedTemplates));
+          } else {
+            localStorage.setItem('vibecarding-templates', templatesData);
+          }
+          localStorage.setItem('vibecarding-templates-timestamp', Date.now().toString());
+        } catch (error) {
+          console.log('Failed to cache templates, likely storage full:', error);
+          // Try with fewer templates
+          try {
+            const reducedTemplates = templates.slice(0, 10);
+            localStorage.setItem('vibecarding-templates', JSON.stringify(reducedTemplates));
+            localStorage.setItem('vibecarding-templates-timestamp', Date.now().toString());
+          } catch (retryError) {
+            console.log('Storage critically full, skipping template cache');
+          }
+        }
       } else {
         throw new Error(data.message || 'Failed to load templates');
       }
     } catch (error) {
       console.error('Error loading templates:', error);
-      toast.error("Failed to load card templates");
+      if (!forceRefresh) {
+        toast.error("Failed to load card templates");
+      }
     } finally {
       setIsLoadingTemplates(false);
     }
@@ -3919,12 +3997,24 @@ Return only the rewritten prompt, no explanations.`;
               <p className="text-sm text-gray-500">
                 Click any card to use it as a template for your new creation
               </p>
-              <Button
-                variant="outline"
-                onClick={() => setShowTemplateGallery(false)}
-              >
-                Cancel
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => loadTemplates(true)}
+                  disabled={isLoadingTemplates}
+                  className="gap-2"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isLoadingTemplates ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowTemplateGallery(false)}
+                >
+                  Cancel
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>
