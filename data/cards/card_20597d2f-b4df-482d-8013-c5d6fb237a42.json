@@ -1,0 +1,17 @@
+{
+  "id": "20597d2f-b4df-482d-8013-c5d6fb237a42",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_e5c63e91.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_6955242f.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_ac301ef2.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_277e47bd.png",
+  "createdAt": 1751506311.014028,
+  "expiresAt": 1783042311.0140285,
+  "version": 1,
+  "generatedPrompts": {
+    "backCover": "A simple and elegant watercolor design showing a single, beautifully painted owl feather in shades of indigo and sage green, diagonally positioned in the top-left corner. The background is a soft lavender wash with visible paper texture. The bottom-right corner is kept clear.",
+    "frontCover": "A charming and funny watercolor illustration of a majestic, slightly grumpy-looking old owl wearing a monocle and a tasseled graduation cap, perched on a stack of books. The owl looks like a wise but tired professor. In the center, the text reads \"Another Year Wiser... mostly.\" in an elegant, whimsical script. The composition uses a sophisticated, cool color palette of deep indigo, lavender, and sage green, with soft, flowing colors and organic paint bleeds on a rich paper texture for the full-bleed background.",
+    "leftInterior": "A funny watercolor 'graph' chart titled \"Energy Levels Throughout the Day.\" The x-axis shows morning, noon, and night. The line on the graph starts very low in the morning with a doodle of a steaming mug, spikes dramatically after the mug, then slowly droops down, ending with a doodle of a comfy bed at night. The colors are soft lavender and sage green, with a hand-drawn feel.",
+    "rightInterior": "A refined watercolor background with a gentle wash of lavender and sage green framing the central area. The message is written in a sophisticated yet readable cursive script: \"Bob,\n\nHappy Birthday! You're not getting older, you're just becoming a classic. And like a classic, you're getting a little harder to start in the morning.\n\nHope you have a great day!\n- Sam\". Subtle botanical elements, like a few painted leaves in indigo, decorate the corners of the text block."
+  }
+}

@@ -702,7 +702,7 @@ Apply the requested changes while preserving the complete image structure and po
     setIsSendingEmail(true);
     try {
       // Use the same working email service as the thank you email
-      const response = await fetch('https://16504442930.work/send_email_with_attachments', {
+      const response = await fetch('https://vibecarding.com/send_email_nodejs_style', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -721,8 +721,7 @@ This card was created with love using our AI-powered greeting card platform. You
 
 Best regards,
 The VibeCarding Team
-vibecarding@ast.engineer`,
-          html: false
+vibecarding@ast.engineer`
         }),
       });
 

@@ -1,0 +1,17 @@
+{
+  "id": "a1973e99-f470-450b-84b4-a0bec658ee22",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_36277ce6.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_04893d81.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_44bcedfc.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_2ff2a4a0.png",
+  "createdAt": 1751508677.4977465,
+  "expiresAt": 1783044677.497747,
+  "version": 1,
+  "generatedPrompts": {
+    "backCover": "A simple, minimalist design with a clean, full-bleed soft sky-blue background. A small, stylized graphic of a single hot dog wearing sunglasses is positioned in the top-center. The bottom-right corner is left intentionally clear for a QR code.",
+    "frontCover": "Flat 2D illustration in a Smart Style of a cool, anthropomorphic hot dog wearing sunglasses and a patriotic top hat, dramatically fumbling a tray of fellow hot dogs mid-air. The hot dogs have comical shocked expressions. The background is a vibrant, full-bleed pattern of red, white, and blue geometric shapes on a soft sky-blue backdrop. Centered text in a playful, bold font reads \"Happy Fourth of July\". The main character is positioned centrally, away from edges.",
+    "leftInterior": "A humorous scene continuing the front cover's theme. A mischievous squirrel, wearing a tiny patriotic bowtie, is shown running away with one of the dropped hot dogs. The background is a soft, grassy texture under a blue sky, with subtle firework bursts in the far distance. The style remains flat 2D with a warm, sunny color palette.",
+    "rightInterior": "A clean, soft sky-blue background matching the back cover. In the center, the placeholder text \"Sam,\n\nHope your Fourth is more \"oohs\" and \"aahs\" and less \"oops, I dropped the hot dogs.\" Have a blast celebrating and try not to lose any eyebrows to the sparklers this year!\n\nHappy Fourth!\nJordan\" is elegantly written in a beautiful, flowing, dark blue handwritten cursive script. The text is framed by two small, minimalist star illustrations, one on each side."
+  }
+}

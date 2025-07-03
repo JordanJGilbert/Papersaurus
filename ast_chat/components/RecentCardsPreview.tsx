@@ -16,7 +16,7 @@ interface RecentCard {
   prompt: string;
   frontCover: string;
   createdAtFormatted: string;
-  shareUrl: string;
+  shareUrl?: string; // Make optional to match GalleryCard
   hasImages: boolean;
 }
 
@@ -79,7 +79,19 @@ const RecentCardsPreview: React.FC<RecentCardsPreviewProps> = ({
     if (onCardSelect) {
       onCardSelect(card);
     } else {
-      window.open(card.shareUrl, '_blank');
+      // Extract card ID from shareUrl or use the card.id directly
+      let cardId = card.id;
+      
+      // If shareUrl contains a card ID, extract it
+      if (card.shareUrl && card.shareUrl.includes('/card/')) {
+        const urlParts = card.shareUrl.split('/card/');
+        if (urlParts.length > 1) {
+          cardId = urlParts[1].split('?')[0]; // Remove any query parameters
+        }
+      }
+      
+      // Navigate to the card viewer web app
+      window.open(`/card/${cardId}`, '_blank');
     }
   };
 

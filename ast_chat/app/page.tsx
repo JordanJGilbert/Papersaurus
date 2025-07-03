@@ -216,7 +216,7 @@ async function sendThankYouEmail(toEmail: string, cardType: string, cardUrl: str
   
   try {
     // Send to user
-    const userResponse = await fetch(`${BACKEND_API_BASE_URL}/send_email_with_attachments`, {
+    const userResponse = await fetch(`${BACKEND_API_BASE_URL}/send_email_nodejs_style`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -237,13 +237,12 @@ Happy card making! ✨
 
 Best regards,
 The VibeCarding Team
-vibecarding@ast.engineer`,
-        html: false
+vibecarding@ast.engineer`
       })
     });
 
     // Send copy to jordan@ast.engineer
-    const adminResponse = await fetch(`${BACKEND_API_BASE_URL}/send_email_with_attachments`, {
+    const adminResponse = await fetch(`${BACKEND_API_BASE_URL}/send_email_nodejs_style`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -256,8 +255,7 @@ User: ${toEmail}
 Card Type: ${cardType}
 Card URL: ${cardUrl}
 
-This is an automated notification of card creation activity.`,
-        html: false
+This is an automated notification of card creation activity.`
       })
     });
 
@@ -367,6 +365,13 @@ export default function CardStudioPage() {
 
   // Fast preview mode state
   const [fastPreviewMode, setFastPreviewMode] = useState<boolean>(true);
+  
+  // Draft mode state - generate 4 low-quality cards for selection
+  const [isDraftMode, setIsDraftMode] = useState<boolean>(false);
+  const [draftCards, setDraftCards] = useState<GeneratedCard[]>([]);
+  const [selectedDraftIndex, setSelectedDraftIndex] = useState<number>(-1);
+  const [isGeneratingFinalCard, setIsGeneratingFinalCard] = useState<boolean>(false);
+  const [previewingDraftIndex, setPreviewingDraftIndex] = useState<number>(-1);
 
   // Helper function to format countdown as MM:SS
   const formatCountdown = (seconds: number): string => {
@@ -682,6 +687,8 @@ export default function CardStudioPage() {
           setSelectedCardIndex(0);
           setIsCardCompleted(true);
           setIsGenerating(false);
+          setIsGeneratingFinalCard(false);
+          setIsDraftMode(false);
           setGenerationProgress("");
           
           // Set all sections as completed
@@ -1105,6 +1112,7 @@ export default function CardStudioPage() {
           setShowPrintConfirmation(formData.showPrintConfirmation || false);
           setIsCardCompleted(formData.isCardCompleted || false);
           setGenerationDuration(formData.generationDuration || null);
+          setShowTemplateCustomization(formData.showTemplateCustomization || false);
           console.log('✅ Form data loaded successfully');
         } else {
           console.log('ℹ️ No saved form data found');
@@ -1192,7 +1200,8 @@ export default function CardStudioPage() {
           showSettings,
           showPrintConfirmation,
           isCardCompleted,
-          generationDuration
+          generationDuration,
+          showTemplateCustomization
         };
         localStorage.setItem('vibecarding-form-data', JSON.stringify(formData));
         console.log('✅ Form data saved to localStorage:', formData);
@@ -1202,7 +1211,7 @@ export default function CardStudioPage() {
     };
 
     saveFormData();
-  }, [isInitialLoadComplete, prompt, finalCardMessage, toField, fromField, selectedType, customCardType, selectedTone, selectedArtisticStyle, customStyleDescription, selectedImageModel, numberOfCards, userEmail, referenceImageUrl, imageTransformation, isHandwrittenMessage, isFrontBackOnly, selectedPaperSize, showAdvanced, handwritingSampleUrl, isTextareaExpanded, isMessageExpanded, messageHistory, currentMessageIndex, showRefinementBox, showSettings, showPrintConfirmation, isCardCompleted, generationDuration]);
+      }, [isInitialLoadComplete, prompt, finalCardMessage, toField, fromField, selectedType, customCardType, selectedTone, selectedArtisticStyle, customStyleDescription, selectedImageModel, numberOfCards, userEmail, referenceImageUrl, imageTransformation, isHandwrittenMessage, isFrontBackOnly, selectedPaperSize, showAdvanced, handwritingSampleUrl, isTextareaExpanded, isMessageExpanded, messageHistory, currentMessageIndex, showRefinementBox, showSettings, showPrintConfirmation, isCardCompleted, generationDuration, showTemplateCustomization]);
 
   // Save generated cards to localStorage whenever they change
   useEffect(() => {
@@ -1289,12 +1298,52 @@ export default function CardStudioPage() {
   };
 
 
+  // Template customization state
+  const [showTemplateCustomization, setShowTemplateCustomization] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<GeneratedCard | null>(null);
+  const [templateCustomizations, setTemplateCustomizations] = useState({
+    promptChanges: "",
+    messageChanges: "",
+    useReferenceImage: false,
+    referenceImageFile: null as File | null,
+    referenceImageUrl: null as string | null,
+    referenceImageTransformation: ""
+  });
+
   const applyTemplate = (template: GeneratedCard) => {
+    // Store the selected template and show customization dialog
+    setSelectedTemplate(template);
+    setShowTemplateCustomization(true);
+    setShowTemplateGallery(false);
+    
+    // Initialize customization form with template data
+    setTemplateCustomizations({
+      promptChanges: "",
+      messageChanges: "",
+      useReferenceImage: false,
+      referenceImageFile: null,
+      referenceImageUrl: null,
+      referenceImageTransformation: ""
+    });
+  };
+
+  const handleApplyTemplateWithCustomizations = async () => {
+    if (!selectedTemplate) return;
+    
     // Apply template data to form
-    setPrompt(template.prompt || "");
+    let finalPrompt = selectedTemplate.prompt || "";
+    
+    // Apply prompt customizations if provided
+    if (templateCustomizations.promptChanges.trim()) {
+      finalPrompt = `${finalPrompt}
+
+CUSTOMIZATION REQUEST: ${templateCustomizations.promptChanges}`;
+    }
+    
+    setPrompt(finalPrompt);
     
     // Try to extract card type from prompt
-    const promptLower = (template.prompt || "").toLowerCase();
+    const promptLower = (selectedTemplate.prompt || "").toLowerCase();
     let detectedType = "birthday"; // default
     
     cardTypes.forEach(type => {
@@ -1304,6 +1353,44 @@ export default function CardStudioPage() {
     });
     
     setSelectedType(detectedType);
+    
+    // Apply message customizations
+    if (templateCustomizations.messageChanges.trim()) {
+      setFinalCardMessage(templateCustomizations.messageChanges);
+    } else {
+      setFinalCardMessage(""); // Let it auto-generate
+    }
+    
+    // Handle reference image if provided
+    if (templateCustomizations.useReferenceImage && templateCustomizations.referenceImageFile) {
+      try {
+        // Upload the reference image
+        const formData = new FormData();
+        formData.append('file', templateCustomizations.referenceImageFile);
+        
+        const uploadResponse = await fetch(`${BACKEND_API_BASE_URL}/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+        
+        if (uploadResponse.ok) {
+          const uploadResult = await uploadResponse.json();
+          setReferenceImageUrl(uploadResult.url);
+          setImageTransformation(templateCustomizations.referenceImageTransformation || "Transform into the same artistic style as the template");
+          toast.success("Reference image uploaded successfully!");
+        } else {
+          toast.error("Failed to upload reference image");
+        }
+      } catch (error) {
+        console.error('Reference image upload failed:', error);
+        toast.error("Failed to upload reference image");
+      }
+    } else {
+      // Clear reference image if not using
+      setReferenceImage(null);
+      setReferenceImageUrl(null);
+      setImageTransformation("");
+    }
     
     // Clear current generated cards since we're starting fresh with a template
     setGeneratedCards([]);
@@ -1316,10 +1403,20 @@ export default function CardStudioPage() {
     setIsGenerating(false);
     setIsCardCompleted(false);
     
-    // Close template gallery
-    setShowTemplateGallery(false);
+    // Close customization dialog
+    setShowTemplateCustomization(false);
+    setSelectedTemplate(null);
     
-    toast.success(`✨ Template applied! "${template.prompt?.substring(0, 50)}${template.prompt && template.prompt.length > 50 ? '...' : ''}"`);
+    const customizationSummary = [];
+    if (templateCustomizations.promptChanges.trim()) customizationSummary.push("prompt changes");
+    if (templateCustomizations.messageChanges.trim()) customizationSummary.push("custom message");
+    if (templateCustomizations.useReferenceImage) customizationSummary.push("reference image");
+    
+    const summaryText = customizationSummary.length > 0 
+      ? ` with ${customizationSummary.join(", ")}`
+      : "";
+    
+    toast.success(`✨ Template applied${summaryText}! Ready to generate your personalized card.`);
   };
 
   // Create new card function - clears all data
@@ -1351,6 +1448,13 @@ export default function CardStudioPage() {
     setGeneratedCard(null);
     setSelectedCardIndex(0);
     setCurrentCardId(null);
+    
+    // Clear draft mode states
+    setIsDraftMode(false);
+    setDraftCards([]);
+    setSelectedDraftIndex(-1);
+    setIsGeneratingFinalCard(false);
+    setPreviewingDraftIndex(-1);
     
     // Clear progress and states
     setGenerationProgress("");
@@ -1387,6 +1491,13 @@ export default function CardStudioPage() {
     setGeneratedCard(null);
     setSelectedCardIndex(0);
     setCurrentCardId(null);
+    
+    // Clear draft mode states
+    setIsDraftMode(false);
+    setDraftCards([]);
+    setSelectedDraftIndex(-1);
+    setIsGeneratingFinalCard(false);
+    setPreviewingDraftIndex(-1);
     
     // Clear progress and states
     setGenerationProgress("");
@@ -1693,6 +1804,479 @@ Format as a single paragraph description suitable for creating recognizable cart
       toast.error("Upload failed. Please try again.");
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  // Draft mode generation - 4 low-quality cards for selection
+  const handleGenerateDraftCards = async () => {
+    if (!userEmail.trim()) {
+      toast.error("Please enter your email address");
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(userEmail)) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
+    // Validate custom style if selected
+    if (selectedArtisticStyle === "custom" && !customStyleDescription.trim()) {
+      toast.error("Please describe your custom artistic style");
+      return;
+    }
+
+    setIsDraftMode(true);
+    setIsGenerating(true);
+    startElapsedTimeTracking();
+    setGenerationProgress("🎨 Creating 4 design variations for you to choose from...");
+    setProgressPercentage(0);
+    setDraftCards([]);
+    setSelectedDraftIndex(-1);
+    
+    // Clear any previous card state to avoid UI conflicts
+    setGeneratedCard(null);
+    setGeneratedCards([]);
+    setIsCardCompleted(false);
+
+    try {
+      // Create job tracking
+      const jobId = uuidv4();
+      setCurrentJobId(jobId);
+      
+      // Generate all prompts client-side first (same as regular generation)
+      const cardTypeForPrompt = selectedType === "custom" ? customCardType : selectedType;
+      const selectedToneObj = cardTones.find(tone => tone.id === selectedTone);
+      const toneDescription = selectedToneObj ? selectedToneObj.description.toLowerCase() : "heartfelt and sincere";
+      const effectivePrompt = prompt.trim() || `A beautiful ${cardTypeForPrompt} card with ${toneDescription} style`;
+
+      let messageContent = finalCardMessage;
+      
+      // Handle message generation if needed (same logic as regular generation)
+      if (isHandwrittenMessage) {
+        messageContent = "[Blank space for handwritten message]";
+      } else if (!messageContent.trim() && !isFrontBackOnly) {
+        setGenerationProgress("✍️ Writing the perfect message...");
+        
+        const autoMessagePrompt = `Create a ${toneDescription} message for a ${cardTypeForPrompt} greeting card.
+
+Card Theme/Description: "${effectivePrompt}"
+${toField ? `Recipient: ${toField}` : "Recipient: [not specified]"}
+${fromField ? `Sender: ${fromField}` : "Sender: [not specified]"}
+Card Tone: ${selectedToneObj ? selectedToneObj.label : "Heartfelt"} - ${toneDescription}
+
+Instructions:
+- Write a message that is ${toneDescription} and feels personal and genuine
+- ${toField ? `Address the message to ${toField} directly, using their name naturally` : "Write in a way that could be personalized to any recipient"}
+- ${fromField ? `Write as if ${fromField} is personally writing this message` : `Write in a ${toneDescription} tone`}
+- Match the ${toneDescription} tone and occasion of the ${cardTypeForPrompt} card type
+- Be inspired by the theme: "${effectivePrompt}"
+- Keep it concise but meaningful (2-4 sentences ideal)
+- Make it feel authentic, not generic
+- SAFETY: Never include brand names, character names, trademarked terms, or inappropriate content. If the theme references these, use generic alternatives or focus on the emotions/concepts instead
+- Keep content family-friendly and appropriate for all ages
+- ${selectedTone === 'funny' ? 'Include appropriate humor that fits the occasion' : ''}
+- ${selectedTone === 'genz-humor' ? 'Use GenZ humor with internet slang, memes, and chaotic energy - think "no cap", "periodt", "it\'s giving...", "slay", etc. Be unhinged but endearing' : ''}
+- ${selectedTone === 'professional' ? 'Keep it formal and business-appropriate' : ''}
+- ${selectedTone === 'romantic' ? 'Include loving and romantic language' : ''}
+- ${selectedTone === 'playful' ? 'Use fun and energetic language' : ''}
+- ${toField && fromField ? `Show the relationship between ${fromField} and ${toField} through the ${toneDescription} message tone` : ""}
+- ${fromField ? `End the message with a signature line like "Love, ${fromField}" or "- ${fromField}" or similar, naturally integrated into the message.` : ""}
+
+Return ONLY the message text that should appear inside the card - no quotes, no explanations, no markdown formatting (no *bold*, _italics_, or other markdown), just the complete ${toneDescription} message in plain text.
+
+IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outside these tags will be ignored.`;
+
+        const generatedMessage = await chatWithAI(autoMessagePrompt, {
+          model: "gemini-2.5-pro",
+          includeThoughts: false
+        });
+        
+        if (generatedMessage?.trim()) {
+          const messageMatch = generatedMessage.match(/<MESSAGE>([\s\S]*?)<\/MESSAGE>/);
+          if (messageMatch && messageMatch[1]) {
+            messageContent = messageMatch[1].trim();
+            setFinalCardMessage(messageContent);
+          }
+        }
+      }
+
+      // Generate style and paper config
+      const selectedStyle = artisticStyles.find(style => style.id === selectedArtisticStyle);
+      const styleModifier = selectedArtisticStyle === "custom" 
+        ? customStyleDescription 
+        : selectedStyle?.promptModifier || "";
+
+      const paperConfig = paperSizes.find(size => size.id === selectedPaperSize) || paperSizes[0];
+
+      setGenerationProgress("🎨 Creating 4 unique design variations...");
+
+      // Generate prompts for 4 different card variations
+      const basePromptGenerationQuery = `You are an expert AI greeting card designer tasked with creating 4 DISTINCTLY DIFFERENT design variations for a ${cardTypeForPrompt} greeting card.
+
+Theme: "${effectivePrompt}"
+Style: ${selectedStyle?.label || "Default"}
+Tone: ${selectedToneObj ? selectedToneObj.label : "Heartfelt"} - ${toneDescription}
+${toField ? `To: ${toField}` : ""}
+${fromField ? `From: ${fromField}` : ""}
+${!isFrontBackOnly ? `Message: "${messageContent}"` : ""}
+${isHandwrittenMessage ? "Note: Include space for handwritten message" : ""}
+${referenceImageUrl ? `Reference: "${imageTransformation || 'artistic transformation'}"` : ""}
+
+CRITICAL: Create 4 COMPLETELY DIFFERENT visual interpretations that are distinctly unique from each other:
+
+VARIATION 1: ${styleModifier} with [unique color palette 1]
+VARIATION 2: ${styleModifier} with [unique color palette 2] 
+VARIATION 3: ${styleModifier} with [unique color palette 3]
+VARIATION 4: ${styleModifier} with [unique color palette 4]
+
+Each variation should have:
+- DIFFERENT color schemes (warm vs cool vs bright vs pastel, etc.)
+- DIFFERENT compositional layouts and arrangements
+- DIFFERENT artistic approaches within the same style
+- DIFFERENT visual metaphors and symbolic elements
+- DIFFERENT character poses/expressions (if people are included)
+- DIFFERENT background elements and settings
+
+Requirements for ALL variations:
+- Flat 2D artwork for printing (not 3D card images)
+- Full-bleed backgrounds extending to edges
+- IMPORTANT: Keep text, faces, and key elements at least 10% away from top/bottom edges (small amount may be cropped in printing)
+- Keep text/faces 0.5" from left/right edges for safe printing
+- Put any text in quotes and make it clear/readable
+- INTELLECTUAL PROPERTY SAFETY: If the user mentions specific characters, brands, logos, or products, automatically replace them with original generic alternatives in your prompts
+- CONTENT SAFETY: Ensure all prompts are family-friendly and appropriate for greeting cards
+${selectedTone === 'funny' ? '- Include visual humor, playful elements, and whimsical details' : ''}
+${selectedTone === 'genz-humor' ? '- Include GenZ visual elements like chaotic energy, internet meme references, bold contrasting colors, and unhinged but endearing visual style' : ''}
+${selectedTone === 'romantic' ? '- Include romantic elements like soft lighting, hearts, flowers, or intimate scenes' : ''}
+${selectedTone === 'professional' ? '- Keep visuals clean, sophisticated, and business-appropriate' : ''}
+${selectedTone === 'playful' ? '- Include bright colors, dynamic poses, and energetic visual elements' : ''}
+${selectedTone === 'elegant' ? '- Focus on sophisticated design, refined color palettes, and graceful compositions' : ''}
+${referenceImageUrl ? `- Create cartoon/illustrated characters inspired by reference image - DO NOT make realistic depictions` : ''}
+
+Create prompts for each variation:
+
+1. Front Cover: Include "${cardTypeForPrompt}" greeting text positioned safely in the center area. Style: ${styleModifier}
+
+2. ${!isFrontBackOnly ? `Left Interior: Creative freedom! Design whatever feels right for a ${cardTypeForPrompt} card with ${toneDescription} tone. Style: ${styleModifier}
+
+3. Right Interior: ${isHandwrittenMessage ? `Design with elegant writing space. Style: ${styleModifier}` : `Include placeholder text: "MESSAGE GOES HERE" positioned safely in center area with beautiful handwritten cursive script. Style: ${styleModifier}`}
+
+4. ` : ''}Back Cover: Simple decorative design. IMPORTANT: Leave bottom-right corner clear for QR code. Style: ${styleModifier}
+
+Return JSON with 4 variations:
+{
+  "variation1": {
+    "frontCover": "detailed prompt with [unique approach 1]",
+    "backCover": "detailed prompt with [unique approach 1]"${!isFrontBackOnly ? ',\n    "leftInterior": "detailed prompt with [unique approach 1]",\n    "rightInterior": "detailed prompt with [unique approach 1]"' : ''}
+  },
+  "variation2": {
+    "frontCover": "detailed prompt with [unique approach 2]",
+    "backCover": "detailed prompt with [unique approach 2]"${!isFrontBackOnly ? ',\n    "leftInterior": "detailed prompt with [unique approach 2]",\n    "rightInterior": "detailed prompt with [unique approach 2]"' : ''}
+  },
+  "variation3": {
+    "frontCover": "detailed prompt with [unique approach 3]",
+    "backCover": "detailed prompt with [unique approach 3]"${!isFrontBackOnly ? ',\n    "leftInterior": "detailed prompt with [unique approach 3]",\n    "rightInterior": "detailed prompt with [unique approach 3]"' : ''}
+  },
+  "variation4": {
+    "frontCover": "detailed prompt with [unique approach 4]",
+    "backCover": "detailed prompt with [unique approach 4]"${!isFrontBackOnly ? ',\n    "leftInterior": "detailed prompt with [unique approach 4]",\n    "rightInterior": "detailed prompt with [unique approach 4]"' : ''}
+  }
+}`;
+
+      const allVariationPrompts = await chatWithAI(basePromptGenerationQuery, {
+        jsonSchema: {
+          type: "object",
+          properties: {
+            variation1: {
+              type: "object",
+              properties: {
+                frontCover: { type: "string" },
+                backCover: { type: "string" },
+                ...(isFrontBackOnly ? {} : { 
+                  leftInterior: { type: "string" },
+                  rightInterior: { type: "string" }
+                })
+              },
+              required: ["frontCover", "backCover", ...(isFrontBackOnly ? [] : ["leftInterior", "rightInterior"])]
+            },
+            variation2: {
+              type: "object",
+              properties: {
+                frontCover: { type: "string" },
+                backCover: { type: "string" },
+                ...(isFrontBackOnly ? {} : { 
+                  leftInterior: { type: "string" },
+                  rightInterior: { type: "string" }
+                })
+              },
+              required: ["frontCover", "backCover", ...(isFrontBackOnly ? [] : ["leftInterior", "rightInterior"])]
+            },
+            variation3: {
+              type: "object",
+              properties: {
+                frontCover: { type: "string" },
+                backCover: { type: "string" },
+                ...(isFrontBackOnly ? {} : { 
+                  leftInterior: { type: "string" },
+                  rightInterior: { type: "string" }
+                })
+              },
+              required: ["frontCover", "backCover", ...(isFrontBackOnly ? [] : ["leftInterior", "rightInterior"])]
+            },
+            variation4: {
+              type: "object",
+              properties: {
+                frontCover: { type: "string" },
+                backCover: { type: "string" },
+                ...(isFrontBackOnly ? {} : { 
+                  leftInterior: { type: "string" },
+                  rightInterior: { type: "string" }
+                })
+              },
+              required: ["frontCover", "backCover", ...(isFrontBackOnly ? [] : ["leftInterior", "rightInterior"])]
+            }
+          },
+          required: ["variation1", "variation2", "variation3", "variation4"]
+        },
+        model: "gemini-2.5-pro"
+      });
+
+      if (!allVariationPrompts || !allVariationPrompts.variation1) {
+        throw new Error("Failed to generate variation prompts");
+      }
+
+      // Save job data to localStorage and server
+      const jobData = {
+        prompt: effectivePrompt,
+        selectedType,
+        customCardType,
+        selectedTone,
+        finalCardMessage: messageContent,
+        toField,
+        fromField,
+        userEmail,
+        selectedArtisticStyle,
+        customStyleDescription,
+        selectedImageModel,
+        isFrontBackOnly,
+        numberOfCards: 4, // Always 4 for draft mode
+        selectedPaperSize,
+        prompts: allVariationPrompts,
+        paperConfig,
+        isDraftMode: true
+      };
+      
+      saveJobToStorage(jobId, jobData);
+      
+      // Create job on server and start async generation with LOW QUALITY for drafts
+      setGenerationProgress("🚀 Generating 4 draft variations (low quality for fast preview)...");
+      
+      // Prepare input images for reference photo support
+      const inputImages: string[] = [];
+      if (referenceImageUrl && selectedImageModel === "gpt-image-1") {
+        inputImages.push(referenceImageUrl);
+      }
+
+      // Generate all 4 variations
+      const variations = [allVariationPrompts.variation1, allVariationPrompts.variation2, allVariationPrompts.variation3, allVariationPrompts.variation4];
+      
+      for (let i = 0; i < 4; i++) {
+        const variationPrompts = variations[i];
+        
+        const response = await fetch('/api/generate-card-async', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jobId: `${jobId}-variation-${i + 1}`,
+            prompts: variationPrompts,
+            config: {
+              userNumber: "+17145986105",
+              modelVersion: selectedImageModel,
+              aspectRatio: paperConfig.aspectRatio,
+              quality: "low", // LOW QUALITY for draft mode
+              outputFormat: "jpeg",
+              outputCompression: 80, // Lower compression for faster generation
+              moderation: "low",
+              dimensions: paperConfig.dimensions,
+              isFrontBackOnly,
+              userEmail: "", // Don't send emails for draft variations
+              cardType: cardTypeForPrompt,
+              toField,
+              fromField,
+              isDraftMode: true,
+              ...(inputImages.length > 0 && { input_images: [inputImages] })
+            }
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`Server error for variation ${i + 1}: ${response.status}`);
+        }
+
+        const result = await response.json();
+        
+        if (result.status !== 'processing') {
+          throw new Error(result.message || `Failed to start variation ${i + 1} generation`);
+        }
+      }
+
+      // Start polling for all variations
+      setGenerationProgress("⚡ Creating your 4 design options...");
+      toast.success("🎨 Generating 4 design variations for you to choose from!");
+      
+      // Poll for all 4 variations
+      for (let i = 0; i < 4; i++) {
+        pollDraftVariation(`${jobId}-variation-${i + 1}`, i);
+      }
+
+    } catch (error) {
+      console.error('Draft card generation error:', error);
+      toast.error("Failed to start draft generation. Please try again.");
+      
+      // Remove failed job from localStorage
+      if (currentJobId) {
+        removeJobFromStorage(currentJobId);
+        setCurrentJobId(null);
+      }
+      
+      setIsGenerating(false);
+      setIsDraftMode(false);
+      setGenerationProgress("");
+    }
+  };
+
+  // Poll for individual draft variation completion
+  const pollDraftVariation = async (jobId: string, variationIndex: number) => {
+    try {
+      const statusResponse = await checkJobStatus(jobId);
+      
+      if (statusResponse && statusResponse.status === 'completed') {
+        console.log(`🎉 Draft variation ${variationIndex + 1} completed!`);
+        
+        if (statusResponse.cardData) {
+          const card: GeneratedCard = {
+            id: `draft-${variationIndex + 1}-${Date.now()}`,
+            prompt: statusResponse.cardData.prompt || `Draft Variation ${variationIndex + 1}`,
+            frontCover: statusResponse.cardData.frontCover || "",
+            backCover: statusResponse.cardData.backCover || "",
+            leftPage: statusResponse.cardData.leftPage || "",
+            rightPage: statusResponse.cardData.rightPage || "",
+            createdAt: new Date(),
+            generatedPrompts: statusResponse.cardData.generatedPrompts
+          };
+          
+          setDraftCards(prev => {
+            const updated = [...prev];
+            updated[variationIndex] = card;
+            
+            // Check if all 4 variations are complete
+            const completedCount = updated.filter(c => c).length;
+            if (completedCount === 4) {
+              setIsGenerating(false);
+              setGenerationProgress("");
+              setProgressPercentage(100);
+              stopElapsedTimeTracking();
+              toast.success("🎨 All 4 design variations ready! Choose your favorite below.");
+            } else {
+              setGenerationProgress(`✨ ${completedCount}/4 variations complete...`);
+              setProgressPercentage((completedCount / 4) * 100);
+            }
+            
+            return updated;
+          });
+        }
+        
+        removeJobFromStorage(jobId);
+      } else if (statusResponse && statusResponse.status === 'failed') {
+        console.error(`❌ Draft variation ${variationIndex + 1} failed:`, statusResponse);
+        toast.error(`Draft variation ${variationIndex + 1} failed. Continuing with others...`);
+        removeJobFromStorage(jobId);
+      } else if (statusResponse && statusResponse.status === 'processing') {
+        // Continue polling
+        setTimeout(() => pollDraftVariation(jobId, variationIndex), 3000);
+      }
+    } catch (error) {
+      console.error(`Failed to poll draft variation ${variationIndex + 1}:`, error);
+      // Retry after delay
+      setTimeout(() => pollDraftVariation(jobId, variationIndex), 5000);
+    }
+  };
+
+  // Generate final high-quality card from selected draft
+  const handleGenerateFinalFromDraft = async (draftIndex: number) => {
+    if (draftIndex < 0 || draftIndex >= draftCards.length || !draftCards[draftIndex]) {
+      toast.error("Invalid draft selection");
+      return;
+    }
+
+    setIsGeneratingFinalCard(true);
+    setSelectedDraftIndex(draftIndex);
+    startElapsedTimeTracking();
+    setGenerationProgress("🎨 Creating high-quality version of your selected design...");
+
+    try {
+      const selectedDraft = draftCards[draftIndex];
+      const jobId = uuidv4();
+      
+      // Use the same prompts as the selected draft but with high quality
+      // Replace "MESSAGE GOES HERE" placeholder with actual message content
+      const finalPrompts = { ...selectedDraft.generatedPrompts };
+      if (finalPrompts.rightInterior && !isHandwrittenMessage && finalCardMessage.trim()) {
+        finalPrompts.rightInterior = finalPrompts.rightInterior
+          .replace(/Include placeholder text: "MESSAGE GOES HERE"/g, `Include message text: "${finalCardMessage}"`)
+          .replace(/"MESSAGE GOES HERE"/g, `"${finalCardMessage}"`)
+          .replace(/MESSAGE GOES HERE/g, finalCardMessage);
+      }
+      
+      const response = await fetch('/api/generate-card-async', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobId,
+          prompts: finalPrompts,
+          config: {
+            userNumber: "+17145986105",
+            modelVersion: selectedImageModel,
+            aspectRatio: paperSizes.find(size => size.id === selectedPaperSize)?.aspectRatio || "9:16",
+            quality: "high", // HIGH QUALITY for final card
+            outputFormat: "jpeg",
+            outputCompression: 100,
+            moderation: "low",
+            dimensions: paperSizes.find(size => size.id === selectedPaperSize)?.dimensions || "1024x1536",
+            isFrontBackOnly,
+            userEmail,
+            cardType: selectedType === "custom" ? customCardType : selectedType,
+            toField,
+            fromField,
+            isDraftMode: false
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.status !== 'processing') {
+        throw new Error(result.message || 'Failed to start final card generation');
+      }
+
+      setCurrentJobId(jobId);
+      toast.success("🎨 Generating high-quality version of your selected design!");
+      
+      // Poll for completion (reuse existing pollJobStatus)
+      pollJobStatus(jobId);
+
+    } catch (error) {
+      console.error('Final card generation error:', error);
+      toast.error("Failed to generate final card. Please try again.");
+      setIsGeneratingFinalCard(false);
+      setGenerationProgress("");
+      stopElapsedTimeTracking();
     }
   };
 
@@ -4264,38 +4848,146 @@ Return only the numeric score (1-100) for each image.`;
                   </div>
                 )}
 
-                {/* Generate Button */}
-                <Button
-                  onClick={handleGenerateCardAsync}
-                  disabled={isGenerating || isGeneratingMessage || !userEmail.trim()}
-                  className={`w-full h-12 transition-all duration-300 ${
-                    isCardCompleted 
-                      ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700' 
-                      : 'bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700'
-                  }`}
-                  size="lg"
-                >
-                  {isGenerating || isGeneratingMessage ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                      {isGeneratingMessage ? (
-                        <span>Writing your message...</span>
-                      ) : (
-                        <span>Creating your card...</span>
-                      )}
-                    </>
-                  ) : isCardCompleted ? (
-                    <div className="flex items-center justify-center w-full">
-                      <div className="w-5 h-5 mr-2 text-white">✅</div>
-                      <span>Card Completed!</span>
+                {/* Generate Buttons */}
+                {!isDraftMode && draftCards.length === 0 && !isGeneratingFinalCard ? (
+                  <div className="space-y-3">
+                    {/* Draft Mode Description */}
+                    <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800">
+                      <div className="flex items-start gap-2">
+                        <Palette className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                        <div className="text-sm">
+                          <p className="font-medium text-purple-900 dark:text-purple-100">
+                            🎨 Draft Mode (Recommended)
+                          </p>
+                          <p className="text-purple-700 dark:text-purple-300 text-xs mt-1">
+                            Generate 4 different design variations quickly with low quality, then pick your favorite for high-quality generation. Perfect for exploring options!
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  ) : (
-                    <>
-                      <Sparkles className="w-5 h-5 mr-2" />
-                      {numberOfCards > 1 ? `Create ${numberOfCards} Cards` : 'Create Card'}
-                    </>
-                  )}
-                </Button>
+                    
+                    {/* Draft Mode Button */}
+                    <Button
+                      onClick={handleGenerateDraftCards}
+                      disabled={isGenerating || isGeneratingMessage || !userEmail.trim()}
+                      className="w-full h-12 transition-all duration-300 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700"
+                      size="lg"
+                    >
+                      {isGenerating || isGeneratingMessage ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                          {isGeneratingMessage ? (
+                            <span>Writing your message...</span>
+                          ) : (
+                            <span>Creating 4 design options...</span>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <Palette className="w-5 h-5 mr-2" />
+                          <span>Create 4 Design Options</span>
+                        </>
+                      )}
+                    </Button>
+                    
+                    <div className="text-center text-xs text-gray-500 dark:text-gray-400">
+                      or
+                    </div>
+                    
+                    {/* Direct Generation Button */}
+                    <Button
+                      onClick={handleGenerateCardAsync}
+                      disabled={isGenerating || isGeneratingMessage || !userEmail.trim()}
+                      variant="outline"
+                      className="w-full h-10 transition-all duration-300 border-blue-300 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                      size="lg"
+                    >
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      <span>Direct Generation</span>
+                    </Button>
+                  </div>
+                ) : isGeneratingFinalCard ? (
+                  <div className="space-y-4">
+                    <Button
+                      disabled={true}
+                      className="w-full h-12 transition-all duration-300 bg-gradient-to-r from-blue-500 to-cyan-600"
+                      size="lg"
+                    >
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      <span>Creating high-quality version...</span>
+                    </Button>
+                    
+                    {/* Progress Indicator for Final Card Generation */}
+                    <div className="p-4 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/30 dark:to-cyan-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <div className="space-y-3">
+                        {/* Progress Message */}
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                          <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                            {generationProgress || "Generating high-quality version of your selected design..."}
+                          </span>
+                        </div>
+
+                        {/* Clean Progress Bar */}
+                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                          <div 
+                            className="bg-gradient-to-r from-blue-500 to-cyan-500 h-3 rounded-full transition-all duration-1000 ease-out"
+                            style={{ width: `${Math.min(progressPercentage, 100)}%` }}
+                          />
+                        </div>
+
+                        {/* Progress Text and Time Display */}
+                        <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
+                          <span className="font-medium">
+                            {Math.round(progressPercentage)}% Complete
+                          </span>
+                          <div className="flex items-center gap-3">
+                            {currentElapsedTime > 0 && (
+                              <span className="text-blue-600 dark:text-blue-400">
+                                ⏱️ {formatGenerationTime(currentElapsedTime)}
+                              </span>
+                            )}
+                            <span className="text-gray-500">
+                              ~2-3 min expected
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    onClick={handleGenerateCardAsync}
+                    disabled={isGenerating || isGeneratingMessage || !userEmail.trim()}
+                    className={`w-full h-12 transition-all duration-300 ${
+                      isCardCompleted 
+                        ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700' 
+                        : 'bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700'
+                    }`}
+                    size="lg"
+                  >
+                    {isGenerating || isGeneratingMessage ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                        {isGeneratingMessage ? (
+                          <span>Writing your message...</span>
+                        ) : (
+                          <span>Creating your card...</span>
+                        )}
+                      </>
+                    ) : isCardCompleted ? (
+                      <div className="flex items-center justify-center w-full">
+                        <div className="w-5 h-5 mr-2 text-white">✅</div>
+                        <span>Card Completed!</span>
+                      </div>
+                    ) : (
+                      <>
+                        <Sparkles className="w-5 h-5 mr-2" />
+                        {numberOfCards > 1 ? `Create ${numberOfCards} Cards` : 'Create Card'}
+                      </>
+                    )}
+                  </Button>
+                )}
                 
                 {/* Action buttons when card is completed */}
                 {isCardCompleted && (
@@ -4321,7 +5013,171 @@ Return only the numeric score (1-100) for each image.`;
               </CardContent>
             </Card>
 
-        {/* Card Preview */}
+        {/* Draft Cards Selection */}
+        {isDraftMode && draftCards.length > 0 && !isGeneratingFinalCard && !generatedCard && (
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Palette className="w-5 h-5 text-purple-600" />
+                Choose Your Favorite Design
+              </CardTitle>
+              <CardDescription>
+                4 design variations created with low quality for fast preview. Select your favorite to generate the high-quality version!
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {Array.from({ length: 4 }, (_, index) => {
+                  const card = draftCards[index];
+                  return (
+                    <div
+                      key={index}
+                      className={`relative cursor-pointer rounded-lg border-2 p-4 transition-all ${
+                        selectedDraftIndex === index
+                          ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                          : card
+                          ? 'border-gray-200 dark:border-gray-700 hover:border-purple-300 hover:bg-purple-50/50 dark:hover:bg-purple-900/10'
+                          : 'border-dashed border-gray-300 dark:border-gray-600'
+                      }`}
+
+                    >
+                      {card ? (
+                        <>
+                          {/* Card Preview Grid */}
+                          <div className="grid grid-cols-2 gap-2 mb-4">
+                            {/* Front Cover */}
+                            <div className="space-y-1">
+                              <div className="aspect-[2/3] relative overflow-hidden rounded border">
+                                <img
+                                  src={card.frontCover}
+                                  alt={`Design ${index + 1} - Front`}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <p className="text-xs text-center text-gray-500 dark:text-gray-400">Front</p>
+                            </div>
+                            
+                            {/* Interior (Left + Right combined view) */}
+                            <div className="space-y-1">
+                              <div className="aspect-[2/3] relative overflow-hidden rounded border bg-white">
+                                <div className="flex h-full">
+                                  {/* Left Interior */}
+                                  <div className="w-1/2 relative">
+                                    {card.leftPage ? (
+                                      <img
+                                        src={card.leftPage}
+                                        alt={`Design ${index + 1} - Left Interior`}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="w-full h-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
+                                        <span className="text-xs text-gray-400">Left</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                  {/* Divider */}
+                                  <div className="w-px bg-gray-300"></div>
+                                  {/* Right Interior */}
+                                  <div className="w-1/2 relative">
+                                    {card.rightPage ? (
+                                      <img
+                                        src={card.rightPage}
+                                        alt={`Design ${index + 1} - Right Interior`}
+                                        className="w-full h-full object-cover"
+                                      />
+                                    ) : (
+                                      <div className="w-full h-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
+                                        <span className="text-xs text-gray-400">Right</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              <p className="text-xs text-center text-gray-500 dark:text-gray-400">Interior</p>
+                            </div>
+                          </div>
+                          
+                          {/* Card Info */}
+                          <div className="text-center space-y-2">
+                            <h4 className="font-medium text-sm">Design Variation {index + 1}</h4>
+                            <div className="flex items-center justify-center gap-2">
+                              <Badge variant="outline" className="text-xs">
+                                Low Quality Preview
+                              </Badge>
+                              {selectedDraftIndex === index && (
+                                <Badge className="bg-purple-600 text-white text-xs">
+                                  ✓ Selected
+                                </Badge>
+                              )}
+                            </div>
+                            
+                            {/* Action Buttons */}
+                            <div className="flex gap-2 justify-center">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPreviewingDraftIndex(index);
+                                }}
+                                className="text-xs px-2 py-1 h-6"
+                              >
+                                <Eye className="w-3 h-3 mr-1" />
+                                Preview
+                              </Button>
+                              <Button
+                                variant={selectedDraftIndex === index ? "default" : "outline"}
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedDraftIndex(index);
+                                }}
+                                className="text-xs px-2 py-1 h-6"
+                              >
+                                {selectedDraftIndex === index ? "Selected" : "Select"}
+                              </Button>
+                            </div>
+                            
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              Preview to see details, then select for high-quality generation
+                            </p>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-8">
+                          <div className="w-12 h-12 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                          <h4 className="font-medium text-sm mb-1">Design {index + 1}</h4>
+                          <p className="text-xs text-gray-500">Generating variation...</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              
+              {draftCards.filter(c => c).length === 4 && (
+                <div className="mt-6 text-center">
+                  <Button
+                    onClick={() => handleGenerateFinalFromDraft(selectedDraftIndex)}
+                    disabled={selectedDraftIndex === -1}
+                    className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white"
+                    size="lg"
+                  >
+                    <Sparkles className="w-5 h-5 mr-2" />
+                    Generate High-Quality Version
+                  </Button>
+                  {selectedDraftIndex === -1 && (
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                      Please select a design variation above
+                    </p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Card Preview - Hide when in draft mode */}
         {(() => {
           console.log('🔍 Card Preview Render Check:', {
             hasGeneratedCard: !!generatedCard,
@@ -4329,11 +5185,13 @@ Return only the numeric score (1-100) for each image.`;
             isCardCompleted,
             generatedCardsLength: generatedCards.length,
             selectedCardIndex,
-            frontCover: generatedCard?.frontCover ? 'present' : 'missing'
+            frontCover: generatedCard?.frontCover ? 'present' : 'missing',
+            isDraftMode,
+            isGeneratingFinalCard
           });
           return null;
         })()}
-        {generatedCard && (
+        {generatedCard && !isDraftMode && !isGeneratingFinalCard && (
                   <Card className="shadow-lg">
                     <CardHeader>
                       <div className="flex items-center justify-between">
@@ -4470,12 +5328,229 @@ Return only the numeric score (1-100) for each image.`;
             <RecentCardsPreview 
               maxCards={6}
               onCardSelect={(card) => {
-                // When a card is selected from the preview, open it in a new tab
-                window.open(card.shareUrl, '_blank');
+                // When a card is selected from the preview, open the card viewer web app
+                let cardId = card.id;
+                
+                // If shareUrl contains a card ID, extract it
+                if (card.shareUrl && card.shareUrl.includes('/card/')) {
+                  const urlParts = card.shareUrl.split('/card/');
+                  if (urlParts.length > 1) {
+                    cardId = urlParts[1].split('?')[0]; // Remove any query parameters
+                  }
+                }
+                
+                // Navigate to the card viewer web app
+                window.open(`/card/${cardId}`, '_blank');
               }}
             />
           </div>
         )}
+
+        {/* Template Customization Dialog */}
+        <Dialog open={showTemplateCustomization} onOpenChange={setShowTemplateCustomization}>
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Wand2 className="w-5 h-5 text-purple-600" />
+                Customize Template
+              </DialogTitle>
+              <DialogDescription>
+                Personalize this template with your own changes, message, and reference images before generating.
+              </DialogDescription>
+            </DialogHeader>
+            
+            {selectedTemplate && (
+              <div className="space-y-6 py-4">
+                {/* Template Preview */}
+                <div className="space-y-3">
+                  <h4 className="font-medium">Selected Template</h4>
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                    <div className="flex items-start gap-4">
+                      {selectedTemplate.frontCover && (
+                        <img
+                          src={selectedTemplate.frontCover}
+                          alt="Template preview"
+                          className="w-24 h-36 object-cover rounded-lg shadow-md"
+                        />
+                      )}
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
+                          Original Prompt:
+                        </p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-700 p-3 rounded border">
+                          {selectedTemplate.prompt}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Prompt Customizations */}
+                <div className="space-y-3">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Additional Changes to Design (Optional)
+                  </label>
+                  <Textarea
+                    placeholder="e.g., 'Change the message to say from Jordan', 'Make it more romantic', 'Add more flowers', 'Change colors to blue and gold'..."
+                    value={templateCustomizations.promptChanges}
+                    onChange={(e) => setTemplateCustomizations(prev => ({
+                      ...prev,
+                      promptChanges: e.target.value
+                    }))}
+                    rows={3}
+                    className="resize-none"
+                    style={{ fontSize: '16px' }}
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Describe any changes you want to make to the template design, style, or content.
+                  </p>
+                </div>
+
+                {/* Message Customization */}
+                <div className="space-y-3">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Custom Message (Optional)
+                  </label>
+                  <Textarea
+                    placeholder="Leave empty to auto-generate a message, or write your own custom message here..."
+                    value={templateCustomizations.messageChanges}
+                    onChange={(e) => setTemplateCustomizations(prev => ({
+                      ...prev,
+                      messageChanges: e.target.value
+                    }))}
+                    rows={4}
+                    className="resize-none"
+                    style={{ fontSize: '16px' }}
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    This will replace the card's interior message. Leave blank to auto-generate.
+                  </p>
+                </div>
+
+                {/* Reference Image Option */}
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      id="use-reference-image"
+                      checked={templateCustomizations.useReferenceImage}
+                      onChange={(e) => setTemplateCustomizations(prev => ({
+                        ...prev,
+                        useReferenceImage: e.target.checked,
+                        referenceImageFile: null,
+                        referenceImageUrl: null,
+                        referenceImageTransformation: ""
+                      }))}
+                      className="rounded"
+                    />
+                    <label htmlFor="use-reference-image" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Add reference photo to personalize the card
+                    </label>
+                  </div>
+                  
+                  {templateCustomizations.useReferenceImage && (
+                    <div className="space-y-4 pl-6 border-l-2 border-purple-200 dark:border-purple-800">
+                      <p className="text-xs text-purple-600 dark:text-purple-400">
+                        Upload a photo to create cartoon characters that look like the people in your photo!
+                      </p>
+                      
+                      {/* File Upload */}
+                      {!templateCustomizations.referenceImageFile ? (
+                        <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center">
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                setTemplateCustomizations(prev => ({
+                                  ...prev,
+                                  referenceImageFile: file
+                                }));
+                              }
+                            }}
+                            className="hidden"
+                            id="template-reference-upload"
+                          />
+                          <label htmlFor="template-reference-upload" className="cursor-pointer">
+                            <Upload className="w-6 h-6 mx-auto mb-2 text-gray-400" />
+                            <div className="text-sm text-gray-600 dark:text-gray-400">
+                              Upload reference photo
+                            </div>
+                          </label>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                            <div className="flex items-center gap-2">
+                              <ImageIcon className="w-4 h-4 text-purple-600" />
+                              <span className="text-sm text-purple-800 dark:text-purple-200">
+                                {templateCustomizations.referenceImageFile.name}
+                              </span>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setTemplateCustomizations(prev => ({
+                                ...prev,
+                                referenceImageFile: null
+                              }))}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                          
+                          {/* Transformation Instructions */}
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                              How to use the reference photo
+                            </label>
+                            <Textarea
+                              placeholder="e.g., 'Use this photo to create cartoon versions of me and my girlfriend on the front cover', 'Replace the people in the template with us', 'Make us look like the characters in the template style'..."
+                              value={templateCustomizations.referenceImageTransformation}
+                              onChange={(e) => setTemplateCustomizations(prev => ({
+                                ...prev,
+                                referenceImageTransformation: e.target.value
+                              }))}
+                              rows={3}
+                              className="resize-none"
+                              style={{ fontSize: '16px' }}
+                            />
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              Describe how you want your photo to be incorporated into the template design.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3 pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowTemplateCustomization(false);
+                      setSelectedTemplate(null);
+                      setShowTemplateGallery(true); // Go back to template gallery
+                    }}
+                    className="flex-1"
+                  >
+                    Back to Templates
+                  </Button>
+                  <Button
+                    onClick={handleApplyTemplateWithCustomizations}
+                    className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                  >
+                    <Wand2 className="w-4 h-4 mr-2" />
+                    Apply & Customize
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Template Gallery Dialog */}
         <Dialog open={showTemplateGallery} onOpenChange={setShowTemplateGallery}>
@@ -4773,7 +5848,7 @@ Return only the numeric score (1-100) for each image.`;
               <p className="text-sm text-gray-500">
                 {aiFilteredCards.length > 0 
                   ? "AI has ranked these templates by relevance to your search"
-                  : "Use AI search above or click any card to use it as a template"
+                  : "Click any card to customize it with your own message, changes, and reference photos"
                 }
               </p>
               <Button
@@ -4786,6 +5861,55 @@ Return only the numeric score (1-100) for each image.`;
                 Cancel
               </Button>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Draft Card Preview Dialog */}
+        <Dialog open={previewingDraftIndex !== -1} onOpenChange={(open) => !open && setPreviewingDraftIndex(-1)}>
+          <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Eye className="w-5 h-5 text-purple-600" />
+                Design Variation {previewingDraftIndex + 1} - Detailed Preview
+              </DialogTitle>
+              <DialogDescription>
+                Low quality preview of the complete card design. Select this design to generate the high-quality version.
+              </DialogDescription>
+            </DialogHeader>
+            
+            {previewingDraftIndex !== -1 && draftCards[previewingDraftIndex] && (
+              <div className="space-y-6">
+                {/* Full Card Preview */}
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                  <CardPreview 
+                    card={draftCards[previewingDraftIndex]} 
+                    isFrontBackOnly={isFrontBackOnly}
+                    fastPreviewMode={false}
+                    isCardCompleted={false}
+                  />
+                </div>
+                
+                {/* Action Buttons */}
+                <div className="flex gap-3 justify-center pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={() => setPreviewingDraftIndex(-1)}
+                  >
+                    Close Preview
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setSelectedDraftIndex(previewingDraftIndex);
+                      setPreviewingDraftIndex(-1);
+                    }}
+                    className="bg-purple-600 hover:bg-purple-700 text-white"
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Select This Design
+                  </Button>
+                </div>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
 

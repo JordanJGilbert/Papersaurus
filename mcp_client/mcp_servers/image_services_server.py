@@ -580,9 +580,13 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                 image_url_openai = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename_openai}"
                 print(f"✅ OpenAI (Image API) Success: Prompt #{prompt_idx_openai}. Generated image: {image_url_openai}")
                 
-                # QA Check for spelling mistakes
-                print(f"🔍 Starting QA check for spelling mistakes...")
-                qa_result = await qa_check_spelling(image_url_openai, prompt_text)
+                # QA Check for spelling mistakes (skip for low quality)
+                if quality != "low":
+                    print(f"🔍 Starting QA check for spelling mistakes...")
+                    qa_result = await qa_check_spelling(image_url_openai, prompt_text)
+                else:
+                    print(f"⚡ Skipping QA check for low quality generation")
+                    qa_result = {"has_errors": False, "errors": []}
                 
                 if qa_result["has_errors"]:
                     print(f"❌ QA Check: Spelling errors detected in image {prompt_idx_openai}")
@@ -821,9 +825,13 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                     image_url_flux = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename_flux}"
                     print(f"✅ FLUX 1.1 Pro Success: Prompt #{prompt_idx_flux}. Generated image: {image_url_flux}")
                     
-                    # QA Check for spelling mistakes
-                    print(f"🔍 Starting QA check for spelling mistakes...")
-                    qa_result = await qa_check_spelling(image_url_flux, prompt_text)
+                    # QA Check for spelling mistakes (skip for low quality)
+                    if quality != "low":
+                        print(f"🔍 Starting QA check for spelling mistakes...")
+                        qa_result = await qa_check_spelling(image_url_flux, prompt_text)
+                    else:
+                        print(f"⚡ Skipping QA check for low quality generation")
+                        qa_result = {"has_errors": False, "errors": []}
                     
                     if qa_result["has_errors"]:
                         print(f"❌ QA Check: Spelling errors detected in image {prompt_idx_flux}")
@@ -1064,9 +1072,13 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                     image_url_seedream = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename_seedream}"
                     print(f"✅ SeeDream 3 Success: Prompt #{prompt_idx_seedream}. Generated image: {image_url_seedream}")
                     
-                    # QA Check for spelling mistakes
-                    print(f"🔍 Starting QA check for spelling mistakes...")
-                    qa_result = await qa_check_spelling(image_url_seedream, prompt_text)
+                    # QA Check for spelling mistakes (skip for low quality)
+                    if quality != "low":
+                        print(f"🔍 Starting QA check for spelling mistakes...")
+                        qa_result = await qa_check_spelling(image_url_seedream, prompt_text)
+                    else:
+                        print(f"⚡ Skipping QA check for low quality generation")
+                        qa_result = {"has_errors": False, "errors": []}
                     
                     if qa_result["has_errors"]:
                         print(f"❌ QA Check: Spelling errors detected in image {prompt_idx_seedream}")
@@ -1316,9 +1328,13 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                     image_url_ideogram = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename_ideogram}"
                     print(f"✅ Ideogram V3 Turbo Success: Prompt #{prompt_idx_ideogram}. Generated image: {image_url_ideogram}")
                     
-                    # QA Check for spelling mistakes
-                    print(f"🔍 Starting QA check for spelling mistakes...")
-                    qa_result = await qa_check_spelling(image_url_ideogram, prompt_text)
+                    # QA Check for spelling mistakes (skip for low quality)
+                    if quality != "low":
+                        print(f"🔍 Starting QA check for spelling mistakes...")
+                        qa_result = await qa_check_spelling(image_url_ideogram, prompt_text)
+                    else:
+                        print(f"⚡ Skipping QA check for low quality generation")
+                        qa_result = {"has_errors": False, "errors": []}
                     
                     if qa_result["has_errors"]:
                         print(f"❌ QA Check: Spelling errors detected in image {prompt_idx_ideogram}")
@@ -1568,9 +1584,13 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                     image_url_ideogram = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename_ideogram}"
                     print(f"✅ Ideogram V3 Quality Success: Prompt #{prompt_idx_ideogram}. Generated image: {image_url_ideogram}")
                     
-                    # QA Check for spelling mistakes
-                    print(f"🔍 Starting QA check for spelling mistakes...")
-                    qa_result = await qa_check_spelling(image_url_ideogram, prompt_text)
+                    # QA Check for spelling mistakes (skip for low quality)
+                    if quality != "low":
+                        print(f"🔍 Starting QA check for spelling mistakes...")
+                        qa_result = await qa_check_spelling(image_url_ideogram, prompt_text)
+                    else:
+                        print(f"⚡ Skipping QA check for low quality generation")
+                        qa_result = {"has_errors": False, "errors": []}
                     
                     if qa_result["has_errors"]:
                         print(f"❌ QA Check: Spelling errors detected in image {prompt_idx_ideogram}")
@@ -1817,11 +1837,15 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
             # Filter out None results (errors during saving/processing)
             successful_urls = [url for url in image_url_results if url is not None]
             
-            # QA Check each image for spelling mistakes
+            # QA Check each image for spelling mistakes (skip for low quality)
             final_urls = []
             for url in successful_urls:
-                print(f"🔍 Starting QA check for spelling mistakes on image: {url}")
-                qa_result = await qa_check_spelling(url, prompt)
+                if quality != "low":
+                    print(f"🔍 Starting QA check for spelling mistakes on image: {url}")
+                    qa_result = await qa_check_spelling(url, prompt)
+                else:
+                    print(f"⚡ Skipping QA check for low quality generation on image: {url}")
+                    qa_result = {"has_errors": False, "errors": []}
                 
                 if qa_result["has_errors"]:
                     print(f"❌ QA Check: Spelling errors detected in image {url}")

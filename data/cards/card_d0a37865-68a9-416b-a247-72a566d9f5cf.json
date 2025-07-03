@@ -1,0 +1,17 @@
+{
+  "id": "d0a37865-68a9-416b-a247-72a566d9f5cf",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_dd00c7fc.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_cf7f7aab.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_fc9003d0.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_478addab.png",
+  "createdAt": 1751507936.2008517,
+  "expiresAt": 1783043936.2008533,
+  "version": 1,
+  "generatedPrompts": {
+    "backCover": "A simple and elegant watercolor back cover with a soft, cream-colored textured wash. In the top-left corner, there's a small, delicate watercolor painting of a single olive branch. The design is understated and natural, with the bottom-right corner left clear for the QR code. The style is gentle watercolor with subtle color variations.",
+    "frontCover": "An adorable and charming watercolor illustration with a gentle, earthy color palette (terracotta, olive green, dusty blue, cream). A sweet, cartoonish giraffe is sitting on the grass, carefully placing a tiny graduation cap on the head of a small, fluffy puppy who is looking up with a proud smile. The scene is set in a peaceful meadow with soft, rolling hills in the background. The text \"Congratulations\" is written in a lovely, flowing script in a dark olive green color, positioned in the sky area above the characters. The style is a soft and delicate watercolor with layered washes, fine details, and a cozy, heartwarming feel on textured paper.",
+    "leftInterior": "A whimsical, full-bleed watercolor map, designed in a charming, hand-drawn style with an earthy color palette. The map shows a path labeled \"The Road to Success.\" It starts at a little kennel icon labeled \"Start\" and ends at a tall tree icon labeled \"You Are Here!\" A giraffe is shown peering over the top of the tall tree, waving down. Tiny dog paw prints follow the entire path. The style is quaint and detailed, like a page from a storybook.",
+    "rightInterior": "A clean watercolor background with a gentle, earthy terracotta wash that is darker at the edges and lighter in the center, creating a soft vignette effect. The paper texture is clearly visible. In the middle of the light area, \"MESSAGE GOES HERE\" is written in a beautiful, flowing, dark brown handwritten cursive script. The design is warm, inviting, and easy to read."
+  }
+}

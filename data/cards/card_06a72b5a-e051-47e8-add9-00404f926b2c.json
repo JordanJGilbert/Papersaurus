@@ -1,0 +1,17 @@
+{
+  "id": "06a72b5a-e051-47e8-add9-00404f926b2c",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_23b91c9f.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_c3f28275.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_7449c158.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_fixed_0246bd33.png",
+  "createdAt": 1751505733.7515244,
+  "expiresAt": 1783041733.751525,
+  "version": 1,
+  "generatedPrompts": {
+    "backCover": "A simple, elegant design on a warm cream background. A minimalist gold line art drawing of a ball of yarn is positioned in the upper-left quadrant. Style: 2D flat illustration, minimalist, smart style.",
+    "frontCover": "A humorous illustration of a sophisticated tuxedo cat wearing a monocle and a tiny party hat, sitting majestically on a pile of beautifully wrapped birthday presents. The cat has a slightly smug, amused expression. In the background, soft, warm sunbeams stream through a window, illuminating dust motes dancing in the air. The overall color palette is warm and inviting, featuring shades of cream, gold, burnt orange, and deep brown. The text 'Happy Birthday to the Cat's Meow' is written in a playful, elegant serif font in the center. Style: 2D flat illustration, smart style, clean lines, textured details.",
+    "leftInterior": "A funny, full-bleed illustration showing a 'cat logic' diagram. It's styled like a whimsical flowchart on a burnt orange background. One path starts with 'Is it a box?' leading to 'SIT IN IT.' Another path starts with 'Hear a can opening?' leading to 'DEMAND FOOD.' A third path shows 'Human is busy?' leading to 'LIE ON KEYBOARD.' The diagram is populated with small, charming cat doodles. Style: Smart style, infographic design, humorous, flat 2D with clean lines.",
+    "rightInterior": "The message is elegantly centered on a solid cream background. The text 'Happy birthday, Mike! I hope your day is as perfect as a cat nap in a sunbeam and that you get showered with more love and affection than a fussy feline. May all your birthday wishes come true... especially the ones that involve more cats! All the best, Suzzane' is rendered in a beautiful, flowing dark brown handwritten cursive script. A small, simple gold paw print icon is placed just below Suzzane's name. Style: Minimalist, elegant, smart style."
+  }
+}

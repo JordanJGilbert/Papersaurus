@@ -1,0 +1,17 @@
+{
+  "id": "d6d89f83-90df-4971-8603-702a3be7e895",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_a927d3eb.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_eb0dfb87.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_b6ae343c.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_64ba0e38.png",
+  "createdAt": 1751508338.8682532,
+  "expiresAt": 1783044338.868254,
+  "version": 1,
+  "generatedPrompts": {
+    "backCover": "A simple back cover with a solid sky blue background. In the top-center, a small, simple icon of a star, rendered in a dark slate blue, matching the font from the front. The bottom-right corner is intentionally left blank.",
+    "frontCover": "A bright and optimistic flat 2D illustration. The scene depicts stylized business elements. A simple graph line shows a sharp upward trend, ending in a star. A giraffe's head peeks in from the top right corner, looking down with a gentle expression. A loyal Beagle sits at the bottom left, next to the start of the graph line. The style is friendly yet professional, using clean shapes and no outlines. The background is a light, airy sky blue. The text 'Congratulations' is in a friendly but professional rounded sans-serif font in a dark slate blue, located in the open space in the center. Color palette: Sky blue, slate blue, pastel orange, and soft brown.",
+    "leftInterior": "The left interior displays a pattern of small, simplified icons related to success and teamwork against the sky blue background. Icons include stars, upward-pointing arrows, and linked circles, all rendered in a soft, pastel orange and white. The pattern is light, positive, and business-appropriate.",
+    "rightInterior": "The right interior features a clean white background to maximize readability. The placeholder text 'Dear Carl,\n\nCongratulations on this outstanding achievement. Just as a giraffe stands tall, your dedication and vision have truly set you apart, and your loyalty, much like a faithful canine companion, has been a cornerstone of this success. It has been a pleasure to witness your hard work come to fruition.\n\nAll the best,\nJosie' is centered and written in a beautiful, clear handwritten cursive script with a dark slate blue ink, creating a friendly yet professional appearance."
+  }
+}
