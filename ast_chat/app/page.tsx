@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, Sparkles, Printer, Heart, Gift, GraduationCap, Calendar, Wand2, MessageSquarePlus, ChevronDown, Settings, Zap, Palette, Edit3, Upload, X, Cake, ThumbsUp, PartyPopper, Trophy, TreePine, Stethoscope, CloudRain, Baby, Church, Home, MessageCircle, Eye, Wrench, Clock, Undo2, Redo2, RefreshCw, Settings2, AlertTriangle, CheckCircle, Circle, Image as ImageIcon } from "lucide-react";
+import { ArrowLeft, Sparkles, Printer, Heart, Gift, GraduationCap, Calendar, Wand2, MessageSquarePlus, ChevronDown, Settings, Zap, Palette, Edit3, Upload, X, Cake, ThumbsUp, PartyPopper, Trophy, TreePine, Stethoscope, CloudRain, Baby, Church, Home, MessageCircle, Eye, Wrench, Clock, Undo2, Redo2, RefreshCw, Settings2, AlertTriangle, CheckCircle, Circle, Image as ImageIcon, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import CardPreview from "@/components/CardPreview";
@@ -38,8 +38,8 @@ interface GeneratedCard {
   shareUrl?: string;       // Shareable URL for the card
   // Store the actual prompts sent to image generation
   generatedPrompts?: {
-    frontCover: string;
-    backCover: string;
+    frontCover?: string;
+    backCover?: string;
     leftInterior?: string;
     rightInterior?: string;
   };
@@ -435,56 +435,91 @@ export default function CardStudioPage() {
         const statusResponse = await checkJobStatus(jobId);
         
         if (statusResponse && statusResponse.status === 'completed') {
+          console.log('🎉 Job completed while user was away! Card data:', statusResponse.cardData);
+          
           // Job completed while user was away!
           if (statusResponse.cardData) {
             // Apply QR code to back cover before setting the card data
             let cardWithQR = { ...statusResponse.cardData };
             
+            // Ensure the card has a valid createdAt date
+            if (!cardWithQR.createdAt) {
+              cardWithQR.createdAt = new Date();
+            } else if (typeof cardWithQR.createdAt === 'string' || typeof cardWithQR.createdAt === 'number') {
+              cardWithQR.createdAt = new Date(cardWithQR.createdAt);
+            }
+            
+            // Ensure the card has a valid ID
+            if (!cardWithQR.id) {
+              cardWithQR.id = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            }
+            
+            console.log('🔄 Card data prepared for recovery:', cardWithQR);
+            
             try {
               console.log('🔄 Starting QR overlay process for recovered card');
               
-                             // Store card data first to get a shareable URL
-               if (cardWithQR.frontCover) {
-                 try {
-                   const cardStoreResponse = await fetch('/api/cards/store', {
-                     method: 'POST',
-                     headers: { 'Content-Type': 'application/json' },
-                     body: JSON.stringify({
-                       prompt: cardWithQR.prompt || '',
-                       frontCover: cardWithQR.frontCover || '',
-                       backCover: cardWithQR.backCover || '',
-                       leftPage: cardWithQR.leftPage || '',
-                       rightPage: cardWithQR.rightPage || ''
-                     })
-                   });
-                   
-                   if (cardStoreResponse.ok) {
-                     const cardStoreData = await cardStoreResponse.json();
-                     const actualShareUrl = cardStoreData.share_url;
-                     console.log('Using actual share URL for QR code (recovered):', actualShareUrl);
-                     
-                     // Apply QR code to back cover using the API-returned URL
-                     if (cardWithQR.backCover && actualShareUrl) {
-                       console.log('🔄 Applying QR overlay to recovered card...');
-                       const originalBackCover = cardWithQR.backCover;
-                       cardWithQR.backCover = await overlayQRCodeOnImage(originalBackCover, actualShareUrl);
-                       cardWithQR.shareUrl = actualShareUrl;
-                       console.log('✅ QR overlay complete for recovered card');
-                     }
-                   }
+              // Store card data first to get a shareable URL
+              if (cardWithQR.frontCover) {
+                try {
+                  const cardStoreResponse = await fetch('/api/cards/store', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      prompt: cardWithQR.prompt || '',
+                      frontCover: cardWithQR.frontCover || '',
+                      backCover: cardWithQR.backCover || '',
+                      leftPage: cardWithQR.leftPage || '',
+                      rightPage: cardWithQR.rightPage || '',
+                      generatedPrompts: cardWithQR.generatedPrompts || null
+                    })
+                  });
+                  
+                  if (cardStoreResponse.ok) {
+                    const cardStoreData = await cardStoreResponse.json();
+                    const actualShareUrl = cardStoreData.share_url;
+                    console.log('Using actual share URL for QR code (recovered):', actualShareUrl);
+                    
+                    // Apply QR code to back cover using the API-returned URL
+                    if (cardWithQR.backCover && actualShareUrl) {
+                      console.log('🔄 Applying QR overlay to recovered card...');
+                      const originalBackCover = cardWithQR.backCover;
+                      cardWithQR.backCover = await overlayQRCodeOnImage(originalBackCover, actualShareUrl);
+                      cardWithQR.shareUrl = actualShareUrl;
+                      console.log('✅ QR overlay complete for recovered card');
+                    }
+                  } else {
+                    console.warn('Failed to store recovered card for sharing, continuing without QR code');
+                  }
                 } catch (error) {
                   console.error('❌ Failed to store card or overlay QR code (recovered):', error);
                   // Continue without QR code if there's an error
                 }
+              } else {
+                console.warn('No front cover found in recovered card, skipping QR code process');
               }
             } catch (error) {
               console.error('❌ Error in QR code process (recovered):', error);
               // Continue without QR code if there's an error
             }
             
+            console.log('🎯 Setting recovered card state:', cardWithQR);
+            
+            // Set the card states - this is critical!
             setGeneratedCard(cardWithQR);
             setGeneratedCards([cardWithQR]);
+            setSelectedCardIndex(0);
             setIsCardCompleted(true);
+            setIsGenerating(false);
+            setGenerationProgress("");
+            
+            // Set all sections as completed
+            setSectionLoadingStates({
+              frontCover: 'completed',
+              backCover: 'completed',
+              leftInterior: 'completed',
+              rightInterior: 'completed',
+            });
             
             // Capture generation time from backend
             if (statusResponse.cardData.generationTimeSeconds) {
@@ -494,7 +529,36 @@ export default function CardStudioPage() {
             // Stop elapsed time tracking
             stopElapsedTimeTracking();
             
+            // Set progress to 100%
+            setProgressPercentage(100);
+            
+                         // Force a state update by updating localStorage (without base64 QR code to avoid quota issues)
+             try {
+               // Create a lightweight version without base64 QR code for localStorage
+               const cardForStorage = { ...cardWithQR };
+               if (cardForStorage.backCover && cardForStorage.backCover.startsWith('data:image/png;base64,')) {
+                 // Replace the base64 QR code with the original back cover URL to save space
+                 cardForStorage.backCover = statusResponse.cardData.backCover;
+                 console.log('💾 Replaced base64 QR code with original URL for localStorage storage (recovery)');
+               }
+               
+               const cardsData = {
+                 cards: [cardForStorage],
+                 selectedIndex: 0,
+                 generationDuration: statusResponse.cardData.generationTimeSeconds || null
+               };
+               localStorage.setItem('vibecarding-generated-cards', JSON.stringify(cardsData));
+               console.log('💾 Recovered card saved to localStorage');
+             } catch (storageError) {
+               console.error('Failed to save recovered card to localStorage:', storageError);
+             }
+            
             toast.success("🎉 Your card with QR code finished generating while you were away!");
+            
+            console.log('✅ Card recovery process finished successfully');
+          } else {
+            console.error('❌ No card data in completed recovery response');
+            toast.error("❌ Card generation completed but no data received. Please try again.");
           }
           removeJobFromStorage(jobId);
         } else if (statusResponse && statusResponse.status === 'failed') {
@@ -542,55 +606,80 @@ export default function CardStudioPage() {
       const statusResponse = await checkJobStatus(jobId);
       
       if (statusResponse && statusResponse.status === 'completed') {
+        console.log('🎉 Job completed! Card data:', statusResponse.cardData);
+        
         if (statusResponse.cardData) {
           // Apply QR code to back cover before setting the card data
           let cardWithQR = { ...statusResponse.cardData };
+          
+          // Ensure the card has a valid createdAt date
+          if (!cardWithQR.createdAt) {
+            cardWithQR.createdAt = new Date();
+          } else if (typeof cardWithQR.createdAt === 'string' || typeof cardWithQR.createdAt === 'number') {
+            cardWithQR.createdAt = new Date(cardWithQR.createdAt);
+          }
+          
+          // Ensure the card has a valid ID
+          if (!cardWithQR.id) {
+            cardWithQR.id = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          }
+          
+          console.log('🔄 Card data prepared:', cardWithQR);
           
           try {
             setGenerationProgress("✨ Adding interactive QR code to your card...");
             console.log('🔄 Starting QR overlay process for async generated card');
             
-                         // Store card data first to get a shareable URL
-             if (cardWithQR.frontCover) {
-               try {
-                 const cardStoreResponse = await fetch('/api/cards/store', {
-                   method: 'POST',
-                   headers: { 'Content-Type': 'application/json' },
-                   body: JSON.stringify({
-                     prompt: cardWithQR.prompt || '',
-                     frontCover: cardWithQR.frontCover || '',
-                     backCover: cardWithQR.backCover || '',
-                     leftPage: cardWithQR.leftPage || '',
-                     rightPage: cardWithQR.rightPage || ''
-                   })
-                 });
-                 
-                 if (cardStoreResponse.ok) {
-                   const cardStoreData = await cardStoreResponse.json();
-                   const actualShareUrl = cardStoreData.share_url;
-                   console.log('Using actual share URL for QR code:', actualShareUrl);
-                   
-                   // Apply QR code to back cover using the API-returned URL
-                   if (cardWithQR.backCover && actualShareUrl) {
-                     console.log('🔄 Applying QR overlay to async generated card...');
-                     const originalBackCover = cardWithQR.backCover;
-                     cardWithQR.backCover = await overlayQRCodeOnImage(originalBackCover, actualShareUrl);
-                     cardWithQR.shareUrl = actualShareUrl;
-                     console.log('✅ QR overlay complete for async generated card');
-                   }
-                 }
+            // Store card data first to get a shareable URL
+            if (cardWithQR.frontCover) {
+              try {
+                const cardStoreResponse = await fetch('/api/cards/store', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    prompt: cardWithQR.prompt || '',
+                    frontCover: cardWithQR.frontCover || '',
+                    backCover: cardWithQR.backCover || '',
+                    leftPage: cardWithQR.leftPage || '',
+                    rightPage: cardWithQR.rightPage || '',
+                    generatedPrompts: cardWithQR.generatedPrompts || null
+                  })
+                });
+                
+                if (cardStoreResponse.ok) {
+                  const cardStoreData = await cardStoreResponse.json();
+                  const actualShareUrl = cardStoreData.share_url;
+                  console.log('Using actual share URL for QR code:', actualShareUrl);
+                  
+                  // Apply QR code to back cover using the API-returned URL
+                  if (cardWithQR.backCover && actualShareUrl) {
+                    console.log('🔄 Applying QR overlay to async generated card...');
+                    const originalBackCover = cardWithQR.backCover;
+                    cardWithQR.backCover = await overlayQRCodeOnImage(originalBackCover, actualShareUrl);
+                    cardWithQR.shareUrl = actualShareUrl;
+                    console.log('✅ QR overlay complete for async generated card');
+                  }
+                } else {
+                  console.warn('Failed to store card for sharing, continuing without QR code');
+                }
               } catch (error) {
                 console.error('❌ Failed to store card or overlay QR code:', error);
                 // Continue without QR code if there's an error
               }
+            } else {
+              console.warn('No front cover found, skipping QR code process');
             }
           } catch (error) {
             console.error('❌ Error in QR code process:', error);
             // Continue without QR code if there's an error
           }
           
+          console.log('🎯 Setting card state with final card:', cardWithQR);
+          
+          // Set the card states - this is critical!
           setGeneratedCard(cardWithQR);
           setGeneratedCards([cardWithQR]);
+          setSelectedCardIndex(0);
           setIsCardCompleted(true);
           setIsGenerating(false);
           setGenerationProgress("");
@@ -604,8 +693,12 @@ export default function CardStudioPage() {
           });
           
           // Capture generation time from backend
+          console.log('🔍 Checking for generationTimeSeconds:', statusResponse.cardData.generationTimeSeconds);
           if (statusResponse.cardData.generationTimeSeconds) {
+            console.log('⏱️ Setting generation duration:', statusResponse.cardData.generationTimeSeconds, 'seconds');
             setGenerationDuration(statusResponse.cardData.generationTimeSeconds);
+          } else {
+            console.log('⚠️ No generationTimeSeconds found in card data');
           }
           
           // Stop elapsed time tracking
@@ -615,11 +708,38 @@ export default function CardStudioPage() {
           setProgressPercentage(100);
           setGenerationProgress("Card generation complete!");
           
+          // Force a state update by updating localStorage (without base64 QR code to avoid quota issues)
+          try {
+            // Create a lightweight version without base64 QR code for localStorage
+            const cardForStorage = { ...cardWithQR };
+            if (cardForStorage.backCover && cardForStorage.backCover.startsWith('data:image/png;base64,')) {
+              // Replace the base64 QR code with the original back cover URL to save space
+              cardForStorage.backCover = statusResponse.cardData.backCover;
+              console.log('💾 Replaced base64 QR code with original URL for localStorage storage');
+            }
+            
+            const cardsData = {
+              cards: [cardForStorage],
+              selectedIndex: 0,
+              generationDuration: statusResponse.cardData.generationTimeSeconds || null
+            };
+            localStorage.setItem('vibecarding-generated-cards', JSON.stringify(cardsData));
+            console.log('💾 Card saved to localStorage');
+          } catch (storageError) {
+            console.error('Failed to save to localStorage:', storageError);
+          }
+          
           toast.success("🎉 Your card with QR code is ready!");
+          
+          console.log('✅ Card completion process finished successfully');
+        } else {
+          console.error('❌ No card data in completed response');
+          toast.error("❌ Card generation completed but no data received. Please try again.");
         }
         removeJobFromStorage(jobId);
         setCurrentJobId(null);
       } else if (statusResponse && statusResponse.status === 'failed') {
+        console.error('❌ Job failed:', statusResponse);
         toast.error("❌ Card generation failed. Please try again.");
         removeJobFromStorage(jobId);
         setCurrentJobId(null);
@@ -637,12 +757,18 @@ export default function CardStudioPage() {
         });
       } else if (statusResponse && statusResponse.status === 'processing') {
         // Continue polling every 3 seconds - near real-time updates for better UX
+        console.log(`🔄 Job still processing (attempt ${attempt}), polling again...`);
         setTimeout(() => pollJobStatus(jobId, attempt + 1), 3000);
+      } else {
+        console.warn('⚠️ Unexpected status response:', statusResponse);
+        // Continue polling in case it's a temporary issue
+        setTimeout(() => pollJobStatus(jobId, attempt + 1), 5000);
       }
     } catch (error) {
       console.error('Failed to poll job status:', error);
-      // Retry after delay
-      setTimeout(() => pollJobStatus(jobId, attempt + 1), 10000);
+      // Retry after delay with exponential backoff
+      const delay = Math.min(10000, 3000 * Math.pow(1.5, Math.min(attempt - 1, 5)));
+      setTimeout(() => pollJobStatus(jobId, attempt + 1), delay);
     }
   };
 
@@ -869,6 +995,7 @@ export default function CardStudioPage() {
   const [aiFilteredCards, setAiFilteredCards] = useState<any[]>([]);
   const [searchMode, setSearchMode] = useState<'text' | 'ai' | 'hybrid'>('text');
   const [textFilteredCards, setTextFilteredCards] = useState<any[]>([]);
+  const [showPrompts, setShowPrompts] = useState(false);
   
   // Preload template cards for instant access
   const { preloadAllCards, getCachedCards, totalCards } = useCardCache();
@@ -977,6 +1104,7 @@ export default function CardStudioPage() {
           setShowSettings(formData.showSettings || false);
           setShowPrintConfirmation(formData.showPrintConfirmation || false);
           setIsCardCompleted(formData.isCardCompleted || false);
+          setGenerationDuration(formData.generationDuration || null);
           console.log('✅ Form data loaded successfully');
         } else {
           console.log('ℹ️ No saved form data found');
@@ -994,6 +1122,11 @@ export default function CardStudioPage() {
           setSelectedCardIndex(cardsData.selectedIndex || 0);
           if (cardsWithDates.length > 0) {
             setGeneratedCard(cardsWithDates[cardsData.selectedIndex || 0]);
+          }
+          // Restore generation duration if available
+          if (cardsData.generationDuration) {
+            setGenerationDuration(cardsData.generationDuration);
+            console.log('⏱️ Restored generation duration:', cardsData.generationDuration, 'seconds');
           }
         }
       } catch (error) {
@@ -1058,7 +1191,8 @@ export default function CardStudioPage() {
           showRefinementBox,
           showSettings,
           showPrintConfirmation,
-          isCardCompleted
+          isCardCompleted,
+          generationDuration
         };
         localStorage.setItem('vibecarding-form-data', JSON.stringify(formData));
         console.log('✅ Form data saved to localStorage:', formData);
@@ -1068,15 +1202,30 @@ export default function CardStudioPage() {
     };
 
     saveFormData();
-  }, [isInitialLoadComplete, prompt, finalCardMessage, toField, fromField, selectedType, customCardType, selectedTone, selectedArtisticStyle, customStyleDescription, selectedImageModel, numberOfCards, userEmail, referenceImageUrl, imageTransformation, isHandwrittenMessage, isFrontBackOnly, selectedPaperSize, showAdvanced, handwritingSampleUrl, isTextareaExpanded, isMessageExpanded, messageHistory, currentMessageIndex, showRefinementBox, showSettings, showPrintConfirmation, isCardCompleted]);
+  }, [isInitialLoadComplete, prompt, finalCardMessage, toField, fromField, selectedType, customCardType, selectedTone, selectedArtisticStyle, customStyleDescription, selectedImageModel, numberOfCards, userEmail, referenceImageUrl, imageTransformation, isHandwrittenMessage, isFrontBackOnly, selectedPaperSize, showAdvanced, handwritingSampleUrl, isTextareaExpanded, isMessageExpanded, messageHistory, currentMessageIndex, showRefinementBox, showSettings, showPrintConfirmation, isCardCompleted, generationDuration]);
 
   // Save generated cards to localStorage whenever they change
   useEffect(() => {
     const saveGeneratedCards = () => {
       try {
+        // Create lightweight versions without base64 QR codes for localStorage
+        const cardsForStorage = generatedCards.map(card => {
+          const cardCopy = { ...card };
+          if (cardCopy.backCover && cardCopy.backCover.startsWith('data:image/png;base64,')) {
+            // Don't store the base64 QR code version - it's too large for localStorage
+            // The QR code will be regenerated when needed
+            console.log('💾 Skipping base64 QR code storage for card:', cardCopy.id);
+            // Keep the original back cover URL if we have it
+            // Note: In practice, we'd need to store the original URL separately
+            // For now, we'll just not save the base64 version
+          }
+          return cardCopy;
+        });
+        
         const cardsData = {
-          cards: generatedCards,
-          selectedIndex: selectedCardIndex
+          cards: cardsForStorage,
+          selectedIndex: selectedCardIndex,
+          generationDuration: generationDuration
         };
         localStorage.setItem('vibecarding-generated-cards', JSON.stringify(cardsData));
       } catch (error) {
@@ -1087,7 +1236,7 @@ export default function CardStudioPage() {
     if (generatedCards.length > 0) {
       saveGeneratedCards();
     }
-  }, [generatedCards, selectedCardIndex]);
+  }, [generatedCards, selectedCardIndex, generationDuration]);
 
   // Track manual message changes for version control
   useEffect(() => {
@@ -2119,9 +2268,7 @@ Return JSON:
 {
   "frontCover": "detailed prompt with story opening elements",
   "backCover": "detailed prompt with story conclusion elements"${!isFrontBackOnly ? ',\n  "leftInterior": "detailed prompt with story development elements",\n  "rightInterior": "detailed prompt with story climax elements"' : ''}
-}
-
-IMPORTANT: Create a completely unique and different interpretation for this specific card variant. Use different creative approaches, color schemes, compositions, and artistic elements while maintaining the same core theme and requirements.`;
+}`;
 
       // Generate multiple unique prompt sets in parallel
       const promptGenerationPromises = Array.from({ length: numberOfCards }, (_, cardIndex) => {
@@ -2958,7 +3105,7 @@ Return only the numeric score (1-100) for each image.`;
     return allBatchResults.flat();
   };
 
-  // Text-based Template Search Function (Instant)
+  // Enhanced Text-based Template Search Function (Instant)
   const handleTextTemplateSearch = () => {
     if (!templateSearchQuery.trim()) {
       toast.error("Please enter a search query!");
@@ -2975,31 +3122,88 @@ Return only the numeric score (1-100) for each image.`;
 
     const searchTerms = templateSearchQuery.toLowerCase().split(' ').filter(term => term.length > 1);
     
-    // Score cards based on text relevance
+    // Score cards based on text relevance (now including generated prompts)
     const scoredCards = allCards.map(card => {
-      const cardText = (card.prompt || '').toLowerCase();
+      const originalPrompt = (card.prompt || '').toLowerCase();
       let score = 0;
+      let matchSources: string[] = [];
       
+      // Build searchable text from multiple sources
+      const searchableTexts = [
+        { text: originalPrompt, weight: 10, source: 'original' }
+      ];
+      
+      // Add generated prompts if available (these are AI-analyzed descriptions of actual images)
+      if (card.generatedPrompts) {
+        if (card.generatedPrompts.frontCover) {
+          searchableTexts.push({ 
+            text: card.generatedPrompts.frontCover.toLowerCase(), 
+            weight: 8, 
+            source: 'front-cover-analysis' 
+          });
+        }
+        if (card.generatedPrompts.backCover) {
+          searchableTexts.push({ 
+            text: card.generatedPrompts.backCover.toLowerCase(), 
+            weight: 6, 
+            source: 'back-cover-analysis' 
+          });
+        }
+        if (card.generatedPrompts.leftInterior) {
+          searchableTexts.push({ 
+            text: card.generatedPrompts.leftInterior.toLowerCase(), 
+            weight: 7, 
+            source: 'left-interior-analysis' 
+          });
+        }
+        if (card.generatedPrompts.rightInterior) {
+          searchableTexts.push({ 
+            text: card.generatedPrompts.rightInterior.toLowerCase(), 
+            weight: 7, 
+            source: 'right-interior-analysis' 
+          });
+        }
+      }
+      
+      // Search through all text sources
       searchTerms.forEach(term => {
-        // Exact word match
-        if (cardText.includes(term)) {
-          score += term.length > 3 ? 10 : 5;
-        }
-        // Partial match
-        else if (cardText.includes(term.substring(0, Math.max(3, term.length - 1)))) {
-          score += 3;
-        }
+        searchableTexts.forEach(({ text, weight, source }) => {
+          // Exact word match
+          if (text.includes(term)) {
+            const termScore = (term.length > 3 ? 10 : 5) * (weight / 10);
+            score += termScore;
+            if (!matchSources.includes(source)) {
+              matchSources.push(source);
+            }
+          }
+          // Partial match
+          else if (text.includes(term.substring(0, Math.max(3, term.length - 1)))) {
+            const partialScore = 3 * (weight / 10);
+            score += partialScore;
+            if (!matchSources.includes(source)) {
+              matchSources.push(source);
+            }
+          }
+        });
       });
       
       // Boost for cards that match multiple terms
-      const matchedTerms = searchTerms.filter(term => cardText.includes(term)).length;
+      const matchedTerms = searchTerms.filter(term => 
+        searchableTexts.some(({ text }) => text.includes(term))
+      ).length;
       if (matchedTerms > 1) {
         score += matchedTerms * 5;
       }
       
+      // Boost for cards with AI-generated prompts (they have richer descriptions)
+      if (card.generatedPrompts && matchSources.some(source => source.includes('analysis'))) {
+        score += 5; // Bonus for AI-analyzed visual content matches
+      }
+      
       return {
         ...card,
-        textScore: score
+        textScore: score,
+        matchSources: matchSources
       };
     });
 
@@ -3013,7 +3217,16 @@ Return only the numeric score (1-100) for each image.`;
     
     if (filteredCards.length > 0) {
       const avgScore = Math.round(filteredCards.reduce((sum, card) => sum + card.textScore, 0) / filteredCards.length);
-      toast.success(`📝 Found ${filteredCards.length} text matches for "${templateSearchQuery}"! Average relevance: ${avgScore}`);
+      const aiAnalyzedMatches = filteredCards.filter(card => 
+        card.matchSources?.some(source => source.includes('analysis'))
+      ).length;
+      
+      let successMessage = `📝 Found ${filteredCards.length} text matches for "${templateSearchQuery}"! Average relevance: ${avgScore}`;
+      if (aiAnalyzedMatches > 0) {
+        successMessage += ` (${aiAnalyzedMatches} matches found in AI visual analysis!)`;
+      }
+      
+      toast.success(successMessage);
     } else {
       toast.info("🤔 No templates found matching your text search. Try different keywords!");
     }
@@ -4109,6 +4322,17 @@ Return only the numeric score (1-100) for each image.`;
             </Card>
 
         {/* Card Preview */}
+        {(() => {
+          console.log('🔍 Card Preview Render Check:', {
+            hasGeneratedCard: !!generatedCard,
+            cardId: generatedCard?.id,
+            isCardCompleted,
+            generatedCardsLength: generatedCards.length,
+            selectedCardIndex,
+            frontCover: generatedCard?.frontCover ? 'present' : 'missing'
+          });
+          return null;
+        })()}
         {generatedCard && (
                   <Card className="shadow-lg">
                     <CardHeader>
@@ -4116,7 +4340,10 @@ Return only the numeric score (1-100) for each image.`;
                         <div>
                           <CardTitle className="flex items-center gap-2">
                             {isCardCompleted && (
-                              <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                              <div 
+                                className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center" 
+                                title={generationDuration ? `Generated in ${formatGenerationTime(generationDuration)}` : 'Card completed'}
+                              >
                                 <span className="text-white text-sm">✓</span>
                               </div>
                             )}
@@ -4124,17 +4351,17 @@ Return only the numeric score (1-100) for each image.`;
                           </CardTitle>
                           <CardDescription>
                             {isCardCompleted ? (
-                              <span className="text-green-600 dark:text-green-400 font-medium">
-                                🎉 Card generation complete! Your card is ready for printing or sharing.
+                              <div className="space-y-2">
+                                <span className="text-green-600 dark:text-green-400 font-medium">
+                                  🎉 Card generation complete! Your card is ready for printing or sharing.
+                                </span>
                                 {generationDuration && (
-                                  <>
-                                    <br />
-                                    <span className="text-sm text-gray-500 dark:text-gray-400">
-                                      ⚡ Generated in {formatGenerationTime(generationDuration)}
-                                    </span>
-                                  </>
+                                  <div className="inline-flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-3 py-1 rounded-full text-sm font-medium">
+                                    <span className="text-blue-500">⚡</span>
+                                    Generated in {formatGenerationTime(generationDuration)}
+                                  </div>
                                 )}
-                              </span>
+                              </div>
                             ) : (
                               <>
                                 Created {new Date(generatedCard.createdAt).toLocaleDateString()}
@@ -4254,13 +4481,28 @@ Return only the numeric score (1-100) for each image.`;
         <Dialog open={showTemplateGallery} onOpenChange={setShowTemplateGallery}>
           <DialogContent className="sm:max-w-6xl max-h-[90vh] overflow-hidden">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Eye className="w-5 h-5 text-blue-600" />
-                Choose a Template
-              </DialogTitle>
-              <DialogDescription>
-                Use AI to find perfect templates or browse all existing cards. Click any card to use as a template!
-              </DialogDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Eye className="w-5 h-5 text-blue-600" />
+                    Choose a Template
+                  </DialogTitle>
+                  <DialogDescription>
+                    Use AI to find perfect templates or browse all existing cards. Click any card to use as a template!
+                  </DialogDescription>
+                </div>
+                
+                {/* Show Prompts Toggle */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowPrompts(!showPrompts)}
+                  className="gap-2 text-xs"
+                >
+                  <MessageSquare className="w-3 h-3" />
+                  {showPrompts ? 'Hide Prompts' : 'Show Prompts'}
+                </Button>
+              </div>
             </DialogHeader>
             
             {/* Template Search Section */}
@@ -4301,7 +4543,7 @@ Return only the numeric score (1-100) for each image.`;
               
               {/* Search Mode Description */}
               <div className="text-xs text-gray-500 dark:text-gray-400">
-                {searchMode === 'text' && "📝 Fast keyword search through card descriptions (instant results)"}
+                {searchMode === 'text' && "📝 Fast keyword search through card descriptions + AI-generated visual prompts (instant results)"}
                 {searchMode === 'ai' && "🎨 AI analyzes card images for visual style, colors, and themes (10-15 seconds)"}
                 {searchMode === 'hybrid' && "⚡ Combines fast text search with AI visual analysis for best results"}
               </div>
@@ -4384,11 +4626,13 @@ Return only the numeric score (1-100) for each image.`;
             </div>
             
             <div className="flex-1 overflow-auto">
-              {aiFilteredCards.length > 0 ? (
-                // Show AI-filtered results
+              {(aiFilteredCards.length > 0 && (searchMode === 'ai' || searchMode === 'hybrid')) || (textFilteredCards.length > 0 && searchMode === 'text') ? (
+                // Show filtered results
                 <div className="space-y-4">
                   <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    🎯 AI-Selected Templates (ranked by relevance)
+                    {searchMode === 'text' && '📝 Text Search Results (ranked by keyword relevance)'}
+                    {searchMode === 'ai' && '🎯 AI Vision Results (ranked by visual relevance)'}
+                    {searchMode === 'hybrid' && '⚡ Hybrid Search Results (ranked by combined relevance)'}
                   </div>
                   <div 
                     className="flex overflow-x-auto gap-4 pb-4"
@@ -4399,7 +4643,7 @@ Return only the numeric score (1-100) for each image.`;
                       scrollSnapType: 'x mandatory'
                     }}
                   >
-                    {aiFilteredCards.map((card, index) => {
+                    {(searchMode === 'text' ? textFilteredCards : aiFilteredCards).map((card, index) => {
                       const frontImage = card.frontCover || card.backCover || card.leftPage || card.rightPage;
                       
                       return (
@@ -4422,28 +4666,37 @@ Return only the numeric score (1-100) for each image.`;
                             applyTemplate(template);
                           }}
                         >
-                                                     <div className="bg-gradient-to-br from-purple-900 to-blue-900 rounded-xl p-2 shadow-inner space-y-2 h-full border-2 border-purple-400 relative">
-                             {/* AI Score badge */}
-                             <div className="absolute top-2 left-2 z-10 flex gap-1">
-                               <Badge className="bg-purple-600 text-white text-xs">
-                                 #{index + 1}
-                               </Badge>
-                               {card.aiScore && (
-                                 <Badge className="bg-green-600 text-white text-xs">
-                                   {card.aiScore}%
-                                 </Badge>
-                               )}
-                             </div>
+                          <div className={`${
+                            searchMode === 'text' 
+                              ? 'bg-gradient-to-br from-blue-900 to-indigo-900 border-blue-400' 
+                              : searchMode === 'ai'
+                              ? 'bg-gradient-to-br from-purple-900 to-blue-900 border-purple-400'
+                              : 'bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 border-gradient-to-r border-blue-400'
+                          } rounded-xl p-2 shadow-inner space-y-2 h-full border-2 relative`}>
+                            {/* Score badge */}
+                            <div className="absolute top-2 left-2 z-10 flex gap-1">
+                              <Badge className={`${
+                                searchMode === 'text' ? 'bg-blue-600' : 'bg-purple-600'
+                              } text-white text-xs`}>
+                                #{index + 1}
+                              </Badge>
+                              {(card.aiScore || card.textScore) && (
+                                <Badge className="bg-green-600 text-white text-xs">
+                                  {searchMode === 'text' ? card.textScore : card.aiScore}
+                                  {searchMode === 'ai' || searchMode === 'hybrid' ? '%' : ''}
+                                </Badge>
+                              )}
+                            </div>
                             
                             {frontImage ? (
-                                                             <img
-                                 src={frontImage}
-                                 alt={`Template: ${card.prompt || 'Untitled'}`}
-                                 className="rounded-lg shadow-lg w-full h-auto object-cover select-none pointer-events-none"
-                                 loading="lazy"
-                                 style={{
-                                   userSelect: 'none'
-                                 }}
+                              <img
+                                src={frontImage}
+                                alt={`Template: ${card.prompt || 'Untitled'}`}
+                                className="rounded-lg shadow-lg w-full h-auto object-cover select-none pointer-events-none"
+                                loading="lazy"
+                                style={{
+                                  userSelect: 'none'
+                                }}
                               />
                             ) : (
                               <div className="w-full h-48 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center">
@@ -4454,9 +4707,31 @@ Return only the numeric score (1-100) for each image.`;
                               </div>
                             )}
                             
-                            <div className="text-xs text-purple-100 px-2 py-1 bg-purple-800/50 rounded">
-                              {card.prompt?.substring(0, 60) || 'Untitled'}
-                              {card.prompt && card.prompt.length > 60 && '...'}
+                            <div className={`text-xs ${
+                              searchMode === 'text' ? 'text-blue-100 bg-blue-800/50' : 'text-purple-100 bg-purple-800/50'
+                            } px-2 py-1 rounded space-y-1`}>
+                              <div>
+                                {card.prompt?.substring(0, 60) || 'Untitled'}
+                                {card.prompt && card.prompt.length > 60 && '...'}
+                              </div>
+                              
+                              {/* Show Generated Prompts if enabled */}
+                              {showPrompts && card.generatedPrompts && (
+                                <div className="text-xs opacity-80 border-t border-white/20 pt-1 space-y-1">
+                                  {card.generatedPrompts.frontCover && (
+                                    <div>
+                                      <span className="font-semibold">Front:</span> {card.generatedPrompts.frontCover.substring(0, 80)}
+                                      {card.generatedPrompts.frontCover.length > 80 && '...'}
+                                    </div>
+                                  )}
+                                  {card.generatedPrompts.backCover && (
+                                    <div>
+                                      <span className="font-semibold">Back:</span> {card.generatedPrompts.backCover.substring(0, 80)}
+                                      {card.generatedPrompts.backCover.length > 80 && '...'}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -4472,6 +4747,7 @@ Return only the numeric score (1-100) for each image.`;
                   </div>
                   <FastHorizontalGallery
                     templateMode={true}
+                    showPrompts={showPrompts}
                     onCardSelect={(card) => {
                       // Convert GalleryCard to GeneratedCard format for applyTemplate
                       const template: GeneratedCard = {
@@ -4482,7 +4758,8 @@ Return only the numeric score (1-100) for each image.`;
                         leftPage: card.leftPage || '',
                         rightPage: card.rightPage || '',
                         createdAt: new Date(card.createdAt * 1000),
-                        shareUrl: card.shareUrl
+                        shareUrl: card.shareUrl,
+                        generatedPrompts: card.generatedPrompts
                       };
                       applyTemplate(template);
                     }}

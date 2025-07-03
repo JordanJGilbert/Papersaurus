@@ -11,6 +11,12 @@ interface GalleryCard {
   createdAtFormatted: string;
   shareUrl?: string;
   hasImages: boolean;
+  generatedPrompts?: {
+    frontCover?: string;
+    backCover?: string;
+    leftInterior?: string;
+    rightInterior?: string;
+  };
 }
 
 interface CardCache {

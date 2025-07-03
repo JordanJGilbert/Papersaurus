@@ -16,18 +16,26 @@ interface GalleryCard {
   createdAtFormatted: string;
   shareUrl?: string;
   hasImages: boolean;
+  generatedPrompts?: {
+    frontCover?: string;
+    backCover?: string;
+    leftInterior?: string;
+    rightInterior?: string;
+  };
 }
 
 interface FastHorizontalGalleryProps {
   onCardSelect?: (card: GalleryCard) => void;
   templateMode?: boolean;
   className?: string;
+  showPrompts?: boolean;
 }
 
 const FastHorizontalGallery: React.FC<FastHorizontalGalleryProps> = ({
   onCardSelect,
   templateMode = false,
-  className = ''
+  className = '',
+  showPrompts = false
 }) => {
   const { getCachedCards, hasCache, totalCards } = useCardCache();
   const [cards, setCards] = useState<GalleryCard[]>([]);
@@ -87,11 +95,9 @@ const FastHorizontalGallery: React.FC<FastHorizontalGalleryProps> = ({
                     className="rounded-lg shadow-lg w-full h-auto object-cover"
                     loading="lazy" // Browser handles it
                     style={{
-                      WebkitUserDrag: 'none',
-                      userDrag: 'none',
                       pointerEvents: 'none',
                       userSelect: 'none'
-                    }}
+                    } as React.CSSProperties}
                   />
                 ) : (
                   <div className="w-full h-48 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center">
@@ -101,6 +107,32 @@ const FastHorizontalGallery: React.FC<FastHorizontalGalleryProps> = ({
                     </div>
                   </div>
                 )}
+
+                {/* Card description */}
+                <div className="text-xs text-gray-100 bg-gray-800/50 px-2 py-1 rounded space-y-1">
+                  <div>
+                    {card.prompt?.substring(0, 60) || 'Untitled'}
+                    {card.prompt && card.prompt.length > 60 && '...'}
+                  </div>
+                  
+                  {/* Show Generated Prompts if enabled */}
+                  {showPrompts && card.generatedPrompts && (
+                    <div className="text-xs opacity-80 border-t border-white/20 pt-1 space-y-1">
+                      {card.generatedPrompts.frontCover && (
+                        <div>
+                          <span className="font-semibold">Front:</span> {card.generatedPrompts.frontCover.substring(0, 80)}
+                          {card.generatedPrompts.frontCover.length > 80 && '...'}
+                        </div>
+                      )}
+                      {card.generatedPrompts.backCover && (
+                        <div>
+                          <span className="font-semibold">Back:</span> {card.generatedPrompts.backCover.substring(0, 80)}
+                          {card.generatedPrompts.backCover.length > 80 && '...'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {/* Simple action buttons */}
                 <div className="flex justify-around text-sm text-gray-300 px-1 space-x-2">

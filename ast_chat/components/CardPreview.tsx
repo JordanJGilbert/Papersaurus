@@ -25,8 +25,8 @@ interface GeneratedCard {
   shareUrl?: string;       // Optional shareable URL for the card
   // Store the actual prompts sent to image generation
   generatedPrompts?: {
-    frontCover: string;
-    backCover: string;
+    frontCover?: string;
+    backCover?: string;
     leftInterior?: string;
     rightInterior?: string;
   };
@@ -200,39 +200,27 @@ export default function CardPreview({
     }
   };
 
-  // Generate thumbnails for all card images and preload critical ones
+  // Preload critical images for better performance (no thumbnails - use full quality)
   useEffect(() => {
     if (displayCard && !isLoadingCard) {
-      const images = [
-        displayCard.frontCover,
-        displayCard.backCover,
-        displayCard.leftPage,
-        displayCard.rightPage
-      ].filter(Boolean);
-
       // Preload the front cover as it's most critical
       if (displayCard.frontCover) {
         preloadCriticalImages([displayCard.frontCover]);
       }
-
-      // Generate thumbnails in background for all images
-      images.forEach(async (imageUrl) => {
-        await generateThumbnail(imageUrl);
-        
-        // Generate multiple responsive thumbnails for better performance
-        if (imageUrl === displayCard.frontCover) {
-          // Only generate multiple sizes for front cover to save bandwidth
-          const responsiveThumbnails = await generateMultipleThumbnails(imageUrl);
-          setThumbnailUrls(prev => ({
-            ...prev,
-            ...Object.fromEntries(
-              Object.entries(responsiveThumbnails).map(([size, url]) => 
-                [`${imageUrl}_${size}`, url]
-              )
-            )
-          }));
-        }
-      });
+      
+      // Preload other images for better UX
+      const otherImages = [
+        displayCard.backCover,
+        displayCard.leftPage,
+        displayCard.rightPage
+      ].filter(Boolean);
+      
+      if (otherImages.length > 0) {
+        // Preload other images with a slight delay to prioritize front cover
+        setTimeout(() => {
+          preloadCriticalImages(otherImages);
+        }, 1000);
+      }
     }
   }, [displayCard, isLoadingCard]);
 
@@ -663,6 +651,7 @@ Apply the requested changes while preserving the complete image structure and po
           backCover: displayCard.backCover,
           leftPage: displayCard.leftPage,
           rightPage: displayCard.rightPage,
+          generatedPrompts: displayCard.generatedPrompts || null,
         }),
       });
 
@@ -833,7 +822,7 @@ ${displayCard.generatedPrompts.rightInterior}
             <div className="w-full h-full relative bg-white rounded-lg overflow-hidden shadow-xl group">
               <ProgressiveImage
                 src={displayCard.frontCover}
-                thumbnailSrc={thumbnailUrls[displayCard.frontCover]}
+                thumbnailSrc={undefined}
                 alt="Card front cover"
                 className="w-full h-full object-contain"
                 priority={true}
@@ -1019,7 +1008,7 @@ ${displayCard.generatedPrompts.rightInterior}
                     >
                       <ProgressiveImage
                         src={slides[currentSlide].image}
-                        thumbnailSrc={thumbnailUrls[slides[currentSlide].image]}
+                        thumbnailSrc={undefined}
                         alt={slides[currentSlide].title}
                         className="w-full h-full object-contain bg-white"
                         priority={currentSlide === 0} // Only prioritize front cover
@@ -1471,7 +1460,7 @@ ${displayCard.generatedPrompts.rightInterior}
                           <div className="max-w-full max-h-full">
                             <ProgressiveImage
                               src={slides[currentSlide].image}
-                              thumbnailSrc={thumbnailUrls[slides[currentSlide].image]}
+                              thumbnailSrc={undefined}
                               alt={slides[currentSlide].title}
                               className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
                               priority={true} // Always prioritize in fullscreen
@@ -1586,7 +1575,7 @@ ${displayCard.generatedPrompts.rightInterior}
                       <div className="w-1/2 relative">
                         <ProgressiveImage
                           src={getCurrentImage("left-interior", card.leftPage)}
-                          thumbnailSrc={thumbnailUrls[getCurrentImage("left-interior", card.leftPage)]}
+                          thumbnailSrc={undefined}
                           alt="Left Interior"
                           className="w-full h-full object-contain"
                         />
@@ -1598,7 +1587,7 @@ ${displayCard.generatedPrompts.rightInterior}
                       <div className="w-1/2 relative">
                         <ProgressiveImage
                           src={getCurrentImage("right-interior", card.rightPage)}
-                          thumbnailSrc={thumbnailUrls[getCurrentImage("right-interior", card.rightPage)]}
+                          thumbnailSrc={undefined}
                           alt="Right Interior"
                           className="w-full h-full object-contain"
                         />
@@ -1610,7 +1599,7 @@ ${displayCard.generatedPrompts.rightInterior}
                   ) : (
                     <ProgressiveImage
                       src={slides.find(s => s.id === editingSection)?.image || ""}
-                      thumbnailSrc={thumbnailUrls[slides.find(s => s.id === editingSection)?.image || ""]}
+                      thumbnailSrc={undefined}
                       alt="Current section"
                       className="w-full h-64 object-contain"
                     />

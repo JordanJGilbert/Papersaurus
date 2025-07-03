@@ -4845,6 +4845,10 @@ def store_card():
             'version': 1
         }
         
+        # Include generatedPrompts if provided
+        if data.get('generatedPrompts'):
+            card_data['generatedPrompts'] = data.get('generatedPrompts')
+        
         # Store in dedicated cards directory
         card_filename = f"card_{card_id}.json"
         card_path = os.path.join(CARDS_DIR, card_filename)
@@ -4921,17 +4925,21 @@ def list_all_cards():
                     
                     if template_mode:
                         # Lighter payload for template requests
-                        cards.append({
+                        card_entry = {
                             'id': card_data.get('id'),
                             'prompt': card_data.get('prompt', ''),
                             'frontCover': card_data.get('frontCover', ''),
                             'createdAt': created_at,
                             'createdAtFormatted': created_formatted,
                             'hasImages': bool(card_data.get('frontCover'))
-                        })
+                        }
+                        # Include generatedPrompts if available
+                        if card_data.get('generatedPrompts'):
+                            card_entry['generatedPrompts'] = card_data.get('generatedPrompts')
+                        cards.append(card_entry)
                     else:
                         # Full payload for gallery requests
-                        cards.append({
+                        card_entry = {
                             'id': card_data.get('id'),
                             'prompt': card_data.get('prompt', ''),
                             'frontCover': card_data.get('frontCover', ''),
@@ -4943,7 +4951,11 @@ def list_all_cards():
                             'shareUrl': share_url,
                             'hasImages': bool(card_data.get('frontCover') or card_data.get('backCover') or 
                                            card_data.get('leftPage') or card_data.get('rightPage'))
-                        })
+                        }
+                        # Include generatedPrompts if available
+                        if card_data.get('generatedPrompts'):
+                            card_entry['generatedPrompts'] = card_data.get('generatedPrompts')
+                        cards.append(card_entry)
                         
                 except (json.JSONDecodeError, IOError, KeyError) as e:
                     print(f"Error reading card file {filename}: {str(e)}")
@@ -5618,6 +5630,12 @@ def generate_card_images_background(job_id, prompts, config):
             print(f"Job {job_id} failed - missing sections: {missing_sections}")
             return
         
+        # Calculate generation time
+        start_time = job_storage[job_id]["createdAt"]
+        end_time = time.time()
+        generation_duration = end_time - start_time
+        print(f"⏱️ Job {job_id} generation time: {generation_duration:.2f} seconds")
+        
         # Create card data structure
         card_data = {
             "id": job_id,
@@ -5627,7 +5645,8 @@ def generate_card_images_background(job_id, prompts, config):
             "leftPage": generated_images.get("leftInterior", ""),
             "rightPage": generated_images.get("rightInterior", ""),
             "createdAt": job_storage[job_id]["createdAt"],
-            "generatedPrompts": prompts
+            "generatedPrompts": prompts,
+            "generationTimeSeconds": generation_duration
         }
         
         # Mark job as completed
@@ -5665,6 +5684,7 @@ def generate_card_images_background(job_id, prompts, config):
                                 <li><strong>Job ID:</strong> {job_id}</li>
                                 <li><strong>Generated Images:</strong> {len(generated_images)} sections</li>
                                 <li><strong>Sections:</strong> {', '.join(generated_images.keys())}</li>
+                                <li><strong>Generation Time:</strong> {generation_duration:.1f} seconds</li>
                             </ul>
                         </div>
                         
