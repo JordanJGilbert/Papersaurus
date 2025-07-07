@@ -449,8 +449,125 @@ export default function CardPreview({
     setIsEditing(true);
 
     try {
-      // Modify the edit prompt based on section for portrait images
-      let finalEditPrompt = `CRITICAL: This is a greeting card ${editingSection.replace('-', ' ')} in portrait format.
+      // Get the original generated prompt for this section to provide context
+      let originalPrompt = "";
+      if (displayCard.generatedPrompts) {
+        switch (editingSection) {
+          case "front-cover":
+            originalPrompt = displayCard.generatedPrompts.frontCover || "";
+            break;
+          case "back-cover":
+            originalPrompt = displayCard.generatedPrompts.backCover || "";
+            break;
+          case "left-interior":
+            originalPrompt = displayCard.generatedPrompts.leftInterior || "";
+            break;
+          case "right-interior":
+            originalPrompt = displayCard.generatedPrompts.rightInterior || "";
+            break;
+        }
+      }
+
+      let finalEditPrompt = "";
+
+      if (originalPrompt) {
+        // Use AI to intelligently modify the original prompt based on user's edit request
+        const promptModificationQuery = `You are an expert AI prompt engineer specializing in image generation prompts for greeting cards. Your task is to modify an existing image generation prompt based on a user's edit request.
+
+ORIGINAL PROMPT:
+"${originalPrompt}"
+
+USER'S EDIT REQUEST:
+"${editPrompt}"
+
+CRITICAL INSTRUCTIONS:
+1. You MUST return the ENTIRE modified prompt, not just the changes
+2. Keep ALL the original formatting, style instructions, and technical details
+3. Only modify the specific elements mentioned in the user's edit request
+4. Preserve all portrait format requirements and greeting card specifications
+5. Maintain the same level of detail and descriptiveness as the original
+6. Keep all safety instructions and content guidelines from the original
+7. Ensure the modified prompt will generate the same type of image (greeting card ${editingSection.replace('-', ' ')}) with only the requested changes
+
+EXAMPLES OF WHAT TO MODIFY:
+- Colors: If user says "make it blue", change color references in the prompt
+- Style: If user says "more cartoonish", adjust style descriptors
+- Elements: If user says "add flowers", incorporate flower elements
+- Text: If user says "change the message", update text content
+- Mood: If user says "make it happier", adjust mood descriptors
+
+WHAT TO PRESERVE:
+- All technical specifications (portrait format, dimensions, etc.)
+- All safety and content guidelines
+- The basic structure and purpose of the image
+- All printing and edge safety requirements
+- The greeting card context and purpose
+
+Return the ENTIRE modified prompt that incorporates the user's requested changes while preserving everything else from the original prompt. Do not provide explanations or summaries - just return the complete modified prompt.`;
+
+        try {
+          const modifiedPrompt = await fetch('/internal/call_mcp_tool', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tool_name: 'ai_chat',
+              arguments: {
+                messages: promptModificationQuery,
+                model: 'gemini-2.5-pro',
+                include_thoughts: false
+              }
+            })
+          });
+
+          if (!modifiedPrompt.ok) throw new Error(`AI prompt modification failed: ${modifiedPrompt.status}`);
+          
+          const modifiedData = await modifiedPrompt.json();
+          if (modifiedData.error && modifiedData.error !== "None" && modifiedData.error !== null) {
+            throw new Error(modifiedData.error);
+          }
+
+          let modifiedResult;
+          if (typeof modifiedData.result === 'string') {
+            try {
+              modifiedResult = JSON.parse(modifiedData.result);
+            } catch {
+              throw new Error('Invalid JSON response from AI');
+            }
+          } else {
+            modifiedResult = modifiedData.result;
+          }
+
+          if (modifiedResult.status === 'error') {
+            throw new Error(modifiedResult.message);
+          }
+
+          finalEditPrompt = modifiedResult.response || originalPrompt;
+          
+        } catch (aiError) {
+          console.warn('AI prompt modification failed, using fallback approach:', aiError);
+          // Fallback to the previous approach if AI modification fails
+          finalEditPrompt = `CRITICAL: This is a greeting card ${editingSection.replace('-', ' ')} in portrait format.
+
+ORIGINAL IMAGE DESCRIPTION: The current image was created with this prompt: "${originalPrompt}"
+
+Your edit request: "${editPrompt}"
+
+IMPORTANT INSTRUCTIONS:
+- This is a portrait (vertical) image for a greeting card
+- You must PRESERVE the portrait format and dimensions
+- Only modify what was specifically requested in the edit
+- Keep the overall layout structure intact - do not crop or cut off any sections
+- Maintain the aspect ratio and size of the original image
+- Ensure the edited result is suitable for printing as part of a greeting card
+- Position any text elements safely away from edges with generous margins
+- The image should remain focused on its specific purpose: ${editingSection.replace('-', ' ')}
+- Base your edits on the original design described above, making only the requested changes
+
+Apply the requested changes while preserving the complete image structure and portrait format.`;
+        }
+      } else {
+        // Fallback when no original prompt is available
+        finalEditPrompt = `CRITICAL: This is a greeting card ${editingSection.replace('-', ' ')} in portrait format.
 
 Your edit request: "${editPrompt}"
 
@@ -465,6 +582,7 @@ IMPORTANT INSTRUCTIONS:
 - The image should remain focused on its specific purpose: ${editingSection.replace('-', ' ')}
 
 Apply the requested changes while preserving the complete image structure and portrait format.`;
+      }
 
       // Call the edit_images tool
       const response = await fetch('/internal/call_mcp_tool', {
@@ -525,6 +643,8 @@ Apply the requested changes while preserving the complete image structure and po
       // Update the card object if callback provided (only if not loading placeholder)
       if (onCardUpdate && !isLoadingCard) {
         const updatedCard = { ...displayCard };
+        
+        // Update the image URL
         switch (editingSection) {
           case "front-cover":
             updatedCard.frontCover = editedImageUrl;
@@ -539,6 +659,26 @@ Apply the requested changes while preserving the complete image structure and po
             updatedCard.rightPage = editedImageUrl;
             break;
         }
+        
+        // Update the generated prompt with the modified version
+        if (updatedCard.generatedPrompts && finalEditPrompt) {
+          updatedCard.generatedPrompts = { ...updatedCard.generatedPrompts };
+          switch (editingSection) {
+            case "front-cover":
+              updatedCard.generatedPrompts.frontCover = finalEditPrompt;
+              break;
+            case "back-cover":
+              updatedCard.generatedPrompts.backCover = finalEditPrompt;
+              break;
+            case "left-interior":
+              updatedCard.generatedPrompts.leftInterior = finalEditPrompt;
+              break;
+            case "right-interior":
+              updatedCard.generatedPrompts.rightInterior = finalEditPrompt;
+              break;
+          }
+        }
+        
         onCardUpdate(updatedCard);
       }
 

@@ -91,7 +91,7 @@ const NetflixStyleGallery: React.FC<NetflixStyleGalleryProps> = ({
         // Preload in background
         const img = new Image();
         img.onload = () => {
-          setPreloadedImages(prev => new Set([...prev, card.frontCover]));
+          setPreloadedImages(prev => new Set(prev).add(card.frontCover));
         };
         img.src = card.frontCover;
       }

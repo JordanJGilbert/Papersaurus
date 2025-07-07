@@ -79,10 +79,6 @@ const ProgressiveImage: React.FC<ProgressiveImageProps> = ({
             setImageState('loaded');
             onLoad?.();
           }
-          
-          return () => {
-            observer.disconnect();
-          };
         }
       } catch (error) {
         if (isMounted) {

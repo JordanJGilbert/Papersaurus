@@ -3100,7 +3100,7 @@ def initialize_gmail_client(delegate_email):
 
 def send_email_with_attachment(gmail_service, to, subject, body, attachment_base64=None, filename=None):
     """
-    Send email with attachment using manual email construction (Python version of Node.js function).
+    Send professional email with attachment using proper MIME construction and anti-spam headers.
     
     Args:
         gmail_service: Initialized Gmail service object
@@ -3114,52 +3114,96 @@ def send_email_with_attachment(gmail_service, to, subject, body, attachment_base
         dict: Gmail API response
     """
     try:
-        # Construct email manually (matching Node.js approach)
-        email_parts = [
-            f"To: {to}",
-            f"Subject: {subject}",
-            'Content-Type: multipart/mixed; boundary="boundary123"',
-            '',
-            '--boundary123',
-            'Content-Type: text/html; charset=utf-8',
-            '',
-            body,
-            ''
-        ]
+        import uuid
+        from email.utils import formatdate, make_msgid
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        from email.mime.application import MIMEApplication
+        from email import encoders
+        import base64
         
-        # Add attachment if provided
+        # Create multipart message with proper structure
+        message = MIMEMultipart('mixed')
+        
+        # Set recipient and sender
+        message['To'] = to
+        message['From'] = 'VibeCarding Support <vibecarding@ast.engineer>'
+        message['Subject'] = subject
+        
+        # Add comprehensive anti-spam headers
+        message['Date'] = formatdate(localtime=True)
+        message['Message-ID'] = make_msgid(domain='vibecarding.com')
+        message['X-Mailer'] = 'VibeCarding Service v1.0'
+        message['MIME-Version'] = '1.0'
+        message['X-Priority'] = '3'
+        message['X-MSMail-Priority'] = 'Normal'
+        message['Importance'] = 'Normal'
+        message['Reply-To'] = 'support@vibecarding.com'
+        message['Return-Path'] = 'vibecarding@ast.engineer'
+        message['Sender'] = 'vibecarding@ast.engineer'
+        
+        # Additional anti-spam headers
+        message['X-Auto-Response-Suppress'] = 'All'
+        message['X-Entity-ID'] = f'vibecarding-{uuid.uuid4().hex[:8]}'
+        message['List-Unsubscribe'] = '<mailto:unsubscribe@vibecarding.com>'
+        message['Organization'] = 'VibeCarding - Custom Greeting Cards'
+        message['User-Agent'] = 'VibeCarding Email Service/1.0'
+        
+        # Additional legitimacy headers
+        message['X-Spam-Status'] = 'No'
+        message['X-Originating-IP'] = '[127.0.0.1]'
+        message['X-Content-Type-Options'] = 'nosniff'
+        message['X-Frame-Options'] = 'DENY'
+        
+        # Create multipart alternative for text and HTML
+        msg_alternative = MIMEMultipart('alternative')
+        
+        # Create plain text version from HTML (simple conversion for better deliverability)
+        import re
+        text_body = re.sub('<[^<]+?>', '', body)  # Strip HTML tags
+        text_body = text_body.replace('&nbsp;', ' ').replace('&amp;', '&')
+        text_body = '\n'.join([line.strip() for line in text_body.split('\n') if line.strip()])
+        
+        # Add both text and HTML parts
+        text_part = MIMEText(text_body, 'plain', 'utf-8')
+        html_part = MIMEText(body, 'html', 'utf-8')
+        
+        msg_alternative.attach(text_part)
+        msg_alternative.attach(html_part)
+        
+        # Attach the multipart alternative to the main message
+        message.attach(msg_alternative)
+        
+        # Add PDF attachment if provided
         if attachment_base64 and filename:
-            email_parts.extend([
-                '--boundary123',
-                f'Content-Type: application/pdf; name="{filename}"',
-                'Content-Transfer-Encoding: base64',
-                f'Content-Disposition: attachment; filename="{filename}"',
-                '',
-                attachment_base64
-            ])
+            # Decode base64 attachment
+            pdf_data = base64.b64decode(attachment_base64)
+            
+            # Create attachment
+            pdf_attachment = MIMEApplication(pdf_data, _subtype='pdf', name=filename)
+            pdf_attachment.add_header(
+                'Content-Disposition', 
+                f'attachment; filename="{filename}"'
+            )
+            pdf_attachment.add_header('Content-Transfer-Encoding', 'base64')
+            pdf_attachment.add_header('Content-ID', f'<{filename}>')
+            
+            message.attach(pdf_attachment)
         
-        # Close boundary
-        email_parts.append('--boundary123--')
-        
-        # Join all parts
-        email_content = '\n'.join(email_parts)
-        
-        # Encode email (matching Node.js base64url encoding)
-        email_bytes = email_content.encode('utf-8')
-        encoded_email = base64.urlsafe_b64encode(email_bytes).decode('utf-8')
-        # Remove padding (matching Node.js .replace(/=+$/, ''))
-        encoded_email = encoded_email.rstrip('=')
+        # Convert to Gmail API format
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
         
         # Send email via Gmail API
-        message = {
-            'raw': encoded_email
+        gmail_message = {
+            'raw': raw_message
         }
         
         result = gmail_service.users().messages().send(
             userId='me',
-            body=message
+            body=gmail_message
         ).execute()
         
+        print(f"Gmail client initialized successfully for vibecarding@ast.engineer")
         print(f"Email sent successfully: {result.get('id')}")
         return result
         
@@ -5505,11 +5549,17 @@ def generate_card_images_background(job_id, prompts, config):
                     "quality": config.get("quality", "high"),
                     "output_format": config.get("outputFormat", "jpeg"),
                     "output_compression": config.get("outputCompression", 100),
-                    "moderation": config.get("moderation", "auto")
+                    "moderation": config.get("moderation", "auto"),
+                    # Forward input_images if provided
+                    **({"input_images": config["input_images"]} if config.get("input_images") else {})
                 }
             }
             
             print(f"Making parallel MCP call for {len(prompts_list)} prompts")
+            if config.get("input_images"):
+                print(f"🔍 DEBUG: Forwarding input_images to MCP service: {config['input_images']}")
+            else:
+                print(f"🔍 DEBUG: No input_images in config to forward")
             
             # Make request to MCP service for all prompts at once
             mcp_response = call_mcp_service("generate_images_with_prompts", mcp_data["arguments"])
@@ -5595,7 +5645,9 @@ def generate_card_images_background(job_id, prompts, config):
                             "quality": config.get("quality", "high"),
                             "output_format": config.get("outputFormat", "jpeg"),
                             "output_compression": config.get("outputCompression", 100),
-                            "moderation": config.get("moderation", "auto")
+                            "moderation": config.get("moderation", "auto"),
+                            # Forward input_images if provided
+                            **({"input_images": config["input_images"]} if config.get("input_images") else {})
                         }
                     }
                     
@@ -6041,3 +6093,270 @@ def bulk_delete_cards():
             'status': 'error',
             'message': f'Bulk delete failed: {str(e)}'
         }), 500
+
+@app.route('/api/send-pdf-email', methods=['POST'])
+def send_pdf_email():
+    """Create a PDF from card data and send it via email"""
+    try:
+        data = request.get_json()
+        if not data:
+            print("❌ No JSON data provided in request")
+            return jsonify({'error': 'No JSON data provided'}), 400
+        
+        print(f"📧 Processing PDF email request: {data.keys()}")
+        
+        # Required fields
+        user_email = data.get('user_email')
+        if not user_email or not user_email.strip():
+            print("❌ Missing or empty user_email field")
+            return jsonify({'error': 'user_email is required and cannot be empty'}), 400
+        
+        # Validate email format
+        import re
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, user_email.strip()):
+            print(f"❌ Invalid email format: {user_email}")
+            return jsonify({'error': 'Invalid email format'}), 400
+        
+        # Card data fields
+        front_cover = data.get('front_cover')
+        back_cover = data.get('back_cover')
+        left_page = data.get('left_page')
+        right_page = data.get('right_page')
+        card_name = data.get('card_name', 'Custom Greeting Card')
+        
+        # PDF settings
+        paper_size = data.get('paper_size', 'standard')
+        is_front_back_only = data.get('is_front_back_only', False)
+        
+        print(f"📋 Card data validation - front_cover: {'✅' if front_cover else '❌'}, back_cover: {'✅' if back_cover else '❌'}, is_front_back_only: {is_front_back_only}")
+        
+        # Front cover is always required
+        if not front_cover or not front_cover.strip():
+            print("❌ Missing front_cover image")
+            return jsonify({'error': 'front_cover image is required'}), 400
+        
+        # Check if this might be a template card (has fewer images)
+        is_template_card = not back_cover or not left_page or not right_page
+        
+        if is_template_card:
+            print("🏷️ Detected template card - will handle missing images gracefully")
+            # For template cards, we'll create placeholder images or use the front cover
+            if not back_cover or not back_cover.strip():
+                print("📝 Using front cover as back cover for template card")
+                back_cover = front_cover  # Use front cover as fallback
+            
+            if not is_front_back_only:
+                if not left_page or not left_page.strip():
+                    print("📝 Using front cover as left page for template card")
+                    left_page = front_cover  # Use front cover as fallback
+                if not right_page or not right_page.strip():
+                    print("📝 Using front cover as right page for template card")
+                    right_page = front_cover  # Use front cover as fallback
+        else:
+            # For regular cards, all images should be present
+            if not back_cover or not back_cover.strip():
+                print("❌ Missing back_cover image")
+                return jsonify({'error': 'back_cover image is required'}), 400
+            
+            if not is_front_back_only:
+                if not left_page or not left_page.strip():
+                    print("❌ Missing left_page for full card")
+                    return jsonify({'error': 'left_page is required for full cards (or enable front_back_only mode)'}), 400
+                if not right_page or not right_page.strip():
+                    print("❌ Missing right_page for full card")
+                    return jsonify({'error': 'right_page is required for full cards (or enable front_back_only mode)'}), 400
+        
+        print(f"Creating PDF for email to {user_email}: {card_name}")
+        print(f"🎨 Final image URLs - front: {front_cover[:50]}..., back: {back_cover[:50]}..., left: {left_page[:50] if left_page else 'None'}..., right: {right_page[:50] if right_page else 'None'}...")
+        
+        # Step 1: Create the PDF using existing endpoint (with corrected image URLs)
+        pdf_create_data = {
+            'front_cover': front_cover,
+            'back_cover': back_cover,
+            'left_page': left_page,
+            'right_page': right_page,
+            'paper_size': paper_size,
+            'is_front_back_only': is_front_back_only
+        }
+        
+        # Call our own PDF creation endpoint
+        pdf_response = requests.post(
+            f"{DOMAIN_FROM_ENV}/api/create-card-pdf",
+            json=pdf_create_data,
+            timeout=60
+        )
+        
+        if pdf_response.status_code != 200:
+            return jsonify({
+                'error': 'Failed to create PDF',
+                'details': pdf_response.text
+            }), 500
+        
+        pdf_data = pdf_response.json()
+        pdf_url = pdf_data['pdf_url']
+        
+        print(f"PDF created successfully: {pdf_url}")
+        
+        # Step 2: Download the PDF to get the binary data
+        pdf_download_response = requests.get(pdf_url, timeout=30)
+        if pdf_download_response.status_code != 200:
+            return jsonify({
+                'error': 'Failed to download created PDF'
+            }), 500
+        
+        # Convert PDF to base64 for email attachment
+        pdf_binary = pdf_download_response.content
+        pdf_base64 = base64.b64encode(pdf_binary).decode('utf-8')
+        
+        print(f"PDF downloaded and encoded, size: {len(pdf_binary)} bytes")
+        
+        # Step 3: Send email with PDF attachment
+        if not GMAIL_API_AVAILABLE:
+            print("❌ Gmail API not available")
+            return jsonify({
+                'error': 'Email service not available. Please contact support.',
+                'status': 'error'
+            }), 500
+        
+        try:
+            # Create professional email subject without emojis (reduces spam score)
+            subject = f"Your Custom Greeting Card PDF - {card_name}"
+            
+            # Determine card type for email content
+            card_type = "folded greeting card" if not is_front_back_only else "front-and-back card"
+            
+            # Create plain text version (important for spam prevention)
+            text_body = f"""Your Custom Greeting Card is Ready!
+
+Hi there,
+
+Your custom greeting card "{card_name}" has been created and is attached to this email as a high-quality PDF.
+
+Card Details:
+- Card Name: {card_name}
+- Card Type: {card_type.title()}
+- Paper Size: {paper_size.title()}
+- Format: High-quality PDF ready for printing
+
+Printing Instructions:
+{"Simple Front-Back Card: Print single-sided, then fold along the center line." if is_front_back_only else "Full Duplex Card: Print with duplex setting using 'flip on short edge' for proper alignment."}
+Recommended: Use cardstock or heavy paper (at least 200gsm) for best results.
+
+Enjoy your custom card! Whether you're sending it to someone special or keeping it for yourself, we hope it brings joy.
+
+This card was created using VibeCarding - your custom greeting card service.
+If you have any questions about your card, please don't hesitate to reach out.
+
+Best regards,
+The VibeCarding Team
+support@vibecarding.com"""
+            
+            # Create improved HTML version with better structure
+            html_body = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Custom Greeting Card PDF</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0;">
+    <div style="max-width: 600px; margin: 0 auto; padding: 20px; background-color: #ffffff;">
+        <div style="text-align: center; border-bottom: 2px solid #4CAF50; padding-bottom: 20px; margin-bottom: 30px;">
+            <h1 style="color: #4CAF50; margin: 0; font-size: 24px;">VibeCarding</h1>
+            <h2 style="color: #333; margin: 10px 0 0 0; font-size: 20px;">Your Custom Greeting Card is Ready!</h2>
+        </div>
+        
+        <p style="margin-bottom: 20px;">Hello,</p>
+        
+        <p style="margin-bottom: 20px;">Your custom greeting card "<strong>{card_name}</strong>" has been successfully created and is attached to this email as a high-quality PDF document.</p>
+        
+        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #4CAF50;">
+            <h3 style="margin-top: 0; color: #333; font-size: 16px;">Card Information</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td style="padding: 5px 0; font-weight: bold;">Card Name:</td>
+                    <td style="padding: 5px 0;">{card_name}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px 0; font-weight: bold;">Card Type:</td>
+                    <td style="padding: 5px 0;">{card_type.title()}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px 0; font-weight: bold;">Paper Size:</td>
+                    <td style="padding: 5px 0;">{paper_size.title()}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px 0; font-weight: bold;">Format:</td>
+                    <td style="padding: 5px 0;">High-quality PDF ready for printing</td>
+                </tr>
+            </table>
+        </div>
+        
+        <div style="background-color: #e3f2fd; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #1976d2;">
+            <h3 style="margin-top: 0; color: #1976d2; font-size: 16px;">Printing Instructions</h3>
+            {'<p style="margin: 10px 0;"><strong>Simple Front-Back Card:</strong> Print single-sided, then fold along the center line.</p>' if is_front_back_only else '<p style="margin: 10px 0;"><strong>Full Duplex Card:</strong> Print with duplex setting using "flip on short edge" for proper alignment.</p>'}
+            <p style="margin: 10px 0;"><strong>Recommendation:</strong> Use cardstock or heavy paper (at least 200gsm) for best results.</p>
+        </div>
+        
+        <p style="margin: 30px 0 20px 0;">We hope you enjoy your custom card! Whether you're sending it to someone special or keeping it for yourself, we hope it brings joy to your day.</p>
+        
+        <div style="border-top: 1px solid #eee; padding-top: 20px; margin-top: 30px;">
+            <p style="font-size: 14px; color: #666; margin-bottom: 10px;">
+                This email was sent from VibeCarding, your custom greeting card service.
+            </p>
+            <p style="font-size: 14px; color: #666; margin-bottom: 20px;">
+                If you have any questions about your card or need assistance, please contact us at 
+                <a href="mailto:support@vibecarding.com" style="color: #4CAF50; text-decoration: none;">support@vibecarding.com</a>
+            </p>
+            <div style="text-align: center;">
+                <p style="margin: 0; color: #4CAF50; font-weight: bold;">Best regards,<br>The VibeCarding Team</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>"""
+            
+            # Initialize Gmail service
+            gmail_service = initialize_gmail_client("vibecarding@ast.engineer")
+            
+            # Send email with PDF attachment
+            filename = f"{card_name.replace(' ', '_').lower()}_card.pdf"
+            result = send_email_with_attachment(
+                gmail_service=gmail_service,
+                to=user_email,
+                subject=subject,
+                body=html_body,
+                attachment_base64=pdf_base64,
+                filename=filename
+            )
+            
+            print(f"✅ PDF email sent successfully to {user_email}, Message ID: {result.get('id')}")
+            
+            return jsonify({
+                'status': 'success',
+                'message': f'Your card "{card_name}" has been sent to {user_email}',
+                'email': user_email,
+                'card_name': card_name,
+                'message_id': result.get('id'),
+                'pdf_size_kb': round(len(pdf_binary) / 1024, 2)
+            })
+            
+        except Exception as email_error:
+            print(f"❌ Failed to send email: {email_error}")
+            return jsonify({
+                'error': 'Failed to send email',
+                'details': str(email_error)
+            }), 500
+        
+    except Exception as e:
+        print(f"❌ Error in send_pdf_email: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'status': 'error',
+            'error': 'Failed to process PDF email request',
+            'details': str(e)
+        }), 500
+
+# Add the endpoint before the existing print queue endpoints

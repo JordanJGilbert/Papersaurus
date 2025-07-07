@@ -210,22 +210,58 @@ const imageModels = [
   },
 ];
 
+
+
 // Email Helper Function
 async function sendThankYouEmail(toEmail: string, cardType: string, cardUrl: string) {
   if (!toEmail.trim()) return;
   
   try {
-    // Send to user
-    const userResponse = await fetch(`${BACKEND_API_BASE_URL}/send_email_nodejs_style`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        to: toEmail,
-        from: 'vibecarding@ast.engineer',
-        subject: `Your ${cardType} card is ready! 🎉`,
-        body: `Hi there!
+    // Create HTML email body
+    const htmlBody = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #2563eb; margin-bottom: 10px;">🎉 Your Card is Ready!</h1>
+        </div>
+        
+        <p style="font-size: 16px; line-height: 1.6; margin-bottom: 20px;">Hi there!</p>
+        
+        <p style="font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
+          Thank you for using VibeCarding to create your beautiful <strong>${cardType}</strong> card!
+        </p>
+        
+        <p style="font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
+          We hope you love how it turned out. Your card has been generated and is ready for printing or sharing.
+        </p>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${cardUrl}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+            View Your Card
+          </a>
+        </div>
+        
+        <p style="font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
+          If you have any questions or feedback, feel free to reach out to us.
+        </p>
+        
+        <p style="font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
+          Happy card making!
+        </p>
+        
+        <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280;">
+          <p style="margin-bottom: 5px;"><strong>Best regards,</strong></p>
+          <p style="margin-bottom: 5px;">The VibeCarding Team</p>
+          <p style="margin: 0;">
+            <a href="mailto:vibecarding@ast.engineer" style="color: #2563eb; text-decoration: none;">vibecarding@ast.engineer</a>
+          </p>
+        </div>
+      </div>
+    `;
 
-Thank you for using VibeCarding to create your beautiful ${cardType} card! 
+    // Plain text fallback
+    const textBody = `Hi there!
+
+Thank you for using VibeCarding to create your beautiful ${cardType} card!
 
 We hope you love how it turned out. Your card has been generated and is ready for printing or sharing.
 
@@ -233,11 +269,25 @@ View your card: ${cardUrl}
 
 If you have any questions or feedback, feel free to reach out to us.
 
-Happy card making! ✨
+Happy card making!
 
 Best regards,
 The VibeCarding Team
-vibecarding@ast.engineer`
+vibecarding@ast.engineer`;
+
+    // Send to user
+    const userResponse = await fetch(`${BACKEND_API_BASE_URL}/send_email_nodejs_style`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json; charset=utf-8'
+      },
+      body: JSON.stringify({
+        to: toEmail,
+        from: 'vibecarding@ast.engineer',
+        subject: `Your ${cardType} card is ready!`,
+        body: htmlBody,
+        text: textBody,
+        html: htmlBody
       })
     });
 
@@ -249,7 +299,16 @@ vibecarding@ast.engineer`
         to: 'jordan@ast.engineer',
         from: 'vibecarding@ast.engineer',
         subject: `Card Created - ${cardType} for ${toEmail}`,
-        body: `New card created on VibeCarding:
+        body: `<div style="font-family: Arial, sans-serif; padding: 20px;">
+          <h3 style="color: #2563eb;">New Card Created on VibeCarding</h3>
+          <p><strong>User:</strong> ${toEmail}</p>
+          <p><strong>Card Type:</strong> ${cardType}</p>
+          <p><strong>Card URL:</strong> <a href="${cardUrl}">${cardUrl}</a></p>
+          <p style="margin-top: 20px; color: #6b7280; font-size: 14px;">
+            This is an automated notification of card creation activity.
+          </p>
+        </div>`,
+        text: `New card created on VibeCarding:
 
 User: ${toEmail}
 Card Type: ${cardType}
@@ -353,6 +412,9 @@ export default function CardStudioPage() {
   const [selectedArtisticStyle, setSelectedArtisticStyle] = useState<string>("ai-smart-style");
   const [customStyleDescription, setCustomStyleDescription] = useState<string>("");
   const [selectedImageModel, setSelectedImageModel] = useState<string>("gpt-image-1");
+
+  // Draft mode specific model selection
+  const [selectedDraftModel, setSelectedDraftModel] = useState<string>("gpt-image-1");
 
   // Progress tracking state
   const [generationProgress, setGenerationProgress] = useState<string>("");
@@ -464,38 +526,38 @@ export default function CardStudioPage() {
             try {
               console.log('🔄 Starting QR overlay process for recovered card');
               
-              // Store card data first to get a shareable URL
-              if (cardWithQR.frontCover) {
-                try {
-                  const cardStoreResponse = await fetch('/api/cards/store', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      prompt: cardWithQR.prompt || '',
-                      frontCover: cardWithQR.frontCover || '',
-                      backCover: cardWithQR.backCover || '',
-                      leftPage: cardWithQR.leftPage || '',
+                             // Store card data first to get a shareable URL
+               if (cardWithQR.frontCover) {
+                 try {
+                   const cardStoreResponse = await fetch('/api/cards/store', {
+                     method: 'POST',
+                     headers: { 'Content-Type': 'application/json' },
+                     body: JSON.stringify({
+                       prompt: cardWithQR.prompt || '',
+                       frontCover: cardWithQR.frontCover || '',
+                       backCover: cardWithQR.backCover || '',
+                       leftPage: cardWithQR.leftPage || '',
                       rightPage: cardWithQR.rightPage || '',
                       generatedPrompts: cardWithQR.generatedPrompts || null
-                    })
-                  });
-                  
-                  if (cardStoreResponse.ok) {
-                    const cardStoreData = await cardStoreResponse.json();
-                    const actualShareUrl = cardStoreData.share_url;
-                    console.log('Using actual share URL for QR code (recovered):', actualShareUrl);
-                    
-                    // Apply QR code to back cover using the API-returned URL
-                    if (cardWithQR.backCover && actualShareUrl) {
-                      console.log('🔄 Applying QR overlay to recovered card...');
-                      const originalBackCover = cardWithQR.backCover;
-                      cardWithQR.backCover = await overlayQRCodeOnImage(originalBackCover, actualShareUrl);
-                      cardWithQR.shareUrl = actualShareUrl;
-                      console.log('✅ QR overlay complete for recovered card');
-                    }
+                     })
+                   });
+                   
+                   if (cardStoreResponse.ok) {
+                     const cardStoreData = await cardStoreResponse.json();
+                     const actualShareUrl = cardStoreData.share_url;
+                     console.log('Using actual share URL for QR code (recovered):', actualShareUrl);
+                     
+                     // Apply QR code to back cover using the API-returned URL
+                     if (cardWithQR.backCover && actualShareUrl) {
+                       console.log('🔄 Applying QR overlay to recovered card...');
+                       const originalBackCover = cardWithQR.backCover;
+                       cardWithQR.backCover = await overlayQRCodeOnImage(originalBackCover, actualShareUrl);
+                       cardWithQR.shareUrl = actualShareUrl;
+                       console.log('✅ QR overlay complete for recovered card');
+                     }
                   } else {
                     console.warn('Failed to store recovered card for sharing, continuing without QR code');
-                  }
+                   }
                 } catch (error) {
                   console.error('❌ Failed to store card or overlay QR code (recovered):', error);
                   // Continue without QR code if there's an error
@@ -560,6 +622,12 @@ export default function CardStudioPage() {
             
             toast.success("🎉 Your card with QR code finished generating while you were away!");
             
+            // Send thank you email using job data
+            if (job.userEmail && job.userEmail.trim()) {
+              const cardTypeForEmail = job.selectedType === "custom" ? job.customCardType : job.selectedType;
+              sendThankYouEmail(job.userEmail, cardTypeForEmail, cardWithQR.shareUrl || 'https://vibecarding.com');
+            }
+            
             console.log('✅ Card recovery process finished successfully');
           } else {
             console.error('❌ No card data in completed recovery response');
@@ -610,158 +678,220 @@ export default function CardStudioPage() {
     try {
       const statusResponse = await checkJobStatus(jobId);
       
+      // Check if this is a draft job
+      const isDraftJob = jobId.startsWith('draft-');
+      const draftIndex = isDraftJob ? parseInt(jobId.split('-')[1]) : -1;
+      
       if (statusResponse && statusResponse.status === 'completed') {
-        console.log('🎉 Job completed! Card data:', statusResponse.cardData);
+        console.log('🎉 Job completed! Card data:', statusResponse.cardData, 'isDraftJob:', isDraftJob);
         
         if (statusResponse.cardData) {
-          // Apply QR code to back cover before setting the card data
-          let cardWithQR = { ...statusResponse.cardData };
-          
-          // Ensure the card has a valid createdAt date
-          if (!cardWithQR.createdAt) {
-            cardWithQR.createdAt = new Date();
-          } else if (typeof cardWithQR.createdAt === 'string' || typeof cardWithQR.createdAt === 'number') {
-            cardWithQR.createdAt = new Date(cardWithQR.createdAt);
-          }
-          
-          // Ensure the card has a valid ID
-          if (!cardWithQR.id) {
-            cardWithQR.id = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          }
-          
-          console.log('🔄 Card data prepared:', cardWithQR);
-          
-          try {
-            setGenerationProgress("✨ Adding interactive QR code to your card...");
-            console.log('🔄 Starting QR overlay process for async generated card');
+          if (isDraftJob && draftIndex >= 0) {
+            // Handle draft card completion - no QR code needed for drafts
+            console.log(`🎨 Draft variation ${draftIndex + 1} completed!`);
             
-            // Store card data first to get a shareable URL
-            if (cardWithQR.frontCover) {
-              try {
-                const cardStoreResponse = await fetch('/api/cards/store', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    prompt: cardWithQR.prompt || '',
-                    frontCover: cardWithQR.frontCover || '',
-                    backCover: cardWithQR.backCover || '',
-                    leftPage: cardWithQR.leftPage || '',
-                    rightPage: cardWithQR.rightPage || '',
-                    generatedPrompts: cardWithQR.generatedPrompts || null
-                  })
-                });
-                
-                if (cardStoreResponse.ok) {
-                  const cardStoreData = await cardStoreResponse.json();
-                  const actualShareUrl = cardStoreData.share_url;
-                  console.log('Using actual share URL for QR code:', actualShareUrl);
-                  
-                  // Apply QR code to back cover using the API-returned URL
-                  if (cardWithQR.backCover && actualShareUrl) {
-                    console.log('🔄 Applying QR overlay to async generated card...');
-                    const originalBackCover = cardWithQR.backCover;
-                    cardWithQR.backCover = await overlayQRCodeOnImage(originalBackCover, actualShareUrl);
-                    cardWithQR.shareUrl = actualShareUrl;
-                    console.log('✅ QR overlay complete for async generated card');
-                  }
-                } else {
-                  console.warn('Failed to store card for sharing, continuing without QR code');
-                }
-              } catch (error) {
-                console.error('❌ Failed to store card or overlay QR code:', error);
-                // Continue without QR code if there's an error
-              }
-            } else {
-              console.warn('No front cover found, skipping QR code process');
-            }
-          } catch (error) {
-            console.error('❌ Error in QR code process:', error);
-            // Continue without QR code if there's an error
-          }
-          
-          console.log('🎯 Setting card state with final card:', cardWithQR);
-          
-          // Set the card states - this is critical!
-          setGeneratedCard(cardWithQR);
-          setGeneratedCards([cardWithQR]);
-          setSelectedCardIndex(0);
-          setIsCardCompleted(true);
-          setIsGenerating(false);
-          setIsGeneratingFinalCard(false);
-          setIsDraftMode(false);
-          setGenerationProgress("");
-          
-          // Set all sections as completed
-          setSectionLoadingStates({
-            frontCover: 'completed',
-            backCover: 'completed',
-            leftInterior: 'completed',
-            rightInterior: 'completed',
-          });
-          
-          // Capture generation time from backend
-          console.log('🔍 Checking for generationTimeSeconds:', statusResponse.cardData.generationTimeSeconds);
-          if (statusResponse.cardData.generationTimeSeconds) {
-            console.log('⏱️ Setting generation duration:', statusResponse.cardData.generationTimeSeconds, 'seconds');
-            setGenerationDuration(statusResponse.cardData.generationTimeSeconds);
-          } else {
-            console.log('⚠️ No generationTimeSeconds found in card data');
-          }
-          
-          // Stop elapsed time tracking
-          stopElapsedTimeTracking();
-          
-          // Set progress to 100%
-          setProgressPercentage(100);
-          setGenerationProgress("Card generation complete!");
-          
-          // Force a state update by updating localStorage (without base64 QR code to avoid quota issues)
-          try {
-            // Create a lightweight version without base64 QR code for localStorage
-            const cardForStorage = { ...cardWithQR };
-            if (cardForStorage.backCover && cardForStorage.backCover.startsWith('data:image/png;base64,')) {
-              // Replace the base64 QR code with the original back cover URL to save space
-              cardForStorage.backCover = statusResponse.cardData.backCover;
-              console.log('💾 Replaced base64 QR code with original URL for localStorage storage');
-            }
-            
-            const cardsData = {
-              cards: [cardForStorage],
-              selectedIndex: 0,
-              generationDuration: statusResponse.cardData.generationTimeSeconds || null
+            const draftCard: GeneratedCard = {
+              id: `draft-${draftIndex + 1}-${Date.now()}`,
+              prompt: statusResponse.cardData.prompt || `Draft Variation ${draftIndex + 1}`,
+              frontCover: statusResponse.cardData.frontCover || "",
+              backCover: statusResponse.cardData.backCover || "",
+              leftPage: statusResponse.cardData.leftPage || "",
+              rightPage: statusResponse.cardData.rightPage || "",
+              createdAt: new Date(),
+              generatedPrompts: statusResponse.cardData.generatedPrompts
             };
-            localStorage.setItem('vibecarding-generated-cards', JSON.stringify(cardsData));
-            console.log('💾 Card saved to localStorage');
-          } catch (storageError) {
-            console.error('Failed to save to localStorage:', storageError);
+            
+            // Update only the draft cards state
+            setDraftCards(prev => {
+              const updated = [...prev];
+              updated[draftIndex] = draftCard;
+              
+              // Check if all 10 variations are complete
+              const completedCount = updated.filter(c => c).length;
+              console.log(`📊 Draft progress: ${completedCount}/10 variations complete`);
+              
+              if (completedCount === 10) {
+                setIsGenerating(false);
+                setGenerationProgress("");
+                setProgressPercentage(100);
+                stopElapsedTimeTracking();
+                toast.success("🎨 All 10 design variations ready! Choose your favorite below.");
+              } else {
+                setGenerationProgress(`✨ ${completedCount}/10 variations complete...`);
+                setProgressPercentage((completedCount / 10) * 100);
+              }
+              
+              return updated;
+            });
+            
+            removeJobFromStorage(jobId);
+          } else {
+            // Handle final card completion - apply QR code and full processing
+            let cardWithQR = { ...statusResponse.cardData };
+            
+            // Ensure the card has a valid createdAt date
+            if (!cardWithQR.createdAt) {
+              cardWithQR.createdAt = new Date();
+            } else if (typeof cardWithQR.createdAt === 'string' || typeof cardWithQR.createdAt === 'number') {
+              cardWithQR.createdAt = new Date(cardWithQR.createdAt);
+            }
+            
+            // Ensure the card has a valid ID
+            if (!cardWithQR.id) {
+              cardWithQR.id = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            }
+            
+            console.log('🔄 Final card data prepared:', cardWithQR);
+            
+            try {
+              setGenerationProgress("✨ Adding interactive QR code to your card...");
+              console.log('🔄 Starting QR overlay process for final card');
+              
+              // Store card data first to get a shareable URL
+              if (cardWithQR.frontCover) {
+                try {
+                  const cardStoreResponse = await fetch('/api/cards/store', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      prompt: cardWithQR.prompt || '',
+                      frontCover: cardWithQR.frontCover || '',
+                      backCover: cardWithQR.backCover || '',
+                      leftPage: cardWithQR.leftPage || '',
+                      rightPage: cardWithQR.rightPage || '',
+                      generatedPrompts: cardWithQR.generatedPrompts || null
+                    })
+                  });
+                  
+                  if (cardStoreResponse.ok) {
+                    const cardStoreData = await cardStoreResponse.json();
+                    const actualShareUrl = cardStoreData.share_url;
+                    console.log('Using actual share URL for QR code:', actualShareUrl);
+                    
+                    // Apply QR code to back cover using the API-returned URL
+                    if (cardWithQR.backCover && actualShareUrl) {
+                      console.log('🔄 Applying QR overlay to final card...');
+                      const originalBackCover = cardWithQR.backCover;
+                      cardWithQR.backCover = await overlayQRCodeOnImage(originalBackCover, actualShareUrl);
+                      cardWithQR.shareUrl = actualShareUrl;
+                      console.log('✅ QR overlay complete for final card');
+                    }
+                  } else {
+                    console.warn('Failed to store card for sharing, continuing without QR code');
+                  }
+                } catch (error) {
+                  console.error('❌ Failed to store card or overlay QR code:', error);
+                  // Continue without QR code if there's an error
+                }
+              } else {
+                console.warn('No front cover found, skipping QR code process');
+              }
+            } catch (error) {
+              console.error('❌ Error in QR code process:', error);
+              // Continue without QR code if there's an error
+            }
+            
+            console.log('🎯 Setting final card state:', cardWithQR);
+            
+            // Set the card states - this is critical!
+            setGeneratedCard(cardWithQR);
+            setGeneratedCards([cardWithQR]);
+            setSelectedCardIndex(0);
+            setIsCardCompleted(true);
+            setIsGenerating(false);
+            setIsGeneratingFinalCard(false);
+            setIsDraftMode(false);
+            setGenerationProgress("");
+            
+            // Set all sections as completed
+            setSectionLoadingStates({
+              frontCover: 'completed',
+              backCover: 'completed',
+              leftInterior: 'completed',
+              rightInterior: 'completed',
+            });
+            
+            // Capture generation time from backend
+            console.log('🔍 Checking for generationTimeSeconds:', statusResponse.cardData.generationTimeSeconds);
+            if (statusResponse.cardData.generationTimeSeconds) {
+              console.log('⏱️ Setting generation duration:', statusResponse.cardData.generationTimeSeconds, 'seconds');
+              setGenerationDuration(statusResponse.cardData.generationTimeSeconds);
+            } else {
+              console.log('⚠️ No generationTimeSeconds found in card data');
+            }
+            
+            // Stop elapsed time tracking
+            stopElapsedTimeTracking();
+            
+            // Set progress to 100%
+            setProgressPercentage(100);
+            setGenerationProgress("Card generation complete!");
+            
+            // Force a state update by updating localStorage (without base64 QR code to avoid quota issues)
+            try {
+              // Create a lightweight version without base64 QR code for localStorage
+              const cardForStorage = { ...cardWithQR };
+              if (cardForStorage.backCover && cardForStorage.backCover.startsWith('data:image/png;base64,')) {
+                // Replace the base64 QR code with the original back cover URL to save space
+                cardForStorage.backCover = statusResponse.cardData.backCover;
+                console.log('💾 Replaced base64 QR code with original URL for localStorage storage');
+              }
+              
+              const cardsData = {
+                cards: [cardForStorage],
+                selectedIndex: 0,
+                generationDuration: statusResponse.cardData.generationTimeSeconds || null
+              };
+              localStorage.setItem('vibecarding-generated-cards', JSON.stringify(cardsData));
+              console.log('💾 Card saved to localStorage');
+            } catch (storageError) {
+              console.error('Failed to save to localStorage:', storageError);
+            }
+            
+            toast.success("🎉 Your card with QR code is ready!");
+            
+            // Send thank you email
+            if (userEmail.trim()) {
+              const cardTypeForEmail = selectedType === "custom" ? customCardType : selectedType;
+              sendThankYouEmail(userEmail, cardTypeForEmail, cardWithQR.shareUrl || 'https://vibecarding.com');
+            }
+            
+            console.log('✅ Final card completion process finished successfully');
+            removeJobFromStorage(jobId);
+            setCurrentJobId(null);
           }
-          
-          toast.success("🎉 Your card with QR code is ready!");
-          
-          console.log('✅ Card completion process finished successfully');
         } else {
           console.error('❌ No card data in completed response');
           toast.error("❌ Card generation completed but no data received. Please try again.");
+          removeJobFromStorage(jobId);
+          if (!isDraftJob) {
+            setCurrentJobId(null);
+          }
         }
-        removeJobFromStorage(jobId);
-        setCurrentJobId(null);
       } else if (statusResponse && statusResponse.status === 'failed') {
         console.error('❌ Job failed:', statusResponse);
-        toast.error("❌ Card generation failed. Please try again.");
-        removeJobFromStorage(jobId);
-        setCurrentJobId(null);
-        setIsGenerating(false);
-        stopElapsedTimeTracking();
-        setGenerationProgress("");
-        setProgressPercentage(0);
         
-        // Set all sections as error
-        setSectionLoadingStates({
-          frontCover: 'error',
-          backCover: 'error',
-          leftInterior: 'error',
-          rightInterior: 'error',
-        });
+        if (isDraftJob && draftIndex >= 0) {
+          toast.error(`Draft variation ${draftIndex + 1} failed. Continuing with others...`);
+        } else {
+          toast.error("❌ Card generation failed. Please try again.");
+          setIsGenerating(false);
+          setIsGeneratingFinalCard(false);
+          stopElapsedTimeTracking();
+          setGenerationProgress("");
+          setProgressPercentage(0);
+          
+          // Set all sections as error
+          setSectionLoadingStates({
+            frontCover: 'error',
+            backCover: 'error',
+            leftInterior: 'error',
+            rightInterior: 'error',
+          });
+          setCurrentJobId(null);
+        }
+        
+        removeJobFromStorage(jobId);
       } else if (statusResponse && statusResponse.status === 'processing') {
         // Continue polling every 3 seconds - near real-time updates for better UX
         console.log(`🔄 Job still processing (attempt ${attempt}), polling again...`);
@@ -935,8 +1065,8 @@ export default function CardStudioPage() {
   // Upload state
   const [handwritingSample, setHandwritingSample] = useState<File | null>(null);
   const [handwritingSampleUrl, setHandwritingSampleUrl] = useState<string | null>(null);
-  const [referenceImage, setReferenceImage] = useState<File | null>(null);
-  const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
+  const [referenceImages, setReferenceImages] = useState<File[]>([]);
+  const [referenceImageUrls, setReferenceImageUrls] = useState<string[]>([]);
   const [imageTransformation, setImageTransformation] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
 
@@ -1003,6 +1133,9 @@ export default function CardStudioPage() {
   const [searchMode, setSearchMode] = useState<'text' | 'ai' | 'hybrid'>('text');
   const [textFilteredCards, setTextFilteredCards] = useState<any[]>([]);
   const [showPrompts, setShowPrompts] = useState(false);
+  
+  // Print options state
+  const [printOption, setPrintOption] = useState<'physical' | 'email'>('physical');
   
   // Preload template cards for instant access
   const { preloadAllCards, getCachedCards, totalCards } = useCardCache();
@@ -1094,9 +1227,10 @@ export default function CardStudioPage() {
           setSelectedArtisticStyle(formData.selectedArtisticStyle || "ai-smart-style");
           setCustomStyleDescription(formData.customStyleDescription || "");
           setSelectedImageModel(formData.selectedImageModel || "gpt-image-1");
+          setSelectedDraftModel(formData.selectedDraftModel || "flux-1.1-pro");
           setNumberOfCards(formData.numberOfCards || 1);
           setUserEmail(formData.userEmail || "");
-          setReferenceImageUrl(formData.referenceImageUrl || "");
+          setReferenceImageUrls(formData.referenceImageUrls || []);
           setImageTransformation(formData.imageTransformation || "");
           setIsHandwrittenMessage(formData.isHandwrittenMessage || false);
           setIsFrontBackOnly(formData.isFrontBackOnly || false);
@@ -1112,7 +1246,6 @@ export default function CardStudioPage() {
           setShowPrintConfirmation(formData.showPrintConfirmation || false);
           setIsCardCompleted(formData.isCardCompleted || false);
           setGenerationDuration(formData.generationDuration || null);
-          setShowTemplateCustomization(formData.showTemplateCustomization || false);
           console.log('✅ Form data loaded successfully');
         } else {
           console.log('ℹ️ No saved form data found');
@@ -1183,9 +1316,10 @@ export default function CardStudioPage() {
           selectedArtisticStyle,
           customStyleDescription,
           selectedImageModel,
+          selectedDraftModel,
           numberOfCards,
           userEmail,
-          referenceImageUrl,
+          referenceImageUrls,
           imageTransformation,
           isHandwrittenMessage,
           isFrontBackOnly,
@@ -1200,8 +1334,7 @@ export default function CardStudioPage() {
           showSettings,
           showPrintConfirmation,
           isCardCompleted,
-          generationDuration,
-          showTemplateCustomization
+          generationDuration
         };
         localStorage.setItem('vibecarding-form-data', JSON.stringify(formData));
         console.log('✅ Form data saved to localStorage:', formData);
@@ -1211,7 +1344,7 @@ export default function CardStudioPage() {
     };
 
     saveFormData();
-      }, [isInitialLoadComplete, prompt, finalCardMessage, toField, fromField, selectedType, customCardType, selectedTone, selectedArtisticStyle, customStyleDescription, selectedImageModel, numberOfCards, userEmail, referenceImageUrl, imageTransformation, isHandwrittenMessage, isFrontBackOnly, selectedPaperSize, showAdvanced, handwritingSampleUrl, isTextareaExpanded, isMessageExpanded, messageHistory, currentMessageIndex, showRefinementBox, showSettings, showPrintConfirmation, isCardCompleted, generationDuration, showTemplateCustomization]);
+      }, [isInitialLoadComplete, prompt, finalCardMessage, toField, fromField, selectedType, customCardType, selectedTone, selectedArtisticStyle, customStyleDescription, selectedImageModel, numberOfCards, userEmail, referenceImageUrls, imageTransformation, isHandwrittenMessage, isFrontBackOnly, selectedPaperSize, showAdvanced, handwritingSampleUrl, isTextareaExpanded, isMessageExpanded, messageHistory, currentMessageIndex, showRefinementBox, showSettings, showPrintConfirmation, isCardCompleted, generationDuration]);
 
   // Save generated cards to localStorage whenever they change
   useEffect(() => {
@@ -1306,7 +1439,7 @@ export default function CardStudioPage() {
     messageChanges: "",
     useReferenceImage: false,
     referenceImageFile: null as File | null,
-    referenceImageUrl: null as string | null,
+    referenceImageUrls: [] as string[],
     referenceImageTransformation: ""
   });
 
@@ -1322,18 +1455,299 @@ export default function CardStudioPage() {
       messageChanges: "",
       useReferenceImage: false,
       referenceImageFile: null,
-      referenceImageUrl: null,
+      referenceImageUrls: [],
       referenceImageTransformation: ""
     });
+  };
+
+  // Generate card directly with existing prompts (for template customization)
+  const generateCardWithExistingPrompts = async (prompts: any) => {
+    if (!userEmail.trim()) {
+      toast.error("Please enter your email address");
+      return;
+    }
+
+    // Clear all draft mode states to prevent UI conflicts
+    setIsDraftMode(false);
+    setDraftCards([]);
+    setSelectedDraftIndex(-1);
+    setIsGeneratingFinalCard(false);
+    setPreviewingDraftIndex(-1);
+    
+    // Clear any existing card states
+    setGeneratedCards([]);
+    setGeneratedCard(null);
+    setSelectedCardIndex(0);
+    setCurrentCardId(null);
+    setIsCardCompleted(false);
+
+    setIsGenerating(true);
+    startElapsedTimeTracking();
+    setGenerationProgress("🎨 Creating your customized template card...");
+    setProgressPercentage(0);
+
+    try {
+      // Create job tracking
+      const jobId = uuidv4();
+      setCurrentJobId(jobId);
+      
+      const cardTypeForPrompt = selectedType === "custom" ? customCardType : selectedType;
+      const paperConfig = paperSizes.find(size => size.id === selectedPaperSize) || paperSizes[0];
+
+      // Handle message customization
+      let messageContent = templateCustomizations.messageChanges.trim() || finalCardMessage;
+      if (isHandwrittenMessage) {
+        messageContent = "[Blank space for handwritten message]";
+      }
+
+      // Update the right interior prompt with custom message if provided
+      if (messageContent && prompts.rightInterior && !isHandwrittenMessage) {
+        prompts.rightInterior = prompts.rightInterior
+          .replace(/Include message text: "[^"]*"/g, `Include message text: "${messageContent}"`)
+          .replace(/"MESSAGE GOES HERE"/g, `"${messageContent}"`)
+          .replace(/MESSAGE GOES HERE/g, messageContent);
+      }
+
+      // Save job data
+      const jobData = {
+        prompt: selectedTemplate?.prompt || "",
+        selectedType,
+        customCardType,
+        selectedTone,
+        finalCardMessage: messageContent,
+        toField,
+        fromField,
+        userEmail,
+        selectedArtisticStyle,
+        customStyleDescription,
+        selectedImageModel,
+        isFrontBackOnly,
+        numberOfCards: 1,
+        selectedPaperSize,
+        prompts,
+        paperConfig,
+        isTemplateCustomization: true
+      };
+      
+      saveJobToStorage(jobId, jobData);
+      
+      setGenerationProgress("🚀 Starting your personalized template card generation...");
+      
+      // Prepare input images for reference photo support
+      const inputImages: string[] = [];
+      
+              // Include both template customization reference images and main reference images
+        if (selectedImageModel === "gpt-image-1") {
+          // Add template customization reference images
+          if (templateCustomizations.referenceImageUrls.length > 0) {
+            inputImages.push(...templateCustomizations.referenceImageUrls);
+            console.log("🔍 DEBUG: Added template customization reference images:", templateCustomizations.referenceImageUrls);
+          }
+          // Add main reference images from the form
+          if (referenceImageUrls.length > 0) {
+            inputImages.push(...referenceImageUrls);
+            console.log("🔍 DEBUG: Added main form reference images:", referenceImageUrls);
+          }
+          
+          if (inputImages.length > 0) {
+            console.log("🔍 DEBUG: Total input images for template generation:", inputImages.length);
+            toast.success(`📸 ${inputImages.length} reference photo${inputImages.length > 1 ? 's' : ''} ready for template customization!`);
+          }
+        }
+
+      // Enhance prompts with reference image instructions if available
+      const enhancedPrompts = { ...prompts };
+      if (inputImages.length > 0 && selectedImageModel === "gpt-image-1") {
+        const totalReferenceImages = (templateCustomizations.referenceImageUrls?.length || 0) + (referenceImageUrls?.length || 0);
+        const characterInstructions = `\n\nCRITICAL CHARACTER REFERENCE INSTRUCTIONS: I have provided ${totalReferenceImages > 1 ? 'multiple reference photos' : 'a reference photo'} as input image${totalReferenceImages > 1 ? 's' : ''}. You MUST create cartoon/illustrated characters that accurately represent the people in ${totalReferenceImages > 1 ? 'these reference photos' : 'this reference photo'} with high fidelity to their appearance.
+
+MANDATORY CHARACTER MATCHING REQUIREMENTS:
+- REPRESENT ALL PEOPLE: If multiple reference photos are provided, create cartoon versions of ALL people shown, bringing them together in the same scene
+- EXACT hair color, hair style, and hair length from each reference photo
+- PRECISE facial features for each person: eye color, eye shape, nose shape, face structure, skin tone
+- ACCURATE clothing: replicate the EXACT clothing items, colors, patterns, and styles worn by each person in their reference photo
+- COMPLETE accessories: include ALL accessories visible on each person (glasses, jewelry, hats, watches, bags, etc.)
+- CORRECT body proportions and posture as shown for each person in their reference
+- FAITHFUL age representation and gender presentation for each individual
+- AUTHENTIC facial expressions and poses from the reference images, lean towards making the people look happier unless the user specifically asks for a different expression
+- GROUP COMPOSITION: If multiple people, arrange them naturally together in a pleasing composition that fits the card's theme
+
+${templateCustomizations.referenceImageTransformation || imageTransformation || 'Study every detail of the people in the reference image and recreate them as stylized cartoon characters while maintaining 100% accuracy to their distinctive visual features. The characters must be immediately recognizable as the same people from the reference photo. Pay special attention to clothing details, accessories, and unique personal style elements that make each person distinctive.'}
+
+The cartoon style should be charming and artistic while preserving complete visual accuracy to the reference photo. Every person in the reference must be represented with their exact appearance, clothing, and accessories.`;
+
+        if (enhancedPrompts.frontCover) {
+          enhancedPrompts.frontCover += characterInstructions;
+        }
+      }
+
+      const response = await fetch('/api/generate-card-async', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobId,
+          prompts: enhancedPrompts,
+          config: {
+            userNumber: "+17145986105",
+            modelVersion: selectedImageModel,
+            aspectRatio: paperConfig.aspectRatio,
+            quality: "high", // High quality for template customization
+            outputFormat: "jpeg",
+            outputCompression: 100,
+            moderation: "low",
+            dimensions: paperConfig.dimensions,
+            isFrontBackOnly,
+            userEmail,
+            cardType: cardTypeForPrompt,
+            toField,
+            fromField,
+            isDraftMode: false, // Explicitly set to false for template generation
+            isTemplateCustomization: true,
+            ...(inputImages.length > 0 && { 
+              input_images: inputImages,
+              input_images_mode: "front_cover_only" // All reference images should go to front cover for character creation
+            })
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.status !== 'processing') {
+        throw new Error(result.message || 'Failed to start card generation');
+      }
+
+      setGenerationProgress("✨ Bringing your customized template to life...");
+      toast.success("🎉 Your personalized template card generation started!");
+      
+      pollJobStatus(jobId);
+
+    } catch (error) {
+      console.error('Template customization generation error:', error);
+      toast.error("Failed to generate customized card. Please try again.");
+      
+      if (currentJobId) {
+        removeJobFromStorage(currentJobId);
+        setCurrentJobId(null);
+      }
+      
+      setIsGenerating(false);
+      setGenerationProgress("");
+      stopElapsedTimeTracking();
+    }
   };
 
   const handleApplyTemplateWithCustomizations = async () => {
     if (!selectedTemplate) return;
     
-    // Apply template data to form
+    // Show loading state if we have customizations to process
+    if (templateCustomizations.promptChanges.trim() && selectedTemplate.generatedPrompts) {
+      toast.info("🤖 AI is applying your customizations to the template...");
+    }
+    
+    // Apply template data to form - start with original prompt
     let finalPrompt = selectedTemplate.prompt || "";
     
-    // Apply prompt customizations if provided
+    // If we have customizations and generated prompts, modify them directly and generate immediately
+    if (templateCustomizations.promptChanges.trim() && selectedTemplate.generatedPrompts) {
+      try {
+        // Directly modify the generated prompts using AI
+        const modificationQuery = `You are an expert at modifying detailed image generation prompts for greeting cards. You have existing prompts for each section of a card, and the user wants to make specific changes.
+
+USER'S CUSTOMIZATION REQUEST: "${templateCustomizations.promptChanges}"
+
+TASK: Modify each of the provided prompts to incorporate the user's requested changes while preserving all the original technical specifications, safety guidelines, and artistic details.
+
+INSTRUCTIONS:
+1. Only modify elements specifically mentioned in the user's customization request
+2. Preserve ALL technical specifications (portrait format, text positioning, edge safety, etc.)
+3. Maintain the same artistic style and quality level
+4. Keep all safety guidelines and content policies
+5. Preserve the greeting card context and purpose
+6. If the customization affects multiple sections, apply it consistently
+
+ORIGINAL PROMPTS TO MODIFY:
+
+FRONT COVER:
+${selectedTemplate.generatedPrompts.frontCover}
+
+BACK COVER:
+${selectedTemplate.generatedPrompts.backCover}
+
+${selectedTemplate.generatedPrompts.leftInterior ? `LEFT INTERIOR:
+${selectedTemplate.generatedPrompts.leftInterior}
+
+` : ''}${selectedTemplate.generatedPrompts.rightInterior ? `RIGHT INTERIOR:
+${selectedTemplate.generatedPrompts.rightInterior}` : ''}
+
+Return the modified prompts in JSON format:
+{
+  "frontCover": "complete modified front cover prompt",
+  "backCover": "complete modified back cover prompt"${selectedTemplate.generatedPrompts.leftInterior ? ',\n  "leftInterior": "complete modified left interior prompt"' : ''}${selectedTemplate.generatedPrompts.rightInterior ? ',\n  "rightInterior": "complete modified right interior prompt"' : ''}
+}`;
+
+        const modifiedPrompts = await chatWithAI(modificationQuery, {
+          model: 'gemini-2.5-pro',
+          includeThoughts: false,
+          jsonSchema: {
+            type: "object",
+            properties: {
+              frontCover: { type: "string" },
+              backCover: { type: "string" },
+              ...(selectedTemplate.generatedPrompts.leftInterior ? { leftInterior: { type: "string" } } : {}),
+              ...(selectedTemplate.generatedPrompts.rightInterior ? { rightInterior: { type: "string" } } : {})
+            },
+            required: ["frontCover", "backCover"]
+          }
+        });
+
+        if (modifiedPrompts && modifiedPrompts.frontCover) {
+          // Generate card directly with modified prompts, bypassing the normal prompt-to-prompts flow
+          toast.info("🤖 AI has customized the template prompts! Generating your personalized card...");
+          
+          // Set basic form data
+          setPrompt(selectedTemplate.prompt || "");
+          
+          // Clear states and start generation directly with modified prompts
+          setGeneratedCards([]);
+          setGeneratedCard(null);
+          setSelectedCardIndex(0);
+          setCurrentCardId(null);
+          
+          // Clear draft mode states to prevent UI conflicts
+          setIsDraftMode(false);
+          setDraftCards([]);
+          setSelectedDraftIndex(-1);
+          setIsGeneratingFinalCard(false);
+          setPreviewingDraftIndex(-1);
+          
+          // Clear progress states
+          setGenerationProgress("");
+          setIsGenerating(false);
+          setIsCardCompleted(false);
+          
+          // Close dialogs
+          setShowTemplateCustomization(false);
+          setSelectedTemplate(null);
+          
+          // Start generation with modified prompts
+          setTimeout(() => {
+            generateCardWithExistingPrompts(modifiedPrompts);
+          }, 1000);
+          
+          return; // Exit early since we're handling generation directly
+        }
+      } catch (error) {
+        console.error('Failed to modify template prompts directly:', error);
+        toast.error("Failed to customize template prompts. Using fallback method.");
+      }
+    }
+    
+    // Fallback: modify the user prompt and use normal generation flow
     if (templateCustomizations.promptChanges.trim()) {
       finalPrompt = `${finalPrompt}
 
@@ -1375,7 +1789,9 @@ CUSTOMIZATION REQUEST: ${templateCustomizations.promptChanges}`;
         
         if (uploadResponse.ok) {
           const uploadResult = await uploadResponse.json();
-          setReferenceImageUrl(uploadResult.url);
+          // Add to existing reference images instead of replacing them
+          setReferenceImages(prev => [...prev, templateCustomizations.referenceImageFile!]);
+          setReferenceImageUrls(prev => [...prev, uploadResult.url]);
           setImageTransformation(templateCustomizations.referenceImageTransformation || "Transform into the same artistic style as the template");
           toast.success("Reference image uploaded successfully!");
         } else {
@@ -1385,11 +1801,6 @@ CUSTOMIZATION REQUEST: ${templateCustomizations.promptChanges}`;
         console.error('Reference image upload failed:', error);
         toast.error("Failed to upload reference image");
       }
-    } else {
-      // Clear reference image if not using
-      setReferenceImage(null);
-      setReferenceImageUrl(null);
-      setImageTransformation("");
     }
     
     // Clear current generated cards since we're starting fresh with a template
@@ -1397,6 +1808,13 @@ CUSTOMIZATION REQUEST: ${templateCustomizations.promptChanges}`;
     setGeneratedCard(null);
     setSelectedCardIndex(0);
     setCurrentCardId(null);
+    
+    // Clear draft mode states to prevent UI conflicts
+    setIsDraftMode(false);
+    setDraftCards([]);
+    setSelectedDraftIndex(-1);
+    setIsGeneratingFinalCard(false);
+    setPreviewingDraftIndex(-1);
     
     // Clear progress states
     setGenerationProgress("");
@@ -1416,7 +1834,12 @@ CUSTOMIZATION REQUEST: ${templateCustomizations.promptChanges}`;
       ? ` with ${customizationSummary.join(", ")}`
       : "";
     
-    toast.success(`✨ Template applied${summaryText}! Ready to generate your personalized card.`);
+    toast.success(`✨ Template customized${summaryText}! Generating your personalized card...`);
+    
+    // Automatically start card generation
+    setTimeout(() => {
+      handleGenerateCardAsync();
+    }, 1000); // Small delay to let the user see the success message
   };
 
   // Create new card function - clears all data
@@ -1434,8 +1857,8 @@ CUSTOMIZATION REQUEST: ${templateCustomizations.promptChanges}`;
     setSelectedImageModel("gpt-image-1");
     setNumberOfCards(1);
     setUserEmail("");
-    setReferenceImage(null);
-    setReferenceImageUrl(null);
+    setReferenceImages([]);
+    setReferenceImageUrls([]);
     setImageTransformation("");
     setHandwritingSample(null);
     setHandwritingSampleUrl(null);
@@ -1698,76 +2121,7 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
     }
   };
 
-  // Helper function to analyze reference image and get text description for character creation
-  const analyzeReferenceImage = async (imageUrl: string) => {
-    try {
-      const analysisPrompt = `Analyze this reference photo and provide a detailed description of the people that can be used to create cartoon/illustrated characters that look like them in a greeting card.
 
-Focus specifically on creating recognizable characters by describing:
-- Number of people and their approximate ages
-- Hair colors, styles, and lengths (be very specific)
-- Facial features that make each person distinctive
-- Eye colors and shapes
-- Skin tones
-- Clothing colors, styles, and any distinctive accessories
-- Body language, poses, and how they're positioned
-- Any unique characteristics that make each person recognizable
-
-The goal is to create cartoon characters that someone would recognize as these specific people. Provide a detailed description that captures their distinctive features while being suitable for cartoon/illustration style character creation.
-
-Format as a single paragraph description suitable for creating recognizable cartoon characters.`;
-
-      const response = await fetch('/internal/call_mcp_tool', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tool_name: 'analyze_images',
-          arguments: {
-            urls: [imageUrl],
-            analysis_prompt: analysisPrompt
-          }
-        })
-      });
-
-      if (!response.ok) throw new Error(`Analysis failed: ${response.status}`);
-      
-      const data = await response.json();
-      if (data.error && data.error !== "None" && data.error !== null) {
-        throw new Error(data.error);
-      }
-      
-      let result;
-      if (typeof data.result === 'string') {
-        try {
-          result = JSON.parse(data.result);
-        } catch {
-          result = { status: 'error', message: 'Invalid JSON response' };
-        }
-      } else {
-        result = data.result;
-      }
-      
-      if (result.status === 'error') {
-        throw new Error(result.message);
-      }
-      
-      // Extract analysis from the analyze_images response structure
-      if (result.status === 'success' && result.results && result.results.length > 0) {
-        const firstResult = result.results[0];
-        if (firstResult.status === 'success' && firstResult.analysis) {
-          return firstResult.analysis;
-        } else {
-          throw new Error(firstResult.message || 'Image analysis failed');
-        }
-      }
-      
-      throw new Error('No analysis results returned');
-      
-    } catch (error) {
-      console.error('Image analysis failed:', error);
-      return null;
-    }
-  };
 
   // File upload handler
   const handleFileUpload = async (file: File, type: 'handwriting' | 'reference') => {
@@ -1796,9 +2150,14 @@ Format as a single paragraph description suitable for creating recognizable cart
         setHandwritingSampleUrl(result.url);
         toast.success("Handwriting sample uploaded!");
       } else {
-        setReferenceImage(file);
-        setReferenceImageUrl(result.url);
-        toast.success("Reference image uploaded!");
+        setReferenceImages(prev => [...prev, file]);
+        setReferenceImageUrls(prev => [...prev, result.url]);
+        console.log("🔍 DEBUG: Reference image uploaded successfully:", {
+          fileName: file.name,
+          url: result.url,
+          totalImages: referenceImages.length + 1
+        });
+        toast.success(`Reference image uploaded! ${referenceImages.length + 1} photo${referenceImages.length + 1 > 1 ? 's' : ''} ready for character creation.`);
       }
     } catch (error) {
       toast.error("Upload failed. Please try again.");
@@ -1807,7 +2166,23 @@ Format as a single paragraph description suitable for creating recognizable cart
     }
   };
 
-  // Draft mode generation - 4 low-quality cards for selection
+  const handleRemoveReferenceImage = (index: number) => {
+    const removedImage = referenceImages[index];
+    const removedUrl = referenceImageUrls[index];
+    
+    setReferenceImages(prev => prev.filter((_, i) => i !== index));
+    setReferenceImageUrls(prev => prev.filter((_, i) => i !== index));
+    
+    console.log("🔍 DEBUG: Reference image removed:", {
+      fileName: removedImage?.name,
+      url: removedUrl,
+      remainingImages: referenceImages.length - 1
+    });
+    
+    toast.success(`Reference image removed! ${referenceImages.length - 1} photo${referenceImages.length - 1 !== 1 ? 's' : ''} remaining.`);
+  };
+
+  // Simplified draft mode generation - calls consolidated function 4 times
   const handleGenerateDraftCards = async () => {
     if (!userEmail.trim()) {
       toast.error("Please enter your email address");
@@ -1827,6 +2202,51 @@ Format as a single paragraph description suitable for creating recognizable cart
       return;
     }
 
+    // Validate reference images with model compatibility
+    if (referenceImageUrls.length > 0 && selectedDraftModel !== "gpt-image-1") {
+             console.log("🔍 DEBUG: Reference image validation failed:", {
+         referenceImageUrlsLength: referenceImageUrls.length,
+         referenceImageUrls: referenceImageUrls,
+         selectedDraftModel: selectedDraftModel,
+         referenceImagesLength: referenceImages.length
+       });
+       
+       // Show a more helpful error with action buttons
+       const clearPhotos = () => {
+         setReferenceImages([]);
+         setReferenceImageUrls([]);
+         toast.success("Reference photos cleared! You can now use draft mode.");
+       };
+       
+       const switchToGPT1 = () => {
+         setSelectedDraftModel("gpt-image-1");
+         toast.success("Switched to GPT Image 1 for draft mode!");
+       };
+       
+       toast.error(
+         <div className="space-y-2">
+           <p>Reference photos are only supported with GPT Image 1 model.</p>
+           <p className="text-xs">You have {referenceImageUrls.length} reference photo{referenceImageUrls.length > 1 ? 's' : ''} but selected {imageModels.find(m => m.id === selectedDraftModel)?.label}.</p>
+           <div className="flex gap-2 mt-2">
+             <button 
+               onClick={switchToGPT1}
+               className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+             >
+               Use GPT Image 1
+             </button>
+             <button 
+               onClick={clearPhotos}
+               className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
+             >
+               Remove Photos
+             </button>
+           </div>
+         </div>,
+         { duration: 8000 }
+       );
+      return;
+    }
+
     setIsDraftMode(true);
     setIsGenerating(true);
     startElapsedTimeTracking();
@@ -1841,368 +2261,69 @@ Format as a single paragraph description suitable for creating recognizable cart
     setIsCardCompleted(false);
 
     try {
-      // Create job tracking
-      const jobId = uuidv4();
-      setCurrentJobId(jobId);
+      console.log("🚀 Starting draft mode generation with 10 variations");
       
-      // Generate all prompts client-side first (same as regular generation)
-      const cardTypeForPrompt = selectedType === "custom" ? customCardType : selectedType;
-      const selectedToneObj = cardTones.find(tone => tone.id === selectedTone);
-      const toneDescription = selectedToneObj ? selectedToneObj.description.toLowerCase() : "heartfelt and sincere";
-      const effectivePrompt = prompt.trim() || `A beautiful ${cardTypeForPrompt} card with ${toneDescription} style`;
-
-      let messageContent = finalCardMessage;
-      
-      // Handle message generation if needed (same logic as regular generation)
-      if (isHandwrittenMessage) {
-        messageContent = "[Blank space for handwritten message]";
-      } else if (!messageContent.trim() && !isFrontBackOnly) {
-        setGenerationProgress("✍️ Writing the perfect message...");
-        
-        const autoMessagePrompt = `Create a ${toneDescription} message for a ${cardTypeForPrompt} greeting card.
-
-Card Theme/Description: "${effectivePrompt}"
-${toField ? `Recipient: ${toField}` : "Recipient: [not specified]"}
-${fromField ? `Sender: ${fromField}` : "Sender: [not specified]"}
-Card Tone: ${selectedToneObj ? selectedToneObj.label : "Heartfelt"} - ${toneDescription}
-
-Instructions:
-- Write a message that is ${toneDescription} and feels personal and genuine
-- ${toField ? `Address the message to ${toField} directly, using their name naturally` : "Write in a way that could be personalized to any recipient"}
-- ${fromField ? `Write as if ${fromField} is personally writing this message` : `Write in a ${toneDescription} tone`}
-- Match the ${toneDescription} tone and occasion of the ${cardTypeForPrompt} card type
-- Be inspired by the theme: "${effectivePrompt}"
-- Keep it concise but meaningful (2-4 sentences ideal)
-- Make it feel authentic, not generic
-- SAFETY: Never include brand names, character names, trademarked terms, or inappropriate content. If the theme references these, use generic alternatives or focus on the emotions/concepts instead
-- Keep content family-friendly and appropriate for all ages
-- ${selectedTone === 'funny' ? 'Include appropriate humor that fits the occasion' : ''}
-- ${selectedTone === 'genz-humor' ? 'Use GenZ humor with internet slang, memes, and chaotic energy - think "no cap", "periodt", "it\'s giving...", "slay", etc. Be unhinged but endearing' : ''}
-- ${selectedTone === 'professional' ? 'Keep it formal and business-appropriate' : ''}
-- ${selectedTone === 'romantic' ? 'Include loving and romantic language' : ''}
-- ${selectedTone === 'playful' ? 'Use fun and energetic language' : ''}
-- ${toField && fromField ? `Show the relationship between ${fromField} and ${toField} through the ${toneDescription} message tone` : ""}
-- ${fromField ? `End the message with a signature line like "Love, ${fromField}" or "- ${fromField}" or similar, naturally integrated into the message.` : ""}
-
-Return ONLY the message text that should appear inside the card - no quotes, no explanations, no markdown formatting (no *bold*, _italics_, or other markdown), just the complete ${toneDescription} message in plain text.
-
-IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outside these tags will be ignored.`;
-
-        const generatedMessage = await chatWithAI(autoMessagePrompt, {
-          model: "gemini-2.5-pro",
-          includeThoughts: false
-        });
-        
-        if (generatedMessage?.trim()) {
-          const messageMatch = generatedMessage.match(/<MESSAGE>([\s\S]*?)<\/MESSAGE>/);
-          if (messageMatch && messageMatch[1]) {
-            messageContent = messageMatch[1].trim();
-            setFinalCardMessage(messageContent);
-          }
-        }
+      // Show specific message for GPT-1 users about quality enforcement
+      if (selectedDraftModel === "gpt-image-1") {
+        toast.success("🎨 Generating 10 design variations with GPT-1 (using low quality for fast previews)!");
+      } else {
+        toast.success("🎨 Generating 10 design variations for you to choose from!");
       }
 
-      // Generate style and paper config
-      const selectedStyle = artisticStyles.find(style => style.id === selectedArtisticStyle);
-      const styleModifier = selectedArtisticStyle === "custom" 
-        ? customStyleDescription 
-        : selectedStyle?.promptModifier || "";
-
-      const paperConfig = paperSizes.find(size => size.id === selectedPaperSize) || paperSizes[0];
-
-      setGenerationProgress("🎨 Creating 4 unique design variations...");
-
-      // Generate prompts for 4 different card variations
-      const basePromptGenerationQuery = `You are an expert AI greeting card designer tasked with creating 4 DISTINCTLY DIFFERENT design variations for a ${cardTypeForPrompt} greeting card.
-
-Theme: "${effectivePrompt}"
-Style: ${selectedStyle?.label || "Default"}
-Tone: ${selectedToneObj ? selectedToneObj.label : "Heartfelt"} - ${toneDescription}
-${toField ? `To: ${toField}` : ""}
-${fromField ? `From: ${fromField}` : ""}
-${!isFrontBackOnly ? `Message: "${messageContent}"` : ""}
-${isHandwrittenMessage ? "Note: Include space for handwritten message" : ""}
-${referenceImageUrl ? `Reference: "${imageTransformation || 'artistic transformation'}"` : ""}
-
-CRITICAL: Create 4 COMPLETELY DIFFERENT visual interpretations that are distinctly unique from each other:
-
-VARIATION 1: ${styleModifier} with [unique color palette 1]
-VARIATION 2: ${styleModifier} with [unique color palette 2] 
-VARIATION 3: ${styleModifier} with [unique color palette 3]
-VARIATION 4: ${styleModifier} with [unique color palette 4]
-
-Each variation should have:
-- DIFFERENT color schemes (warm vs cool vs bright vs pastel, etc.)
-- DIFFERENT compositional layouts and arrangements
-- DIFFERENT artistic approaches within the same style
-- DIFFERENT visual metaphors and symbolic elements
-- DIFFERENT character poses/expressions (if people are included)
-- DIFFERENT background elements and settings
-
-Requirements for ALL variations:
-- Flat 2D artwork for printing (not 3D card images)
-- Full-bleed backgrounds extending to edges
-- IMPORTANT: Keep text, faces, and key elements at least 10% away from top/bottom edges (small amount may be cropped in printing)
-- Keep text/faces 0.5" from left/right edges for safe printing
-- Put any text in quotes and make it clear/readable
-- INTELLECTUAL PROPERTY SAFETY: If the user mentions specific characters, brands, logos, or products, automatically replace them with original generic alternatives in your prompts
-- CONTENT SAFETY: Ensure all prompts are family-friendly and appropriate for greeting cards
-${selectedTone === 'funny' ? '- Include visual humor, playful elements, and whimsical details' : ''}
-${selectedTone === 'genz-humor' ? '- Include GenZ visual elements like chaotic energy, internet meme references, bold contrasting colors, and unhinged but endearing visual style' : ''}
-${selectedTone === 'romantic' ? '- Include romantic elements like soft lighting, hearts, flowers, or intimate scenes' : ''}
-${selectedTone === 'professional' ? '- Keep visuals clean, sophisticated, and business-appropriate' : ''}
-${selectedTone === 'playful' ? '- Include bright colors, dynamic poses, and energetic visual elements' : ''}
-${selectedTone === 'elegant' ? '- Focus on sophisticated design, refined color palettes, and graceful compositions' : ''}
-${referenceImageUrl ? `- Create cartoon/illustrated characters inspired by reference image - DO NOT make realistic depictions` : ''}
-
-Create prompts for each variation:
-
-1. Front Cover: Include "${cardTypeForPrompt}" greeting text positioned safely in the center area. Style: ${styleModifier}
-
-2. ${!isFrontBackOnly ? `Left Interior: Creative freedom! Design whatever feels right for a ${cardTypeForPrompt} card with ${toneDescription} tone. Style: ${styleModifier}
-
-3. Right Interior: ${isHandwrittenMessage ? `Design with elegant writing space. Style: ${styleModifier}` : `Include placeholder text: "MESSAGE GOES HERE" positioned safely in center area with beautiful handwritten cursive script. Style: ${styleModifier}`}
-
-4. ` : ''}Back Cover: Simple decorative design. IMPORTANT: Leave bottom-right corner clear for QR code. Style: ${styleModifier}
-
-Return JSON with 4 variations:
-{
-  "variation1": {
-    "frontCover": "detailed prompt with [unique approach 1]",
-    "backCover": "detailed prompt with [unique approach 1]"${!isFrontBackOnly ? ',\n    "leftInterior": "detailed prompt with [unique approach 1]",\n    "rightInterior": "detailed prompt with [unique approach 1]"' : ''}
-  },
-  "variation2": {
-    "frontCover": "detailed prompt with [unique approach 2]",
-    "backCover": "detailed prompt with [unique approach 2]"${!isFrontBackOnly ? ',\n    "leftInterior": "detailed prompt with [unique approach 2]",\n    "rightInterior": "detailed prompt with [unique approach 2]"' : ''}
-  },
-  "variation3": {
-    "frontCover": "detailed prompt with [unique approach 3]",
-    "backCover": "detailed prompt with [unique approach 3]"${!isFrontBackOnly ? ',\n    "leftInterior": "detailed prompt with [unique approach 3]",\n    "rightInterior": "detailed prompt with [unique approach 3]"' : ''}
-  },
-  "variation4": {
-    "frontCover": "detailed prompt with [unique approach 4]",
-    "backCover": "detailed prompt with [unique approach 4]"${!isFrontBackOnly ? ',\n    "leftInterior": "detailed prompt with [unique approach 4]",\n    "rightInterior": "detailed prompt with [unique approach 4]"' : ''}
-  }
-}`;
-
-      const allVariationPrompts = await chatWithAI(basePromptGenerationQuery, {
-        jsonSchema: {
-          type: "object",
-          properties: {
-            variation1: {
-              type: "object",
-              properties: {
-                frontCover: { type: "string" },
-                backCover: { type: "string" },
-                ...(isFrontBackOnly ? {} : { 
-                  leftInterior: { type: "string" },
-                  rightInterior: { type: "string" }
-                })
-              },
-              required: ["frontCover", "backCover", ...(isFrontBackOnly ? [] : ["leftInterior", "rightInterior"])]
-            },
-            variation2: {
-              type: "object",
-              properties: {
-                frontCover: { type: "string" },
-                backCover: { type: "string" },
-                ...(isFrontBackOnly ? {} : { 
-                  leftInterior: { type: "string" },
-                  rightInterior: { type: "string" }
-                })
-              },
-              required: ["frontCover", "backCover", ...(isFrontBackOnly ? [] : ["leftInterior", "rightInterior"])]
-            },
-            variation3: {
-              type: "object",
-              properties: {
-                frontCover: { type: "string" },
-                backCover: { type: "string" },
-                ...(isFrontBackOnly ? {} : { 
-                  leftInterior: { type: "string" },
-                  rightInterior: { type: "string" }
-                })
-              },
-              required: ["frontCover", "backCover", ...(isFrontBackOnly ? [] : ["leftInterior", "rightInterior"])]
-            },
-            variation4: {
-              type: "object",
-              properties: {
-                frontCover: { type: "string" },
-                backCover: { type: "string" },
-                ...(isFrontBackOnly ? {} : { 
-                  leftInterior: { type: "string" },
-                  rightInterior: { type: "string" }
-                })
-              },
-              required: ["frontCover", "backCover", ...(isFrontBackOnly ? [] : ["leftInterior", "rightInterior"])]
+      // Generate 10 draft variations by calling the consolidated function 10 times
+      const draftPromises = Array.from({ length: 10 }, async (_, index) => {
+        try {
+          console.log(`🎨 Starting draft variation ${index + 1}`);
+          await handleGenerateCardAsyncInternal({
+            isDraftMode: true,
+            draftIndex: index,
+            onDraftComplete: (card: GeneratedCard, idx: number) => {
+              console.log(`✅ Draft variation ${idx + 1} completed:`, card.id);
+              setDraftCards(prev => {
+                const updated = [...prev];
+                updated[idx] = card;
+                
+                // Check if all 4 variations are complete
+                const completedCount = updated.filter(c => c).length;
+                console.log(`📊 Draft progress: ${completedCount}/4 variations complete`);
+                
+                if (completedCount === 4) {
+                  setIsGenerating(false);
+                  setGenerationProgress("");
+                  setProgressPercentage(100);
+                  stopElapsedTimeTracking();
+                  toast.success("🎨 All 4 design variations ready! Choose your favorite below.");
+                } else {
+                  setGenerationProgress(`✨ ${completedCount}/4 variations complete...`);
+                  setProgressPercentage((completedCount / 4) * 100);
+                }
+                
+                return updated;
+              });
             }
-          },
-          required: ["variation1", "variation2", "variation3", "variation4"]
-        },
-        model: "gemini-2.5-pro"
+          });
+        } catch (error) {
+          console.error(`❌ Draft variation ${index + 1} failed:`, error);
+          toast.error(`Draft variation ${index + 1} failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
       });
 
-      if (!allVariationPrompts || !allVariationPrompts.variation1) {
-        throw new Error("Failed to generate variation prompts");
-      }
-
-      // Save job data to localStorage and server
-      const jobData = {
-        prompt: effectivePrompt,
-        selectedType,
-        customCardType,
-        selectedTone,
-        finalCardMessage: messageContent,
-        toField,
-        fromField,
-        userEmail,
-        selectedArtisticStyle,
-        customStyleDescription,
-        selectedImageModel,
-        isFrontBackOnly,
-        numberOfCards: 4, // Always 4 for draft mode
-        selectedPaperSize,
-        prompts: allVariationPrompts,
-        paperConfig,
-        isDraftMode: true
-      };
-      
-      saveJobToStorage(jobId, jobData);
-      
-      // Create job on server and start async generation with LOW QUALITY for drafts
-      setGenerationProgress("🚀 Generating 4 draft variations (low quality for fast preview)...");
-      
-      // Prepare input images for reference photo support
-      const inputImages: string[] = [];
-      if (referenceImageUrl && selectedImageModel === "gpt-image-1") {
-        inputImages.push(referenceImageUrl);
-      }
-
-      // Generate all 4 variations
-      const variations = [allVariationPrompts.variation1, allVariationPrompts.variation2, allVariationPrompts.variation3, allVariationPrompts.variation4];
-      
-      for (let i = 0; i < 4; i++) {
-        const variationPrompts = variations[i];
-        
-        const response = await fetch('/api/generate-card-async', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jobId: `${jobId}-variation-${i + 1}`,
-            prompts: variationPrompts,
-            config: {
-              userNumber: "+17145986105",
-              modelVersion: selectedImageModel,
-              aspectRatio: paperConfig.aspectRatio,
-              quality: "low", // LOW QUALITY for draft mode
-              outputFormat: "jpeg",
-              outputCompression: 80, // Lower compression for faster generation
-              moderation: "low",
-              dimensions: paperConfig.dimensions,
-              isFrontBackOnly,
-              userEmail: "", // Don't send emails for draft variations
-              cardType: cardTypeForPrompt,
-              toField,
-              fromField,
-              isDraftMode: true,
-              ...(inputImages.length > 0 && { input_images: [inputImages] })
-            }
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`Server error for variation ${i + 1}: ${response.status}`);
-        }
-
-        const result = await response.json();
-        
-        if (result.status !== 'processing') {
-          throw new Error(result.message || `Failed to start variation ${i + 1} generation`);
-        }
-      }
-
-      // Start polling for all variations
-      setGenerationProgress("⚡ Creating your 4 design options...");
-      toast.success("🎨 Generating 4 design variations for you to choose from!");
-      
-      // Poll for all 4 variations
-      for (let i = 0; i < 4; i++) {
-        pollDraftVariation(`${jobId}-variation-${i + 1}`, i);
-      }
+      // Wait for all draft generations to start (but not complete)
+      await Promise.allSettled(draftPromises);
+      console.log("🚀 All draft variations started");
 
     } catch (error) {
       console.error('Draft card generation error:', error);
-      toast.error("Failed to start draft generation. Please try again.");
-      
-      // Remove failed job from localStorage
-      if (currentJobId) {
-        removeJobFromStorage(currentJobId);
-        setCurrentJobId(null);
-      }
+      toast.error(`Failed to start draft generation: ${error instanceof Error ? error.message : 'Unknown error'}`);
       
       setIsGenerating(false);
       setIsDraftMode(false);
       setGenerationProgress("");
+      stopElapsedTimeTracking();
     }
   };
 
-  // Poll for individual draft variation completion
-  const pollDraftVariation = async (jobId: string, variationIndex: number) => {
-    try {
-      const statusResponse = await checkJobStatus(jobId);
-      
-      if (statusResponse && statusResponse.status === 'completed') {
-        console.log(`🎉 Draft variation ${variationIndex + 1} completed!`);
-        
-        if (statusResponse.cardData) {
-          const card: GeneratedCard = {
-            id: `draft-${variationIndex + 1}-${Date.now()}`,
-            prompt: statusResponse.cardData.prompt || `Draft Variation ${variationIndex + 1}`,
-            frontCover: statusResponse.cardData.frontCover || "",
-            backCover: statusResponse.cardData.backCover || "",
-            leftPage: statusResponse.cardData.leftPage || "",
-            rightPage: statusResponse.cardData.rightPage || "",
-            createdAt: new Date(),
-            generatedPrompts: statusResponse.cardData.generatedPrompts
-          };
-          
-          setDraftCards(prev => {
-            const updated = [...prev];
-            updated[variationIndex] = card;
-            
-            // Check if all 4 variations are complete
-            const completedCount = updated.filter(c => c).length;
-            if (completedCount === 4) {
-              setIsGenerating(false);
-              setGenerationProgress("");
-              setProgressPercentage(100);
-              stopElapsedTimeTracking();
-              toast.success("🎨 All 4 design variations ready! Choose your favorite below.");
-            } else {
-              setGenerationProgress(`✨ ${completedCount}/4 variations complete...`);
-              setProgressPercentage((completedCount / 4) * 100);
-            }
-            
-            return updated;
-          });
-        }
-        
-        removeJobFromStorage(jobId);
-      } else if (statusResponse && statusResponse.status === 'failed') {
-        console.error(`❌ Draft variation ${variationIndex + 1} failed:`, statusResponse);
-        toast.error(`Draft variation ${variationIndex + 1} failed. Continuing with others...`);
-        removeJobFromStorage(jobId);
-      } else if (statusResponse && statusResponse.status === 'processing') {
-        // Continue polling
-        setTimeout(() => pollDraftVariation(jobId, variationIndex), 3000);
-      }
-    } catch (error) {
-      console.error(`Failed to poll draft variation ${variationIndex + 1}:`, error);
-      // Retry after delay
-      setTimeout(() => pollDraftVariation(jobId, variationIndex), 5000);
-    }
-  };
+
 
   // Generate final high-quality card from selected draft
   const handleGenerateFinalFromDraft = async (draftIndex: number) => {
@@ -2230,6 +2351,15 @@ Return JSON with 4 variations:
           .replace(/MESSAGE GOES HERE/g, finalCardMessage);
       }
       
+      // Prepare input images for final generation (reference photos)
+      const inputImages: string[] = [];
+      if (referenceImageUrls.length > 0 && selectedImageModel === "gpt-image-1") {
+        inputImages.push(...referenceImageUrls);
+        console.log("🔍 DEBUG: Added reference images to final draft generation:", referenceImageUrls);
+        console.log("🔍 DEBUG: Total input images for final draft generation:", inputImages.length);
+        toast.success(`📸 ${referenceImageUrls.length} reference photo${referenceImageUrls.length > 1 ? 's' : ''} applied to final generation!`);
+      }
+
       const response = await fetch('/api/generate-card-async', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2250,7 +2380,11 @@ Return JSON with 4 variations:
             cardType: selectedType === "custom" ? customCardType : selectedType,
             toField,
             fromField,
-            isDraftMode: false
+            isDraftMode: false,
+            ...(inputImages.length > 0 && { 
+              input_images: inputImages,
+              input_images_mode: "front_cover_only" // All reference images should go to front cover for character creation
+            })
           }
         })
       });
@@ -2280,8 +2414,15 @@ Return JSON with 4 variations:
     }
   };
 
-  // New async card generation approach
-  const handleGenerateCardAsync = async () => {
+  // Consolidated card generation function
+  const handleGenerateCardAsyncInternal = async (options: {
+    isDraftMode?: boolean;
+    draftIndex?: number;
+    onDraftComplete?: (card: GeneratedCard, index: number) => void;
+  } = {}) => {
+    const { isDraftMode = false, draftIndex = 0, onDraftComplete } = options;
+    
+    console.log(`🔍 handleGenerateCardAsyncInternal called:`, { isDraftMode, draftIndex, hasOnDraftComplete: !!onDraftComplete });
     if (!userEmail.trim()) {
       toast.error("Please enter your email address");
       return;
@@ -2300,15 +2441,30 @@ Return JSON with 4 variations:
       return;
     }
 
-    setIsGenerating(true);
-    startElapsedTimeTracking();
-    setGenerationProgress("Creating your personalized card...");
-    setProgressPercentage(0);
+    // Determine which model to use based on mode
+    const modelToUse = isDraftMode ? selectedDraftModel : selectedImageModel;
+
+    // Validate reference images with model compatibility
+    if (referenceImageUrls.length > 0 && modelToUse !== "gpt-image-1") {
+      const modeText = isDraftMode ? "draft mode" : "final generation";
+      toast.error(`Reference photos are only supported with GPT Image 1 model. Please switch to GPT Image 1 for ${modeText} or remove reference photos.`);
+      return;
+    }
+
+    // Only set global generating state if not in draft mode (draft mode manages its own state)
+    if (!isDraftMode) {
+      setIsGenerating(true);
+      startElapsedTimeTracking();
+      setGenerationProgress("Creating your personalized card...");
+      setProgressPercentage(0);
+    }
 
     try {
       // Create job tracking
-      const jobId = uuidv4();
-      setCurrentJobId(jobId);
+      const jobId = isDraftMode ? `draft-${draftIndex}-${uuidv4()}` : uuidv4();
+      if (!isDraftMode) {
+        setCurrentJobId(jobId);
+      }
       
       // Generate all prompts client-side first
       const cardTypeForPrompt = selectedType === "custom" ? customCardType : selectedType;
@@ -2388,7 +2544,7 @@ ${toField ? `To: ${toField}` : ""}
 ${fromField ? `From: ${fromField}` : ""}
 ${!isFrontBackOnly ? `Message: "${messageContent}"` : ""}
 ${isHandwrittenMessage ? "Note: Include space for handwritten message" : ""}
-${referenceImageUrl ? `Reference: "${imageTransformation || 'artistic transformation'}"` : ""}
+${referenceImageUrls.length > 0 ? `Reference: "${imageTransformation || 'artistic transformation'}"` : ""}
 
 CRITICAL: Create a cohesive visual narrative that flows chronologically through the card experience:
 1. FRONT COVER: First impression - sets the scene/introduces the story
@@ -2413,17 +2569,17 @@ ${selectedTone === 'romantic' ? '- Include romantic elements like soft lighting,
 ${selectedTone === 'professional' ? '- Keep visuals clean, sophisticated, and business-appropriate' : ''}
 ${selectedTone === 'playful' ? '- Include bright colors, dynamic poses, and energetic visual elements' : ''}
 ${selectedTone === 'elegant' ? '- Focus on sophisticated design, refined color palettes, and graceful compositions' : ''}
-${referenceImageUrl ? `- Create cartoon/illustrated characters inspired by reference image - DO NOT make realistic depictions` : ''}
+${referenceImageUrls.length > 0 ? `- Create cartoon/illustrated characters inspired by reference images - DO NOT make realistic depictions` : ''}
 
 Create prompts that flow chronologically:
 
-1. Front Cover (Opening Scene): BE GENUINELY CREATIVE AND UNIQUE! Include "${cardTypeForPrompt}" greeting text positioned safely in the center area (avoid top/bottom 10% of image). TEXT STYLE: Write the greeting text in beautiful, clearly readable handwritten cursive script that matches the elegant style used inside the card - legible, flowing, and graceful with natural character and warmth. ${referenceImageUrl ? `I have included my own reference image. Create a stylized cartoon/illustrated character inspired by the reference image - DO NOT make realistic depictions of real people, instead create charming cartoon-style characters with simplified, friendly features.` : 'Create charming cartoon-style or stylized illustrated figures if people are needed for the theme.'} This is the story opening - introduce key visual elements (colors, motifs, artistic style) that will continue throughout the other sections. Think of something unexpected, innovative, and memorable that will surprise and delight the recipient. Avoid generic designs! Style: ${styleModifier}
+1. Front Cover (Opening Scene): BE GENUINELY CREATIVE AND UNIQUE! Include "${cardTypeForPrompt}" greeting text positioned safely in the center area (avoid top/bottom 10% of image). TEXT STYLE: Write the greeting text in beautiful, clearly readable handwritten cursive script that matches the elegant style used inside the card - legible, flowing, and graceful with natural character and warmth. ${referenceImageUrls.length > 0 ? `I have included ${referenceImageUrls.length > 1 ? 'multiple' : 'my own'} reference image${referenceImageUrls.length > 1 ? 's' : ''}. Create stylized cartoon/illustrated characters inspired by the reference image${referenceImageUrls.length > 1 ? 's' : ''} - DO NOT make realistic depictions of real people, instead create charming cartoon-style characters with simplified, friendly features.` : 'Create charming cartoon-style or stylized illustrated figures if people are needed for the theme.'} This is the story opening - introduce key visual elements (colors, motifs, artistic style) that will continue throughout the other sections. Think of something unexpected, innovative, and memorable that will surprise and delight the recipient. Avoid generic designs! Style: ${styleModifier}
 
 2. ${!isFrontBackOnly ? `Left Interior (Story Development): UNLEASH YOUR CREATIVITY! You have complete creative freedom to design whatever you want for this left interior page! This is your artistic playground - create something genuinely innovative and unexpected that feels right for a ${cardTypeForPrompt} card with ${toneDescription} tone. You can include: scenes, landscapes, objects, patterns, quotes, text, illustrations, realistic art, abstract art, or anything else that inspires you - but NO PEOPLE or characters unless the user specifically mentioned wanting people in their card description. Position any text safely in center area (avoid top/bottom 10%). Think of something no one has done before! Surprise us with bold, imaginative, and memorable artistic choices while maintaining visual harmony with the overall card style and tone. Style: ${styleModifier}
 
 3. Right Interior (Story Climax): BE CREATIVE WITH MESSAGE DESIGN! ${isHandwrittenMessage ? `Design with elegant writing space that complements the visual story from left interior. Position decorative elements safely away from top/bottom edges. Create innovative and artistic decorative elements, borders, or flourishes that are unique and memorable - NO PEOPLE or characters.` : `Include message text: "${messageContent}" positioned safely in center area (avoid top/bottom 10% of image) integrated into beautiful, innovative decorative artwork. HANDWRITING STYLE: Write the message in beautiful, clearly readable handwritten cursive script that feels elegant and personal. The handwriting should be legible, flowing, and have natural character - not overly perfect but graceful and warm. Use a nice pen-style appearance with natural ink flow and slight variations in line weight. Think of sophisticated calligraphy that's still approachable and easy to read. Make the handwriting feel genuine and heartfelt. Think beyond typical florals and patterns - create something unexpected and artistic that perfectly frames the handwritten message - NO PEOPLE or characters.`} This should feel like the emotional peak of the card experience, harmonizing with the left interior as a cohesive spread. Avoid cliché designs and create something genuinely special!${handwritingSampleUrl ? ' Match the provided handwriting style sample exactly.' : ' Use the elegant cursive handwriting style described above.'} Style: ${styleModifier}
 
-4. ` : ''}Back Cover (Story Resolution): BE SUBTLY CREATIVE! Create a simple yet innovative decorative design that brings peaceful closure to the visual story. Reference subtle elements from the front cover but keep it minimal and serene - NO PEOPLE, just beautiful, unexpected artistic elements that go beyond typical patterns or florals. IMPORTANT: Leave the bottom-right corner area (approximately 1 inch square) completely clear and undecorated - this space is reserved for a QR code. Focus decorative elements toward the center and left side of the design. Think of something quietly beautiful and memorable that complements the overall design while being genuinely unique. This should feel like a peaceful, artistic ending that surprises with its subtle creativity. Style: ${styleModifier}
+4. ` : ''}Back Cover (Story Resolution): BE SUBTLY CREATIVE! Create a simple yet innovative decorative design that brings peaceful closure to the visual story. Reference subtle elements from the front cover but keep it minimal and serene - NO PEOPLE, just beautiful, unexpected artistic elements that go beyond typical patterns or florals. IMPORTANT: Leave the bottom-right corner area (approximately 1 inch square) completely clear and undecorated - this space should remain empty. Focus decorative elements toward the center and left side of the design. Think of something quietly beautiful and memorable that complements the overall design while being genuinely unique. This should feel like a peaceful, artistic ending that surprises with its subtle creativity. Style: ${styleModifier}
 
 VISUAL CONTINUITY CHECKLIST:
 - Same color palette across all sections
@@ -2461,7 +2617,35 @@ Return JSON:
       });
 
       if (!generatedPrompts || !generatedPrompts.frontCover) {
+        console.error("❌ Failed to generate image prompts:", generatedPrompts);
         throw new Error("Failed to generate image prompts");
+      }
+      
+      console.log("✅ Generated prompts successfully:", { 
+        isDraftMode, 
+        draftIndex, 
+        hasFrontCover: !!generatedPrompts.frontCover,
+        hasBackCover: !!generatedPrompts.backCover
+      });
+
+      // Enhance front cover prompt with reference image instructions if available
+      if (referenceImageUrls.length > 0 && modelToUse === "gpt-image-1") {
+        generatedPrompts.frontCover = `${generatedPrompts.frontCover}\n\nCRITICAL CHARACTER REFERENCE INSTRUCTIONS: I have provided ${referenceImageUrls.length > 1 ? 'multiple reference photos' : 'a reference photo'} as input image${referenceImageUrls.length > 1 ? 's' : ''}. You MUST create cartoon/illustrated characters that accurately represent the people in ${referenceImageUrls.length > 1 ? 'these reference photos' : 'this reference photo'} with high fidelity to their appearance.
+
+MANDATORY CHARACTER MATCHING REQUIREMENTS:
+- REPRESENT ALL PEOPLE: If multiple reference photos are provided, create cartoon versions of ALL people shown, bringing them together in the same scene
+- EXACT hair color, hair style, and hair length from each reference photo
+- PRECISE facial features for each person: eye color, eye shape, nose shape, face structure, skin tone
+- ACCURATE clothing: replicate the EXACT clothing items, colors, patterns, and styles worn by each person in their reference photo
+- COMPLETE accessories: include ALL accessories visible on each person (glasses, jewelry, hats, watches, bags, etc.)
+- CORRECT body proportions and posture as shown for each person in their reference
+- FAITHFUL age representation and gender presentation for each individual
+- AUTHENTIC facial expressions and poses from the reference images, lean towards making the people look happier unless the user specifically asks for a different expression
+- GROUP COMPOSITION: If multiple people, arrange them naturally together in a pleasing composition that fits the card's theme
+
+${imageTransformation || 'Study every detail of the people in the reference image and recreate them as stylized cartoon characters while maintaining 100% accuracy to their distinctive visual features. The characters must be immediately recognizable as the same people from the reference photo. Pay special attention to clothing details, accessories, and unique personal style elements that make each person distinctive.'}
+
+The cartoon style should be charming and artistic while preserving complete visual accuracy to the reference photo. Every person in the reference must be represented with their exact appearance, clothing, and accessories.`;
       }
 
       // Save job data to localStorage and server
@@ -2489,12 +2673,23 @@ Return JSON:
       // Create job on server and start async generation
       setGenerationProgress("🚀 Starting background generation - you can safely leave this page!");
       
-      // Prepare input images for reference photo support
+      // Prepare input images for reference photo support - only for GPT-1
       const inputImages: string[] = [];
-      if (referenceImageUrl && selectedImageModel === "gpt-image-1") {
-        inputImages.push(referenceImageUrl);
+      if (referenceImageUrls.length > 0 && modelToUse === "gpt-image-1") {
+        inputImages.push(...referenceImageUrls);
+        console.log("🔍 DEBUG: Added reference images to async generation:", referenceImageUrls);
+        console.log("🔍 DEBUG: Total input images for async generation:", inputImages.length);
+        console.log("🔍 DEBUG: Reference images should ALL go to front cover for character creation of multiple people");
       }
 
+      console.log("🚀 Making API call to /api/generate-card-async:", { 
+        isDraftMode, 
+        draftIndex, 
+        jobId, 
+        modelToUse,
+        quality: isDraftMode ? "low" : "high"
+      });
+      
       const response = await fetch('/api/generate-card-async', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2503,9 +2698,9 @@ Return JSON:
           prompts: generatedPrompts,
           config: {
             userNumber: "+17145986105",
-            modelVersion: selectedImageModel,
+            modelVersion: modelToUse,
             aspectRatio: paperConfig.aspectRatio,
-            quality: "low",
+            quality: isDraftMode ? "low" : "high", // GPT-1 forced to low quality for speed
             outputFormat: "jpeg",
             outputCompression: 100,
             moderation: "low",
@@ -2515,40 +2710,68 @@ Return JSON:
             cardType: cardTypeForPrompt,
             toField,
             fromField,
-            ...(inputImages.length > 0 && { input_images: [inputImages] })
+            ...(inputImages.length > 0 && { 
+              input_images: inputImages,
+              input_images_mode: "front_cover_only" // All reference images should go to front cover for character creation
+            })
           }
         })
       });
+      
+      console.log("📡 API response status:", response.status, response.ok);
 
       if (!response.ok) {
         throw new Error(`Server error: ${response.status}`);
       }
 
       const result = await response.json();
+      console.log("📋 API response result:", result);
       
       if (result.status !== 'processing') {
+        console.error("❌ API returned unexpected status:", result.status, result.message);
         throw new Error(result.message || 'Failed to start card generation');
       }
 
+      console.log("✅ Job started successfully:", jobId);
+
       // Start polling for completion
-      setGenerationProgress("✨ Bringing your vision to life with artistic precision...");
-      toast.success("🎉 Card generation started! You can leave this page and return later.");
-      
-      pollJobStatus(jobId);
+      if (isDraftMode) {
+        setGenerationProgress(`✨ Creating draft variation ${draftIndex + 1}...`);
+        console.log(`🔄 Starting polling for draft job ${jobId}`);
+        // For draft mode, we'll handle polling differently if needed
+        pollJobStatus(jobId);
+      } else {
+        setGenerationProgress("✨ Bringing your vision to life with artistic precision...");
+        toast.success("🎉 Card generation started! You can leave this page and return later.");
+        pollJobStatus(jobId);
+      }
 
     } catch (error) {
-      console.error('Card generation error:', error);
-      toast.error("Failed to start card generation. Please try again.");
+      console.error(`❌ Card generation error (isDraftMode: ${isDraftMode}, draftIndex: ${draftIndex}):`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       
-      // Remove failed job from localStorage
-      if (currentJobId) {
-        removeJobFromStorage(currentJobId);
-        setCurrentJobId(null);
+      if (isDraftMode) {
+        toast.error(`Draft variation ${draftIndex + 1} failed: ${errorMessage}`);
+        // For draft mode, we don't want to stop the entire generation process
+        // The parent function will handle individual draft failures
+      } else {
+        toast.error(`Failed to start card generation: ${errorMessage}`);
+        
+        // Remove failed job from localStorage
+        if (currentJobId) {
+          removeJobFromStorage(currentJobId);
+          setCurrentJobId(null);
+        }
+        
+        setIsGenerating(false);
+        setGenerationProgress("");
       }
-      
-      setIsGenerating(false);
-      setGenerationProgress("");
     }
+  };
+
+  // Wrapper function for regular card generation (used as click handler)
+  const handleGenerateCardAsync = async () => {
+    return handleGenerateCardAsyncInternal();
   };
 
   // Original synchronous card generation (keep as fallback)
@@ -2568,6 +2791,12 @@ Return JSON:
     // Validate custom style if selected
     if (selectedArtisticStyle === "custom" && !customStyleDescription.trim()) {
       toast.error("Please describe your custom artistic style");
+      return;
+    }
+
+    // Validate reference images with model compatibility
+    if (referenceImageUrls.length > 0 && selectedImageModel !== "gpt-image-1") {
+      toast.error("Reference photos are only supported with GPT Image 1 model. Please switch to GPT Image 1 in Advanced Options or remove reference photos.");
       return;
     }
 
@@ -2696,8 +2925,23 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
       }
     }
 
-    setIsGenerating(true);
-    setGenerationProgress("🎨 Gathering artistic inspiration...");
+    // Determine which model to use based on mode
+    const modelToUse = isDraftMode ? selectedDraftModel : selectedImageModel;
+
+    // Validate reference images with model compatibility
+    if (referenceImageUrls.length > 0 && modelToUse !== "gpt-image-1") {
+      const modeText = isDraftMode ? "draft mode" : "final generation";
+      toast.error(`Reference photos are only supported with GPT Image 1 model. Please switch to GPT Image 1 for ${modeText} or remove reference photos.`);
+      return;
+    }
+
+    // Only set global generating state if not in draft mode (draft mode manages its own state)
+    if (!isDraftMode) {
+      setIsGenerating(true);
+      startElapsedTimeTracking();
+      setGenerationProgress("Creating your personalized card...");
+      setProgressPercentage(0);
+    }
     
     // Generate unique card ID for URL
     const cardId = uuidv4();
@@ -2728,7 +2972,7 @@ Card Details:
 - Theme/Description: "${effectivePrompt}"
 ${toField ? `- Recipient: ${toField}` : ""}
 ${fromField ? `- Sender: ${fromField}` : ""}
-${referenceImageUrl ? `- Has reference photo for transformation` : ""}
+${referenceImageUrls.length > 0 ? `- Has ${referenceImageUrls.length} reference photo${referenceImageUrls.length > 1 ? 's' : ''} for transformation` : ""}
 ${isHandwrittenMessage ? `- Will have handwritten message` : `- Message: "${finalCardMessage}"`}
 
 IMPORTANT GUIDELINES:
@@ -2798,7 +3042,7 @@ ${toField ? `To: ${toField}` : ""}
 ${fromField ? `From: ${fromField}` : ""}
 ${!isFrontBackOnly ? `Message: "${messageContent}"` : ""}
 ${isHandwrittenMessage ? "Note: Include space for handwritten message" : ""}
-${referenceImageUrl ? `Reference: "${imageTransformation || 'artistic transformation'}"` : ""}
+${referenceImageUrls.length > 0 ? `Reference: "${imageTransformation || 'artistic transformation'}"` : ""}
 
 CRITICAL: Create a cohesive visual narrative that flows chronologically through the card experience:
 1. FRONT COVER: First impression - sets the scene/introduces the story
@@ -2823,17 +3067,17 @@ ${selectedTone === 'romantic' ? '- Include romantic elements like soft lighting,
 ${selectedTone === 'professional' ? '- Keep visuals clean, sophisticated, and business-appropriate' : ''}
 ${selectedTone === 'playful' ? '- Include bright colors, dynamic poses, and energetic visual elements' : ''}
 ${selectedTone === 'elegant' ? '- Focus on sophisticated design, refined color palettes, and graceful compositions' : ''}
-${referenceImageUrl ? `- Create cartoon/illustrated characters inspired by reference image - DO NOT make realistic depictions` : ''}
+${referenceImageUrls.length > 0 ? `- Create cartoon/illustrated characters inspired by reference images - DO NOT make realistic depictions` : ''}
 
 Create prompts that flow chronologically:
 
-1. Front Cover (Opening Scene): BE GENUINELY CREATIVE AND UNIQUE! Include "${cardTypeForPrompt}" greeting text positioned safely in the center area (avoid top/bottom 10% of image). TEXT STYLE: Write the greeting text in beautiful, clearly readable handwritten cursive script that matches the elegant style used inside the card - legible, flowing, and graceful with natural character and warmth. ${referenceImageUrl ? `I have included my own reference image. Create a stylized cartoon/illustrated character inspired by the reference image - DO NOT make realistic depictions of real people, instead create charming cartoon-style characters with simplified, friendly features.` : 'Create charming cartoon-style or stylized illustrated figures if people are needed for the theme.'} This is the story opening - introduce key visual elements (colors, motifs, artistic style) that will continue throughout the other sections. Think of something unexpected, innovative, and memorable that will surprise and delight the recipient. Avoid generic designs! Style: ${styleModifier}
+1. Front Cover (Opening Scene): BE GENUINELY CREATIVE AND UNIQUE! Include "${cardTypeForPrompt}" greeting text positioned safely in the center area (avoid top/bottom 10% of image). TEXT STYLE: Write the greeting text in beautiful, clearly readable handwritten cursive script that matches the elegant style used inside the card - legible, flowing, and graceful with natural character and warmth. ${referenceImageUrls.length > 0 ? `I have included ${referenceImageUrls.length > 1 ? 'multiple' : 'my own'} reference image${referenceImageUrls.length > 1 ? 's' : ''}. Create stylized cartoon/illustrated characters inspired by the reference image${referenceImageUrls.length > 1 ? 's' : ''} - DO NOT make realistic depictions of real people, instead create charming cartoon-style characters with simplified, friendly features.` : 'Create charming cartoon-style or stylized illustrated figures if people are needed for the theme.'} This is the story opening - introduce key visual elements (colors, motifs, artistic style) that will continue throughout the other sections. Think of something unexpected, innovative, and memorable that will surprise and delight the recipient. Avoid generic designs! Style: ${styleModifier}
 
 2. ${!isFrontBackOnly ? `Left Interior (Story Development): UNLEASH YOUR CREATIVITY! You have complete creative freedom to design whatever you want for this left interior page! This is your artistic playground - create something genuinely innovative and unexpected that feels right for a ${cardTypeForPrompt} card with ${toneDescription} tone. You can include: scenes, landscapes, objects, patterns, quotes, text, illustrations, realistic art, abstract art, or anything else that inspires you - but NO PEOPLE or characters unless the user specifically mentioned wanting people in their card description. Position any text safely in center area (avoid top/bottom 10%). Think of something no one has done before! Surprise us with bold, imaginative, and memorable artistic choices while maintaining visual harmony with the overall card style and tone. Style: ${styleModifier}
 
 3. Right Interior (Story Climax): BE CREATIVE WITH MESSAGE DESIGN! ${isHandwrittenMessage ? `Design with elegant writing space that complements the visual story from left interior. Position decorative elements safely away from top/bottom edges. Create innovative and artistic decorative elements, borders, or flourishes that are unique and memorable - NO PEOPLE or characters.` : `Include message text: "${messageContent}" positioned safely in center area (avoid top/bottom 10% of image) integrated into beautiful, innovative decorative artwork. HANDWRITING STYLE: Write the message in beautiful, clearly readable handwritten cursive script that feels elegant and personal. The handwriting should be legible, flowing, and have natural character - not overly perfect but graceful and warm. Use a nice pen-style appearance with natural ink flow and slight variations in line weight. Think of sophisticated calligraphy that's still approachable and easy to read. Make the handwriting feel genuine and heartfelt. Think beyond typical florals and patterns - create something unexpected and artistic that perfectly frames the handwritten message - NO PEOPLE or characters.`} This should feel like the emotional peak of the card experience, harmonizing with the left interior as a cohesive spread. Avoid cliché designs and create something genuinely special!${handwritingSampleUrl ? ' Match the provided handwriting style sample exactly.' : ' Use the elegant cursive handwriting style described above.'} Style: ${styleModifier}
 
-4. ` : ''}Back Cover (Story Resolution): BE SUBTLY CREATIVE! Create a simple yet innovative decorative design that brings peaceful closure to the visual story. Reference subtle elements from the front cover but keep it minimal and serene - NO PEOPLE, just beautiful, unexpected artistic elements that go beyond typical patterns or florals. IMPORTANT: Leave the bottom-right corner area (approximately 1 inch square) completely clear and undecorated - this space is reserved for a QR code. Focus decorative elements toward the center and left side of the design. Think of something quietly beautiful and memorable that complements the overall design while being genuinely unique. This should feel like a peaceful, artistic ending that surprises with its subtle creativity. Style: ${styleModifier}
+4. ` : ''}Back Cover (Story Resolution): BE SUBTLY CREATIVE! Create a simple yet innovative decorative design that brings peaceful closure to the visual story. Reference subtle elements from the front cover but keep it minimal and serene - NO PEOPLE, just beautiful, unexpected artistic elements that go beyond typical patterns or florals. IMPORTANT: Leave the bottom-right corner area (approximately 1 inch square) completely clear and undecorated - this space should remain empty. Focus decorative elements toward the center and left side of the design. Think of something quietly beautiful and memorable that complements the overall design while being genuinely unique. This should feel like a peaceful, artistic ending that surprises with its subtle creativity. Style: ${styleModifier}
 
 VISUAL CONTINUITY CHECKLIST:
 - Same color palette across all sections
@@ -2898,33 +3142,6 @@ Return JSON:
       
       setGenerationProgress(`✅ ${numberOfCards} brilliant design${numberOfCards > 1 ? 's' : ''} ready! Now painting them into reality...`);
 
-      // // Debug: Send all prompts to debug endpoint
-      // const debugSendPrompts = async () => {
-      //   try {
-      //     const allPrompts = allGeneratedPrompts.map((prompts, cardIndex) => [
-      //       `CARD ${cardIndex + 1}:`,
-      //       `FRONT COVER: ${prompts.frontCover}`,
-      //       `BACK COVER: ${prompts.backCover}`,
-      //       ...(isFrontBackOnly ? [] : [
-      //         `LEFT INTERIOR: ${prompts.leftInterior}`,
-      //         `RIGHT INTERIOR: ${prompts.rightInterior}`
-      //       ])
-      //     ].join('\n')).join('\n\n---\n\n');
-          
-      //     await fetch('https://16504442930.work/send_email_with_attachments', {
-      //       method: 'POST',
-      //       headers: { 'Content-Type': 'application/json' },
-      //       body: JSON.stringify({ 
-      //         body: allPrompts,
-      //         to: 'cards1@ast.engineer'
-      //       })
-      //     });
-      //   } catch (error) {
-      //     // Silent fail - don't impact UI
-      //   }
-      // };
-      
-
       // Generate all images in parallel
       setGenerationProgress(`🖼️ Generating your ${numberOfCards} card${numberOfCards > 1 ? 's' : ''} with ${isFrontBackOnly ? '2' : '4'} images each...`);
       
@@ -2944,31 +3161,17 @@ Return JSON:
       const leftInteriorInputImages: string[] = [];
       const rightInteriorInputImages: string[] = [];
       
-      // Handle reference images based on model capabilities
-      let referenceImageDescription = null;
-      if (referenceImageUrl) {
-        if (selectedImageModel === "gpt-image-1") {
-          // GPT-1 supports direct image input - pass reference image directly
-          frontCoverInputImages.push(referenceImageUrl);
-          setGenerationProgress(`✨ Reference photo will be used directly for character creation...`);
-          toast.success("📸 Reference photo ready for character creation!");
-        } else {
-          // Other models require text description - analyze first
-          setGenerationProgress(`🔍 Analyzing reference photo for ${selectedImageModel}...`);
-          toast.info("Analyzing reference photo...");
-          
-          referenceImageDescription = await analyzeReferenceImage(referenceImageUrl);
-          
-          if (referenceImageDescription) {
-            setGenerationProgress(`✨ Reference photo analyzed for text-based generation.`);
-            toast.success("📝 Reference photo analyzed successfully!");
-          } else {
-            toast.info("Using reference photo description fallback");
-          }
-        }
+      // Handle reference images - only for models with direct image support
+      if (referenceImageUrls.length > 0 && modelToUse === "gpt-image-1") {
+        // GPT-1 supports direct image input - pass reference images directly
+        frontCoverInputImages.push(...referenceImageUrls);
+        console.log("🔍 DEBUG: Added reference images to frontCoverInputImages:", referenceImageUrls);
+        console.log("🔍 DEBUG: frontCoverInputImages length:", frontCoverInputImages.length);
+        setGenerationProgress(`✨ Reference photos will be used directly for character creation...`);
+        toast.success(`📸 ${referenceImageUrls.length} reference photo${referenceImageUrls.length > 1 ? 's' : ''} ready for character creation!`);
       }
       
-      if (selectedImageModel === "gpt-image-1") {
+      if (modelToUse === "gpt-image-1") {
         // Add handwriting sample to right interior for message styling
         if (handwritingSampleUrl && !isFrontBackOnly) {
           rightInteriorInputImages.push(handwritingSampleUrl);
@@ -2982,10 +3185,9 @@ Return JSON:
       allGeneratedPrompts.forEach((generatedPrompts, cardIndex) => {
         // Enhance front cover prompt with reference image instructions if available
         let enhancedFrontCoverPrompt = generatedPrompts.frontCover;
-        if (referenceImageUrl) {
-          if (selectedImageModel === "gpt-image-1") {
-            // GPT-1 with direct image input - focus on character creation
-            enhancedFrontCoverPrompt = `${generatedPrompts.frontCover}\n\nCRITICAL CHARACTER REFERENCE INSTRUCTIONS: I have provided a reference photo as input image. You MUST create cartoon/illustrated characters that accurately represent the people in this reference photo with high fidelity to their appearance.
+        if (referenceImageUrls.length > 0 && modelToUse === "gpt-image-1") {
+          // GPT-1 with direct image input - focus on character creation
+          enhancedFrontCoverPrompt = `${generatedPrompts.frontCover}\n\nCRITICAL CHARACTER REFERENCE INSTRUCTIONS: I have provided ${referenceImageUrls.length > 1 ? 'multiple reference photos' : 'a reference photo'} as input image${referenceImageUrls.length > 1 ? 's' : ''}. You MUST create cartoon/illustrated characters that accurately represent the people in ${referenceImageUrls.length > 1 ? 'these reference photos' : 'this reference photo'} with high fidelity to their appearance.
 
 MANDATORY CHARACTER MATCHING REQUIREMENTS:
 - EXACT hair color, hair style, and hair length from the reference photo
@@ -2994,15 +3196,11 @@ MANDATORY CHARACTER MATCHING REQUIREMENTS:
 - COMPLETE accessories: include ALL accessories visible (glasses, jewelry, hats, watches, bags, etc.)
 - CORRECT body proportions and posture as shown in the reference
 - FAITHFUL age representation and gender presentation
-- AUTHENTIC facial expressions and poses from the reference image
+- AUTHENTIC facial expressions and poses from the reference image, learn towards making the people look happier unless the user specifically asks for a different expression.
 
 ${imageTransformation || 'Study every detail of the people in the reference image and recreate them as stylized cartoon characters while maintaining 100% accuracy to their distinctive visual features. The characters must be immediately recognizable as the same people from the reference photo. Pay special attention to clothing details, accessories, and unique personal style elements that make each person distinctive.'}
 
 The cartoon style should be charming and artistic while preserving complete visual accuracy to the reference photo. Every person in the reference must be represented with their exact appearance, clothing, and accessories.`;
-          } else if (referenceImageDescription) {
-            // Other models with text description - focus on character creation
-            enhancedFrontCoverPrompt = `${generatedPrompts.frontCover}\n\nIMPORTANT: Create cartoon/illustrated characters that look like the people described here: "${referenceImageDescription}". Make characters that would be recognizable as these specific people, maintaining their distinctive features like hair color, hair style, facial features, clothing, and overall appearance in a charming cartoon art style.`;
-          }
         }
         
         const cardPayloads = [
@@ -3011,13 +3209,20 @@ The cartoon style should be charming and artistic while preserving complete visu
             arguments: {
                               user_number: "+17145986105",
                 prompts: [enhancedFrontCoverPrompt],
-                model_version: selectedImageModel,
+                model_version: modelToUse,
                 aspect_ratio: paperConfig.aspectRatio,
-                quality: "high",
+                quality: isDraftMode ? "low" : "high", // GPT-1 forced to low quality for speed
                 output_format: "jpeg",
                 output_compression: 100,
                 moderation: "low",
-                ...(frontCoverInputImages.length > 0 && { input_images: [frontCoverInputImages] })
+                ...(frontCoverInputImages.length > 0 && { input_images: frontCoverInputImages }),
+                // Debug logging
+                ...(() => {
+                  if (frontCoverInputImages.length > 0) {
+                    console.log("🔍 DEBUG: Sending input_images to MCP:", frontCoverInputImages);
+                  }
+                  return {};
+                })()
             },
             user_id_context: "+17145986105",
             cardIndex,
@@ -3029,13 +3234,13 @@ The cartoon style should be charming and artistic while preserving complete visu
             arguments: {
               user_number: "+17145986105",
               prompts: [generatedPrompts.backCover],
-              model_version: selectedImageModel,
+              model_version: modelToUse,
               aspect_ratio: paperConfig.aspectRatio,
-              quality: "high",
+              quality: isDraftMode ? "low" : "high", // GPT-1 forced to low quality for speed
               output_format: "jpeg",
               output_compression: 100,
               moderation: "low",
-              ...(backCoverInputImages.length > 0 && { input_images: [backCoverInputImages] })
+              ...(backCoverInputImages.length > 0 && { input_images: backCoverInputImages })
             },
             user_id_context: "+17145986105",
             cardIndex,
@@ -3052,13 +3257,13 @@ The cartoon style should be charming and artistic while preserving complete visu
               arguments: {
                 user_number: "+17145986105",
                 prompts: [generatedPrompts.leftInterior],
-                model_version: selectedImageModel,
+                model_version: modelToUse,
                 aspect_ratio: paperConfig.aspectRatio,
-                quality: "high",
+                quality: isDraftMode ? "low" : "high", // GPT-1 forced to low quality for speed
                 output_format: "jpeg",
                 output_compression: 100,
                 moderation: "low",
-                ...(leftInteriorInputImages.length > 0 && { input_images: [leftInteriorInputImages] })
+                ...(leftInteriorInputImages.length > 0 && { input_images: leftInteriorInputImages })
               },
               user_id_context: "+17145986105",
               cardIndex,
@@ -3070,13 +3275,13 @@ The cartoon style should be charming and artistic while preserving complete visu
               arguments: {
                 user_number: "+17145986105",
                 prompts: [generatedPrompts.rightInterior],
-                model_version: selectedImageModel,
+                model_version: modelToUse,
                 aspect_ratio: paperConfig.aspectRatio,
-                quality: "high",
+                quality: isDraftMode ? "low" : "high", // GPT-1 forced to low quality for speed
                 output_format: "jpeg",
                 output_compression: 100,
                 moderation: "low",
-                ...(rightInteriorInputImages.length > 0 && { input_images: [rightInteriorInputImages] })
+                ...(rightInteriorInputImages.length > 0 && { input_images: rightInteriorInputImages })
               },
               user_id_context: "+17145986105",
               cardIndex,
@@ -3544,7 +3749,109 @@ Return only the rewritten prompt, no explanations.`;
   // Show print confirmation dialog
   const handlePrintClick = () => {
     if (!generatedCard) return;
+    
+    // Check if user email is provided
+    if (!userEmail.trim()) {
+      toast.error("Please enter your email address before printing");
+      return;
+    }
+    
+    setPrintOption('physical'); // Reset to default
     setShowPrintConfirmation(true);
+  };
+
+  // Handle template selection for preview
+  const handleTemplateSelect = async (template: GeneratedCard) => {
+    try {
+      // Show loading state
+      setIsGenerating(true);
+      setGenerationProgress("🔍 Loading complete template data...");
+      
+      // Close template gallery first
+      setShowTemplateGallery(false);
+      
+      // Check if template has all required images
+      const hasAllImages = template.frontCover && template.backCover && 
+        (isFrontBackOnly || (template.leftPage && template.rightPage));
+      
+      if (hasAllImages) {
+        // Template is complete, load directly
+        setGeneratedCard(template);
+        setGeneratedCards([template]);
+        setSelectedCardIndex(0);
+        setIsCardCompleted(true);
+        setIsGenerating(false);
+        setGenerationProgress("");
+        
+        toast.success(`✨ Template loaded! You can now print or email this card from the preview below.`);
+      } else {
+        // Template is incomplete, try to fetch complete data from API
+        setGenerationProgress("📡 Fetching complete card images...");
+        
+        try {
+          // Try to fetch the complete card data from the server
+          const response = await fetch(`/api/cards/list?limit=1&search=${encodeURIComponent(template.id)}`);
+          
+          if (response.ok) {
+            const data = await response.json();
+            const foundCard = data.cards.find((card: any) => card.id === template.id);
+            
+            if (foundCard && foundCard.frontCover && foundCard.backCover && 
+                (isFrontBackOnly || (foundCard.leftPage && foundCard.rightPage))) {
+              // Found complete card data
+              const completeCard: GeneratedCard = {
+                id: foundCard.id,
+                prompt: foundCard.prompt || template.prompt,
+                frontCover: foundCard.frontCover,
+                backCover: foundCard.backCover,
+                leftPage: foundCard.leftPage || foundCard.frontCover,
+                rightPage: foundCard.rightPage || foundCard.frontCover,
+                createdAt: new Date(foundCard.createdAt * 1000),
+                shareUrl: foundCard.shareUrl || template.shareUrl,
+                generatedPrompts: foundCard.generatedPrompts || template.generatedPrompts
+              };
+              
+              setGeneratedCard(completeCard);
+              setGeneratedCards([completeCard]);
+              setSelectedCardIndex(0);
+              setIsCardCompleted(true);
+              setIsGenerating(false);
+              setGenerationProgress("");
+              
+              toast.success(`✅ Complete template loaded with all images!`);
+            } else {
+              throw new Error("Complete card data not found");
+            }
+          } else {
+            throw new Error("Failed to fetch card data");
+          }
+        } catch (fetchError) {
+          console.log("Could not fetch complete card data, using fallback approach:", fetchError);
+          
+          // Fallback: Use front cover for missing images
+          const fallbackCard: GeneratedCard = {
+            ...template,
+            backCover: template.backCover || template.frontCover,
+            leftPage: template.leftPage || template.frontCover,
+            rightPage: template.rightPage || template.frontCover
+          };
+          
+          setGeneratedCard(fallbackCard);
+          setGeneratedCards([fallbackCard]);
+          setSelectedCardIndex(0);
+          setIsCardCompleted(true);
+          setIsGenerating(false);
+          setGenerationProgress("");
+          
+          toast.info(`📋 Template loaded! Some images may be repeated from the front cover.`);
+        }
+      }
+    } catch (error) {
+      console.error("Error loading template:", error);
+      setIsGenerating(false);
+      setGenerationProgress("");
+      toast.error("Failed to load template. Please try again.");
+    }
   };
 
   // Actual print function after confirmation
@@ -3997,18 +4304,48 @@ Return only the numeric score (1-100) for each image.`;
   };
 
   const handleConfirmPrint = async () => {
-    if (!generatedCard) return;
+    // Always use the card from the preview area
+    const cardToPrint = generatedCard;
+    if (!cardToPrint) {
+      toast.error("No card available to print");
+      return;
+    }
+    
+    // Validate email before proceeding
+    if (!userEmail.trim()) {
+      toast.error("Please enter your email address before printing");
+      setShowPrintConfirmation(false);
+      return;
+    }
     
     setShowPrintConfirmation(false);
     
+    // Note: We no longer use selectedTemplate for direct printing
+    
     try {
-      // Send complete card data for PDF creation and printing
+      // Validate card data
+      if (!cardToPrint.frontCover) {
+        toast.error("Card is missing front cover image. Please regenerate the card.");
+        return;
+      }
+      
+      if (!cardToPrint.backCover) {
+        toast.error("Card is missing back cover image. Please regenerate the card.");
+        return;
+      }
+      
+      if (!isFrontBackOnly && (!cardToPrint.leftPage || !cardToPrint.rightPage)) {
+        toast.error("Card is missing interior pages. Please regenerate the card or use front-back only mode.");
+        return;
+      }
+      
+      // Prepare card data for both printing and PDF email
       const cardData = {
-        front_cover: generatedCard.frontCover,
-        back_cover: generatedCard.backCover,
-        left_page: generatedCard.leftPage,
-        right_page: generatedCard.rightPage,
-        card_name: (generatedCard.prompt || 'Custom Card').substring(0, 50) + ((generatedCard.prompt || '').length > 50 ? '...' : ''),
+        front_cover: cardToPrint.frontCover,
+        back_cover: cardToPrint.backCover,
+        left_page: cardToPrint.leftPage,
+        right_page: cardToPrint.rightPage,
+        card_name: (cardToPrint.prompt || 'Custom Card').substring(0, 50) + ((cardToPrint.prompt || '').length > 50 ? '...' : ''),
         paper_size: selectedPaperSize,
         is_front_back_only: isFrontBackOnly,
         copies: 1,
@@ -4016,62 +4353,101 @@ Return only the numeric score (1-100) for each image.`;
         quality: 'high'
       };
 
-      const response = await fetch('/api/print-queue', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(cardData),
-      });
+      console.log('Print data:', { printOption, userEmail, cardData });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+      if (printOption === 'email') {
+        // Send PDF to email
+        const emailData = {
+          ...cardData,
+          user_email: userEmail.trim(),
+          send_pdf: true
+        };
 
-      const result = await response.json();
-      
-      if (result.status === 'queued') {
-        const cardType = isFrontBackOnly ? 'Front/Back card' : 'Full duplex card';
-        const duplexInfo = result.duplex ? ' (duplex enabled)' : ' (single-sided)';
-        toast.success(`🖨️ Your card is now printing! You can pick it up shortly.`);
+        console.log('Sending email data:', emailData);
+
+        const response = await fetch('/api/send-pdf-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(emailData),
+        });
+
+        console.log('Email response status:', response.status);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Email response error:', errorText);
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
+        const result = await response.json();
+        console.log('Email response result:', result);
         
-        // Poll for job status
-        let pollCount = 0;
-        const maxPolls = 6; // Poll for up to 60 seconds
+        if (result.status === 'success') {
+          toast.success(`📧 PDF sent to ${userEmail}! Check your inbox.`);
+        } else {
+          throw new Error(result.error || 'Failed to send PDF');
+        }
+      } else {
+        // Physical printing
+        const response = await fetch('/api/print-queue', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(cardData),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
         
-        const pollStatus = async () => {
-          try {
-            const statusResponse = await fetch(`/api/print-status/${result.job_id}`);
-            if (statusResponse.ok) {
-              const statusResult = await statusResponse.json();
-              if (statusResult.status === 'found') {
-                if (statusResult.job.status === 'completed') {
-                  toast.success("✅ Your card has been added to the print queue and should be available for pickup shortly.");
-                  return;
-                } else if (statusResult.job.status === 'failed') {
-                  toast.error("❌ There was an issue with printing. Please try again or contact us for help.");
-                  return;
-                } else if (statusResult.job.status === 'pending' && pollCount < maxPolls) {
-                  // Still pending, poll again
-                  pollCount++;
-                  setTimeout(pollStatus, 10000);
+        if (result.status === 'queued') {
+          const cardType = isFrontBackOnly ? 'Front/Back card' : 'Full duplex card';
+          const duplexInfo = result.duplex ? ' (duplex enabled)' : ' (single-sided)';
+          toast.success(`🖨️ Your card is now printing! You can pick it up shortly.`);
+          
+          // Poll for job status
+          let pollCount = 0;
+          const maxPolls = 6; // Poll for up to 60 seconds
+          
+          const pollStatus = async () => {
+            try {
+              const statusResponse = await fetch(`/api/print-status/${result.job_id}`);
+              if (statusResponse.ok) {
+                const statusResult = await statusResponse.json();
+                if (statusResult.status === 'found') {
+                  if (statusResult.job.status === 'completed') {
+                    toast.success("✅ Your card has been added to the print queue and should be available for pickup shortly.");
+                    return;
+                  } else if (statusResult.job.status === 'failed') {
+                    toast.error("❌ There was an issue with printing. Please try again or contact us for help.");
+                    return;
+                  } else if (statusResult.job.status === 'pending' && pollCount < maxPolls) {
+                    // Still pending, poll again
+                    pollCount++;
+                    setTimeout(pollStatus, 10000);
+                  }
                 }
               }
+            } catch (error) {
+              console.log("Could not check print status:", error);
             }
-          } catch (error) {
-            console.log("Could not check print status:", error);
-          }
-        };
-        
-        // Start polling after 10 seconds
-        setTimeout(pollStatus, 10000);
-        
-      } else {
-        throw new Error(result.error || 'Unknown error');
+          };
+          
+          // Start polling after 10 seconds
+          setTimeout(pollStatus, 10000);
+          
+        } else {
+          throw new Error(result.error || 'Unknown error');
+        }
       }
     } catch (error) {
-      console.error('Print error:', error);
-      toast.error("Failed to queue print job");
+      console.error('Print/Email error:', error);
+      toast.error(printOption === 'email' ? "Failed to send PDF email" : "Failed to queue print job");
     }
   };
 
@@ -4568,67 +4944,180 @@ Return only the numeric score (1-100) for each image.`;
                   </div>
                 </div>
 
-            {/* Reference Photo */}
-            <div>
-                          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-              Reference Photo (Optional)
-            </label>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-              Upload a photo to create cartoon characters that look like the people in your photo!
-            </p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
-              ✨ For your privacy, photos are turned into cartoon/illustrated characters - not realistic depictions
-            </p>
-              {!referenceImage ? (
-                <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0], 'reference')}
-                    disabled={isUploading}
-                    className="hidden"
-                    id="reference-upload"
-                  />
-                  <label htmlFor="reference-upload" className="cursor-pointer">
-                    <Wand2 className="w-6 h-6 mx-auto mb-2 text-gray-400" />
-                    <div className="text-sm text-gray-600 dark:text-gray-400">
-                      {isUploading ? "Uploading..." : "Upload photo to create characters"}
+            {/* Reference Photo - Only available for GPT-1 model, but show if photos exist */}
+            {(selectedImageModel === "gpt-image-1" || referenceImageUrls.length > 0) && (
+              <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                  Reference Photos (Optional)
+                </label>
+                
+                {/* Always show existing reference photos if they exist */}
+                {referenceImageUrls.length > 0 && (
+                  <div className="mb-3">
+                    {selectedImageModel !== "gpt-image-1" ? (
+                      <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg mb-3">
+                        <div className="flex items-start gap-2">
+                          <div className="w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <span className="text-white text-xs">!</span>
+                          </div>
+                          <div className="text-sm text-amber-800 dark:text-amber-200">
+                            <p className="font-medium mb-1">Reference photos detected but not supported</p>
+                            <p className="text-xs">You have {referenceImageUrls.length} reference photo{referenceImageUrls.length > 1 ? 's' : ''} from a previous session, but your current model ({imageModels.find(m => m.id === selectedImageModel)?.label}) doesn't support reference photos. Switch to GPT Image 1 to use them, or remove them below.</p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mb-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                        <div className="flex items-start gap-2">
+                          <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <span className="text-white text-xs">✓</span>
+                          </div>
+                          <div className="text-sm text-green-800 dark:text-green-200">
+                            <p className="font-medium mb-1">Reference photos ready</p>
+                            <p className="text-xs">{referenceImageUrls.length} reference photo{referenceImageUrls.length > 1 ? 's' : ''} will be used to create cartoon characters that look like the people in your photos.</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Display existing reference photos prominently */}
+                    <div className="space-y-2 mb-3">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          📸 Your Reference Photos ({referenceImageUrls.length})
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setReferenceImages([]);
+                            setReferenceImageUrls([]);
+                            toast.success("All reference photos removed!");
+                          }}
+                          className="h-7 text-xs gap-1 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        >
+                          <X className="w-3 h-3" />
+                          Remove All
+                        </Button>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border">
+                        {referenceImageUrls.map((url, index) => (
+                          <div key={index} className="relative group">
+                            <img
+                              src={url}
+                              alt={`Reference photo ${index + 1}`}
+                              className="w-full aspect-square object-cover rounded border"
+                            />
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleRemoveReferenceImage(index)}
+                              className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <X className="w-3 h-3" />
+                            </Button>
+                            <div className="absolute bottom-1 left-1 bg-black/70 text-white text-xs px-1 rounded">
+                              Photo {index + 1}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </label>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Wand2 className="w-4 h-4 text-purple-600" />
-                      <span className="text-sm text-purple-800 dark:text-purple-200">{referenceImage.name}</span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setReferenceImage(null);
-                        setReferenceImageUrl(null);
-                        setImageTransformation("");
-                      }}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
                   </div>
-                  <Textarea
-                    placeholder="Character style instructions (optional): e.g., 'Make us look like anime characters' or 'Keep our exact outfits and accessories but in watercolor style'"
-                    value={imageTransformation}
-                    onChange={(e) => setImageTransformation(e.target.value)}
-                    rows={3}
-                    className="resize-none"
-                    style={{ fontSize: '16px' }}
-                  />
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    💡 <strong>Tip:</strong> Leave blank to keep exact clothing & accessories, or specify style changes like "anime style" or "vintage cartoon look"
-                  </p>
-                </div>
-              )}
-            </div>
+                )}
+                
+                {selectedImageModel === "gpt-image-1" && (
+                  <>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                      Upload photos to create cartoon characters that look like the people in your photos! Perfect for including multiple people - upload one photo of yourself and another of a friend to create cards featuring both of you. (Only available with GPT Image 1 model)
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+                      ✨ For your privacy, photos are turned into cartoon/illustrated characters - not realistic depictions
+                    </p>
+                  </>
+                )}
+              <div className="space-y-3">
+                {/* Upload Area - Only show if model supports it */}
+                {selectedImageModel === "gpt-image-1" && (
+                  <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0], 'reference')}
+                      disabled={isUploading}
+                      className="hidden"
+                      id="reference-upload"
+                    />
+                    <label htmlFor="reference-upload" className="cursor-pointer">
+                      <Wand2 className="w-6 h-6 mx-auto mb-2 text-gray-400" />
+                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                        {isUploading ? "Uploading..." : `Upload ${referenceImages.length > 0 ? 'another' : 'a'} photo to create characters`}
+                      </div>
+                    </label>
+                  </div>
+                )}
+
+                {/* Display uploaded images */}
+                {referenceImages.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {referenceImages.length} photo{referenceImages.length > 1 ? 's' : ''} uploaded:
+                      </div>
+                      {selectedImageModel !== "gpt-image-1" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setReferenceImages([]);
+                            setReferenceImageUrls([]);
+                            toast.success("All reference photos removed!");
+                          }}
+                          className="h-6 text-xs gap-1 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        >
+                          <X className="w-3 h-3" />
+                          Clear All
+                        </Button>
+                      )}
+                    </div>
+                    {referenceImages.map((image, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <Wand2 className="w-4 h-4 text-purple-600" />
+                          <span className="text-sm text-purple-800 dark:text-purple-200">{image.name}</span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveReferenceImage(index)}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Character style instructions - Only show if model supports it */}
+                {referenceImages.length > 0 && selectedImageModel === "gpt-image-1" && (
+                  <div>
+                    <Textarea
+                      placeholder="Character style instructions (optional): e.g., 'Make us look like anime characters', 'Keep our exact outfits and accessories but in watercolor style', or 'Show both people together in the same scene'"
+                      value={imageTransformation}
+                      onChange={(e) => setImageTransformation(e.target.value)}
+                      rows={3}
+                      className="resize-none"
+                      style={{ fontSize: '16px' }}
+                    />
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      💡 <strong>Tip:</strong> Leave blank to keep exact clothing & accessories, or specify style changes like "anime style" or "vintage cartoon look"
+                    </p>
+                  </div>
+                )}
+              </div>
+              </div>
+            )}
 
             {/* Advanced Options - Controlled by Settings Menu */}
             {showAdvanced && (
@@ -4659,6 +5148,31 @@ Return only the numeric score (1-100) for each image.`;
                     </SelectContent>
                   </Select>
                 </div>
+
+                                 {/* Draft Mode Model Selection */}
+                 <div>
+                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                     Draft Mode Model
+                   </label>
+                   <Select value={selectedDraftModel} onValueChange={setSelectedDraftModel}>
+                     <SelectTrigger>
+                       <SelectValue placeholder="Choose draft model" />
+                     </SelectTrigger>
+                     <SelectContent>
+                       {imageModels.map((model) => (
+                         <SelectItem key={model.id} value={model.id}>
+                           <div>
+                             <div className="font-medium">{model.label}</div>
+                             <div className="text-xs text-muted-foreground">{model.description}</div>
+                           </div>
+                         </SelectItem>
+                       ))}
+                     </SelectContent>
+                   </Select>
+                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                     Model used for draft variations. Consider faster models like FLUX 1.1 Pro for quicker previews.
+                   </p>
+                 </div>
 
                 {/* Paper Size Selection */}
                 <div>
@@ -4849,7 +5363,7 @@ Return only the numeric score (1-100) for each image.`;
                 )}
 
                 {/* Generate Buttons */}
-                {!isDraftMode && draftCards.length === 0 && !isGeneratingFinalCard ? (
+                {!isDraftMode && draftCards.length === 0 && !isGeneratingFinalCard && !isGenerating ? (
                   <div className="space-y-3">
                     {/* Draft Mode Description */}
                     <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800">
@@ -4956,37 +5470,37 @@ Return only the numeric score (1-100) for each image.`;
                     </div>
                   </div>
                 ) : (
-                  <Button
-                    onClick={handleGenerateCardAsync}
-                    disabled={isGenerating || isGeneratingMessage || !userEmail.trim()}
-                    className={`w-full h-12 transition-all duration-300 ${
-                      isCardCompleted 
-                        ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700' 
-                        : 'bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700'
-                    }`}
-                    size="lg"
-                  >
-                    {isGenerating || isGeneratingMessage ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                        {isGeneratingMessage ? (
-                          <span>Writing your message...</span>
-                        ) : (
-                          <span>Creating your card...</span>
-                        )}
-                      </>
-                    ) : isCardCompleted ? (
-                      <div className="flex items-center justify-center w-full">
-                        <div className="w-5 h-5 mr-2 text-white">✅</div>
-                        <span>Card Completed!</span>
-                      </div>
-                    ) : (
-                      <>
-                        <Sparkles className="w-5 h-5 mr-2" />
-                        {numberOfCards > 1 ? `Create ${numberOfCards} Cards` : 'Create Card'}
-                      </>
-                    )}
-                  </Button>
+                <Button
+                  onClick={handleGenerateCardAsync}
+                  disabled={isGenerating || isGeneratingMessage || !userEmail.trim()}
+                  className={`w-full h-12 transition-all duration-300 ${
+                    isCardCompleted 
+                      ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700' 
+                      : 'bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700'
+                  }`}
+                  size="lg"
+                >
+                  {isGenerating || isGeneratingMessage ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      {isGeneratingMessage ? (
+                        <span>Writing your message...</span>
+                      ) : (
+                        <span>Creating your card...</span>
+                      )}
+                    </>
+                  ) : isCardCompleted ? (
+                    <div className="flex items-center justify-center w-full">
+                      <div className="w-5 h-5 mr-2 text-white">✅</div>
+                      <span>Card Completed!</span>
+                    </div>
+                  ) : (
+                    <>
+                      <Sparkles className="w-5 h-5 mr-2" />
+                      {numberOfCards > 1 ? `Create ${numberOfCards} Cards` : 'Create Card'}
+                    </>
+                  )}
+                </Button>
                 )}
                 
                 {/* Action buttons when card is completed */}
@@ -5022,12 +5536,12 @@ Return only the numeric score (1-100) for each image.`;
                 Choose Your Favorite Design
               </CardTitle>
               <CardDescription>
-                4 design variations created with low quality for fast preview. Select your favorite to generate the high-quality version!
+                10 design variations created with low quality for fast preview. Select your favorite to generate the high-quality version!
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {Array.from({ length: 4 }, (_, index) => {
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                {Array.from({ length: 10 }, (_, index) => {
                   const card = draftCards[index];
                   return (
                     <div
@@ -5177,7 +5691,7 @@ Return only the numeric score (1-100) for each image.`;
           </Card>
         )}
 
-        {/* Card Preview - Hide when in draft mode */}
+        {/* Card Preview - Hide when in draft mode or when generating final from draft */}
         {(() => {
           console.log('🔍 Card Preview Render Check:', {
             hasGeneratedCard: !!generatedCard,
@@ -5187,11 +5701,12 @@ Return only the numeric score (1-100) for each image.`;
             selectedCardIndex,
             frontCover: generatedCard?.frontCover ? 'present' : 'missing',
             isDraftMode,
-            isGeneratingFinalCard
+            isGeneratingFinalCard,
+            draftCardsLength: draftCards.length
           });
           return null;
         })()}
-        {generatedCard && !isDraftMode && !isGeneratingFinalCard && (
+        {generatedCard && !isDraftMode && !isGeneratingFinalCard && draftCards.length === 0 && (
                   <Card className="shadow-lg">
                     <CardHeader>
                       <div className="flex items-center justify-between">
@@ -5210,9 +5725,9 @@ Return only the numeric score (1-100) for each image.`;
                           <CardDescription>
                             {isCardCompleted ? (
                               <div className="space-y-2">
-                                <span className="text-green-600 dark:text-green-400 font-medium">
-                                  🎉 Card generation complete! Your card is ready for printing or sharing.
-                                </span>
+                              <span className="text-green-600 dark:text-green-400 font-medium">
+                                🎉 Card generation complete! Your card is ready for printing or sharing.
+                                    </span>
                                 {generationDuration && (
                                   <div className="inline-flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-3 py-1 rounded-full text-sm font-medium">
                                     <span className="text-blue-500">⚡</span>
@@ -5305,8 +5820,8 @@ Return only the numeric score (1-100) for each image.`;
                   </Card>
         )}
 
-        {/* Empty State */}
-        {!generatedCard && (
+        {/* Empty State - Only show when no cards and not in draft mode */}
+        {!generatedCard && !isDraftMode && draftCards.length === 0 && (
               <Card className="shadow-lg">
                 <CardContent className="flex flex-col items-center justify-center py-12 text-center">
                   <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-full flex items-center justify-center mb-4">
@@ -5322,8 +5837,8 @@ Return only the numeric score (1-100) for each image.`;
               </Card>
             )}
 
-        {/* Recent Cards Preview - Only show when no card is generated */}
-        {!generatedCard && (
+        {/* Recent Cards Preview - Only show when no card is generated and not in draft mode */}
+        {!generatedCard && !isDraftMode && draftCards.length === 0 && (
           <div className="mt-8">
             <RecentCardsPreview 
               maxCards={6}
@@ -5375,11 +5890,45 @@ Return only the numeric score (1-100) for each image.`;
                       )}
                       <div className="flex-1">
                         <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
-                          Original Prompt:
+                          Template Details:
                         </p>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-700 p-3 rounded border">
-                          {selectedTemplate.prompt}
-                        </p>
+                        <div className="space-y-3">
+                          <div className="text-sm text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-700 p-3 rounded border">
+                            <p className="font-medium mb-2">Original Input:</p>
+                            <p>{selectedTemplate.prompt}</p>
+                          </div>
+                          {selectedTemplate.generatedPrompts && (
+                            <div className="text-sm text-gray-600 dark:text-gray-400 bg-blue-50 dark:bg-blue-900/20 p-3 rounded border border-blue-200 dark:border-blue-800">
+                              <p className="font-medium mb-2 text-blue-900 dark:text-blue-100">Generated Image Prompts:</p>
+                              <div className="space-y-2 max-h-32 overflow-y-auto">
+                                {selectedTemplate.generatedPrompts.frontCover && (
+                                  <div>
+                                    <span className="font-semibold text-blue-800 dark:text-blue-200">Front Cover:</span>
+                                    <p className="text-xs mt-1">{selectedTemplate.generatedPrompts.frontCover.substring(0, 150)}...</p>
+                                  </div>
+                                )}
+                                {selectedTemplate.generatedPrompts.backCover && (
+                                  <div>
+                                    <span className="font-semibold text-blue-800 dark:text-blue-200">Back Cover:</span>
+                                    <p className="text-xs mt-1">{selectedTemplate.generatedPrompts.backCover.substring(0, 150)}...</p>
+                                  </div>
+                                )}
+                                {selectedTemplate.generatedPrompts.leftInterior && (
+                                  <div>
+                                    <span className="font-semibold text-blue-800 dark:text-blue-200">Left Interior:</span>
+                                    <p className="text-xs mt-1">{selectedTemplate.generatedPrompts.leftInterior.substring(0, 150)}...</p>
+                                  </div>
+                                )}
+                                {selectedTemplate.generatedPrompts.rightInterior && (
+                                  <div>
+                                    <span className="font-semibold text-blue-800 dark:text-blue-200">Right Interior:</span>
+                                    <p className="text-xs mt-1">{selectedTemplate.generatedPrompts.rightInterior.substring(0, 150)}...</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -5438,7 +5987,7 @@ Return only the numeric score (1-100) for each image.`;
                         ...prev,
                         useReferenceImage: e.target.checked,
                         referenceImageFile: null,
-                        referenceImageUrl: null,
+                        referenceImageUrls: [],
                         referenceImageTransformation: ""
                       }))}
                       className="rounded"
@@ -5544,7 +6093,7 @@ Return only the numeric score (1-100) for each image.`;
                     className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
                   >
                     <Wand2 className="w-4 h-4 mr-2" />
-                    Apply & Customize
+                    Apply & Generate Card
                   </Button>
                 </div>
               </div>
@@ -5724,22 +6273,8 @@ Return only the numeric score (1-100) for each image.`;
                       return (
                         <div
                           key={card.id}
-                          className="flex-shrink-0 w-64 cursor-pointer"
+                          className="flex-shrink-0 w-64"
                           style={{ scrollSnapAlign: 'start' }}
-                          onClick={() => {
-                            // Convert GalleryCard to GeneratedCard format for applyTemplate
-                            const template: GeneratedCard = {
-                              id: card.id,
-                              prompt: card.prompt || '',
-                              frontCover: card.frontCover || '',
-                              backCover: card.backCover || '',
-                              leftPage: card.leftPage || '',
-                              rightPage: card.rightPage || '',
-                              createdAt: new Date(card.createdAt * 1000),
-                              shareUrl: card.shareUrl
-                            };
-                            applyTemplate(template);
-                          }}
                         >
                           <div className={`${
                             searchMode === 'text' 
@@ -5807,6 +6342,58 @@ Return only the numeric score (1-100) for each image.`;
                                   )}
                                 </div>
                               )}
+                              
+                              {/* Action Buttons */}
+                              <div className="flex gap-1 pt-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex-1 h-6 text-xs bg-white/10 border-white/20 text-white hover:bg-white/20"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    // Convert GalleryCard to GeneratedCard format for applyTemplate
+                                    const template: GeneratedCard = {
+                                      id: card.id,
+                                      prompt: card.prompt || '',
+                                      frontCover: card.frontCover || '',
+                                      backCover: card.backCover || '',
+                                      leftPage: card.leftPage || '',
+                                      rightPage: card.rightPage || '',
+                                      createdAt: new Date(card.createdAt * 1000),
+                                      shareUrl: card.shareUrl,
+                                      generatedPrompts: card.generatedPrompts
+                                    };
+                                    applyTemplate(template);
+                                  }}
+                                >
+                                  <Wand2 className="w-3 h-3 mr-1" />
+                                  Customize
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex-1 h-6 text-xs bg-blue-600/80 border-blue-500/50 text-white hover:bg-blue-600"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    // Convert GalleryCard to GeneratedCard format for preview
+                                    const template: GeneratedCard = {
+                                      id: card.id,
+                                      prompt: card.prompt || '',
+                                      frontCover: card.frontCover || '',
+                                      backCover: card.backCover || '',
+                                      leftPage: card.leftPage || '',
+                                      rightPage: card.rightPage || '',
+                                      createdAt: new Date(card.createdAt * 1000),
+                                      shareUrl: card.shareUrl,
+                                      generatedPrompts: card.generatedPrompts
+                                    };
+                                    handleTemplateSelect(template);
+                                  }}
+                                >
+                                  <Eye className="w-3 h-3 mr-1" />
+                                  Select
+                                </Button>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -5820,26 +6407,132 @@ Return only the numeric score (1-100) for each image.`;
                   <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
                     📚 All Templates
                   </div>
-                  <FastHorizontalGallery
-                    templateMode={true}
-                    showPrompts={showPrompts}
-                    onCardSelect={(card) => {
-                      // Convert GalleryCard to GeneratedCard format for applyTemplate
-                      const template: GeneratedCard = {
-                        id: card.id,
-                        prompt: card.prompt || '',
-                        frontCover: card.frontCover || '',
-                        backCover: card.backCover || '',
-                        leftPage: card.leftPage || '',
-                        rightPage: card.rightPage || '',
-                        createdAt: new Date(card.createdAt * 1000),
-                        shareUrl: card.shareUrl,
-                        generatedPrompts: card.generatedPrompts
-                      };
-                      applyTemplate(template);
-                    }}
-                    className="max-h-[50vh]"
-                  />
+                  <div className="w-full max-h-[50vh] overflow-auto">
+                    <div 
+                      className="flex overflow-x-auto gap-4 pb-4"
+                      style={{
+                        scrollBehavior: 'smooth',
+                        WebkitOverflowScrolling: 'touch',
+                        scrollbarWidth: 'thin',
+                        scrollSnapType: 'x mandatory'
+                      }}
+                    >
+                      {(() => {
+                        const { getCachedCards, hasCache, totalCards } = useCardCache();
+                        const allCards = hasCache ? getCachedCards(1, Math.max(totalCards, 1000)) : [];
+                        
+                        return allCards.map((card) => {
+                          const frontImage = card.frontCover || card.backCover || card.leftPage || card.rightPage;
+                          
+                          return (
+                            <div
+                              key={card.id}
+                              className="flex-shrink-0 w-64"
+                              style={{ scrollSnapAlign: 'start' }}
+                            >
+                              <div className="bg-gray-900 rounded-xl p-2 shadow-inner space-y-2 h-full">
+                                {frontImage ? (
+                                  <img
+                                    src={frontImage}
+                                    alt={`Template: ${card.prompt || 'Untitled'}`}
+                                    className="rounded-lg shadow-lg w-full h-auto object-cover select-none pointer-events-none"
+                                    loading="lazy"
+                                    style={{
+                                      userSelect: 'none'
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="w-full h-48 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center">
+                                    <div className="text-center text-gray-500">
+                                      <ImageIcon className="w-8 h-8 mx-auto mb-2" />
+                                      <p className="text-sm">No preview</p>
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div className="text-xs text-gray-100 bg-gray-800/50 px-2 py-1 rounded space-y-1">
+                                  <div>
+                                    {card.prompt?.substring(0, 60) || 'Untitled'}
+                                    {card.prompt && card.prompt.length > 60 && '...'}
+                                  </div>
+                                  
+                                  {/* Show Generated Prompts if enabled */}
+                                  {showPrompts && card.generatedPrompts && (
+                                    <div className="text-xs opacity-80 border-t border-white/20 pt-1 space-y-1">
+                                      {card.generatedPrompts.frontCover && (
+                                        <div>
+                                          <span className="font-semibold">Front:</span> {card.generatedPrompts.frontCover.substring(0, 80)}
+                                          {card.generatedPrompts.frontCover.length > 80 && '...'}
+                                        </div>
+                                      )}
+                                      {card.generatedPrompts.backCover && (
+                                        <div>
+                                          <span className="font-semibold">Back:</span> {card.generatedPrompts.backCover.substring(0, 80)}
+                                          {card.generatedPrompts.backCover.length > 80 && '...'}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                  
+                                  {/* Action Buttons */}
+                                  <div className="flex gap-1 pt-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="flex-1 h-6 text-xs bg-white/10 border-white/20 text-white hover:bg-white/20"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        // Convert GalleryCard to GeneratedCard format for applyTemplate
+                                        const template: GeneratedCard = {
+                                          id: card.id,
+                                          prompt: card.prompt || '',
+                                          frontCover: card.frontCover || '',
+                                          backCover: card.backCover || '',
+                                          leftPage: card.leftPage || '',
+                                          rightPage: card.rightPage || '',
+                                          createdAt: new Date(card.createdAt * 1000),
+                                          shareUrl: card.shareUrl,
+                                          generatedPrompts: card.generatedPrompts
+                                        };
+                                        applyTemplate(template);
+                                      }}
+                                    >
+                                      <Wand2 className="w-3 h-3 mr-1" />
+                                      Customize
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="flex-1 h-6 text-xs bg-blue-600/80 border-blue-500/50 text-white hover:bg-blue-600"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        // Convert GalleryCard to GeneratedCard format for preview
+                                        const template: GeneratedCard = {
+                                          id: card.id,
+                                          prompt: card.prompt || '',
+                                          frontCover: card.frontCover || '',
+                                          backCover: card.backCover || '',
+                                          leftPage: card.leftPage || '',
+                                          rightPage: card.rightPage || '',
+                                          createdAt: new Date(card.createdAt * 1000),
+                                          shareUrl: card.shareUrl,
+                                          generatedPrompts: card.generatedPrompts
+                                        };
+                                        handleTemplateSelect(template);
+                                      }}
+                                    >
+                                      <Eye className="w-3 h-3 mr-1" />
+                                      Select
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -5848,7 +6541,7 @@ Return only the numeric score (1-100) for each image.`;
               <p className="text-sm text-gray-500">
                 {aiFilteredCards.length > 0 
                   ? "AI has ranked these templates by relevance to your search"
-                  : "Click any card to customize it with your own message, changes, and reference photos"
+                  : "Use 'Customize' to personalize templates with your own message and changes, or 'Select' to preview and print them as-is"
                 }
               </p>
               <Button
@@ -5915,54 +6608,126 @@ Return only the numeric score (1-100) for each image.`;
 
         {/* Print Confirmation Dialog */}
         <Dialog open={showPrintConfirmation} onOpenChange={setShowPrintConfirmation}>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <AlertTriangle className="w-5 h-5 text-amber-500" />
-                Confirm Print
+                Get Your Card
               </DialogTitle>
               <DialogDescription>
-                Are you ready to print your greeting card?
+                How would you like to receive your greeting card?
               </DialogDescription>
             </DialogHeader>
             
             <div className="space-y-4">
-              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-                <div className="flex items-start gap-3">
-                  <Printer className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                  <div className="space-y-2">
-                    <h4 className="font-medium text-blue-900 dark:text-blue-100">
-                      Physical Print Service
-                    </h4>
-                    <p className="text-sm text-blue-800 dark:text-blue-200">
-                      This will send your card to our on-site printer. Your physical greeting card will be ready for pickup shortly after printing.
-                    </p>
+              {/* Print Option Selection */}
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Choose delivery method:
+                </label>
+                
+                {/* Physical Print Option */}
+                <div 
+                  className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                    printOption === 'physical' 
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                  }`}
+                  onClick={() => setPrintOption('physical')}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex items-center">
+                      <input
+                        type="radio"
+                        checked={printOption === 'physical'}
+                        onChange={() => setPrintOption('physical')}
+                        className="w-4 h-4 text-blue-600"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Printer className="w-5 h-5 text-blue-600" />
+                        <h4 className="font-medium text-blue-900 dark:text-blue-100">
+                          Physical Print & Pickup
+                        </h4>
+                      </div>
+                      <p className="text-sm text-blue-800 dark:text-blue-200">
+                        Print your card at our location. Ready for pickup in just a few minutes.
+                      </p>
+                      <div className="mt-2 space-y-1">
+                        <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                          <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                          <span>High quality color printing</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                          <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                          <span>
+                            {isFrontBackOnly ? 'Front and back only' : 'Full greeting card with interior pages'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                          <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                          <span>Ready for pickup shortly</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Email PDF Option */}
+                <div 
+                  className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                    printOption === 'email' 
+                      ? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
+                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                  }`}
+                  onClick={() => setPrintOption('email')}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex items-center">
+                      <input
+                        type="radio"
+                        checked={printOption === 'email'}
+                        onChange={() => setPrintOption('email')}
+                        className="w-4 h-4 text-green-600"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <MessageCircle className="w-5 h-5 text-green-600" />
+                        <h4 className="font-medium text-green-900 dark:text-green-100">
+                          Email PDF
+                        </h4>
+                      </div>
+                      <p className="text-sm text-green-800 dark:text-green-200">
+                        Receive a high-quality PDF of your card at {userEmail}. Print at home or any print shop.
+                      </p>
+                      <div className="mt-2 space-y-1">
+                        <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                          <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                          <span>Instant delivery to your inbox</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                          <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                          <span>Print anywhere, anytime</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                          <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                          <span>High-resolution PDF optimized for printing</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span>Card will be printed in high quality color</span>
+              {printOption === 'physical' && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg">
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                    <strong>Please confirm:</strong> You are ready to pick up your printed card from our location.
+                  </p>
                 </div>
-                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span>
-                    {isFrontBackOnly ? 'Front and back only' : 'Full greeting card with interior pages'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span>Ready for pickup in a few minutes</span>
-                </div>
-              </div>
-
-              <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg">
-                <p className="text-sm text-amber-800 dark:text-amber-200">
-                  <strong>Please confirm:</strong> You are ready to pick up your printed card from our location.
-                </p>
-              </div>
+              )}
             </div>
 
             <div className="flex gap-3 mt-6">
@@ -5975,10 +6740,23 @@ Return only the numeric score (1-100) for each image.`;
               </Button>
               <Button
                 onClick={handleConfirmPrint}
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                className={`flex-1 ${
+                  printOption === 'email' 
+                    ? 'bg-green-600 hover:bg-green-700' 
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
               >
-                <Printer className="w-4 h-4 mr-2" />
-                Print Card
+                {printOption === 'email' ? (
+                  <>
+                    <MessageCircle className="w-4 h-4 mr-2" />
+                    Send PDF to Email
+                  </>
+                ) : (
+                  <>
+                    <Printer className="w-4 h-4 mr-2" />
+                    Print Card
+                  </>
+                )}
               </Button>
             </div>
           </DialogContent>

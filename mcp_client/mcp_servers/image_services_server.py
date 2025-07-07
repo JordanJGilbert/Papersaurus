@@ -409,6 +409,16 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
     if not user_number or user_number == "--user_number_not_needed--":
         user_number = "+17145986105"
     
+    # Debug: Log what we received for input_images
+    print(f"🔍 DEBUG: input_images parameter received: {input_images}")
+    print(f"🔍 DEBUG: input_images type: {type(input_images)}")
+    if input_images:
+        print(f"🔍 DEBUG: input_images length: {len(input_images)}")
+        for i, img in enumerate(input_images):
+            print(f"🔍 DEBUG: input_images[{i}]: {str(img)[:100]}...")
+    else:
+        print(f"🔍 DEBUG: input_images is None or empty")
+    
     # Strip markdown formatting from all prompts
     cleaned_prompts = [strip_markdown(prompt) for prompt in prompts]
     print(f"🧹 Cleaned {len(prompts)} prompts by removing markdown formatting")
@@ -466,39 +476,53 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
 
                 # Check if we have input images for this prompt
                 input_image_files = []
-                if input_images and prompt_idx_openai < len(input_images):
-                    current_input_image_sources = input_images[prompt_idx_openai]
-                    if not isinstance(current_input_image_sources, list):
-                         current_input_image_sources = [current_input_image_sources]
+                if input_images:
+                    # Support both: one image per prompt OR one image for all prompts
+                    if len(input_images) == 1:
+                        # Use the same image for all prompts
+                        current_input_image_sources = input_images[0]
+                        print(f"🖼️ Using single reference image for all prompts (prompt #{prompt_idx_openai})")
+                    elif prompt_idx_openai < len(input_images):
+                        # Use specific image for this prompt
+                        current_input_image_sources = input_images[prompt_idx_openai]
+                        print(f"🖼️ Using specific reference image for prompt #{prompt_idx_openai}")
+                    else:
+                        # No image available for this prompt index
+                        print(f"⚠️ No input image available for prompt #{prompt_idx_openai} (input_images length: {len(input_images)})")
+                        current_input_image_sources = None
+                    
+                    if current_input_image_sources is not None:
+                        if not isinstance(current_input_image_sources, list):
+                             current_input_image_sources = [current_input_image_sources]
 
-                    for source_index, image_source_url_or_b64 in enumerate(current_input_image_sources):
-                        print(f"🖼️ Processing input_image #{source_index} for OpenAI Image API: {str(image_source_url_or_b64)[:70]}...")
-                        img_bytes = None
-                        
-                        try:
-                            if str(image_source_url_or_b64).startswith("data:image"):
-                                # Extract base64 data from data URL
-                                base64_data = image_source_url_or_b64.split(',')[1]
-                                img_bytes = base64.b64decode(base64_data)
-                            elif str(image_source_url_or_b64).startswith("http://") or str(image_source_url_or_b64).startswith("https://"):
-                                resp = await asyncio.to_thread(requests.get, image_source_url_or_b64, timeout=20)
-                                resp.raise_for_status()
-                                img_bytes = resp.content
-                            elif len(str(image_source_url_or_b64)) > 100: # Assume raw base64
-                                img_bytes = base64.b64decode(image_source_url_or_b64)
-                            else:
-                                print(f"⚠️ Invalid input_image format for prompt #{prompt_idx_openai}, source #{source_index}. Skipping.")
-                                continue
+                        for source_index, image_source_url_or_b64 in enumerate(current_input_image_sources):
+                            print(f"🖼️ Processing input_image #{source_index} for OpenAI Image API: {str(image_source_url_or_b64)[:70]}...")
+                            img_bytes = None
+                            
+                            try:
+                                if str(image_source_url_or_b64).startswith("data:image"):
+                                    # Extract base64 data from data URL
+                                    base64_data = image_source_url_or_b64.split(',')[1]
+                                    img_bytes = base64.b64decode(base64_data)
+                                elif str(image_source_url_or_b64).startswith("http://") or str(image_source_url_or_b64).startswith("https://"):
+                                    resp = await asyncio.to_thread(requests.get, image_source_url_or_b64, timeout=20)
+                                    resp.raise_for_status()
+                                    img_bytes = resp.content
+                                elif len(str(image_source_url_or_b64)) > 100: # Assume raw base64
+                                    img_bytes = base64.b64decode(image_source_url_or_b64)
+                                else:
+                                    print(f"⚠️ Invalid input_image format for prompt #{prompt_idx_openai}, source #{source_index}. Skipping.")
+                                    continue
 
-                            if img_bytes:
-                                # Create a BytesIO object for the Image API
-                                img_file = BytesIO(img_bytes)
-                                img_file.name = f"input_image_{source_index}.png"
-                                input_image_files.append(img_file)
-                                print(f"✅ Added input image #{source_index} for Image API (size: {len(img_bytes)} bytes)")
+                                if img_bytes:
+                                    # Create a BytesIO object for the Image API
+                                    img_file = BytesIO(img_bytes)
+                                    img_file.name = f"input_image_{source_index}.png"
+                                    input_image_files.append(img_file)
+                                    print(f"✅ Added input image #{source_index} for Image API (size: {len(img_bytes)} bytes)")
 
-                        except Exception as e_proc_img:
-                            print(f"⚠️ Failed to process input_image source #{source_index} for prompt #{prompt_idx_openai}: {e_proc_img}")
+                            except Exception as e_proc_img:
+                                print(f"⚠️ Failed to process input_image source #{source_index} for prompt #{prompt_idx_openai}: {e_proc_img}")
                 
                 # 🔍 DEBUG: Log what parameters are being sent to OpenAI Image API
                 api_params = {
@@ -730,16 +754,30 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                 }
                 
                 # Add image prompt if input_images provided
-                if input_images and prompt_idx_flux < len(input_images):
-                    current_input_image_sources = input_images[prompt_idx_flux]
-                    if not isinstance(current_input_image_sources, list):
-                        current_input_image_sources = [current_input_image_sources]
+                if input_images:
+                    # Support both: one image per prompt OR one image for all prompts
+                    if len(input_images) == 1:
+                        # Use the same image for all prompts
+                        current_input_image_sources = input_images[0]
+                        print(f"🖼️ Using single reference image for all prompts (prompt #{prompt_idx_flux})")
+                    elif prompt_idx_flux < len(input_images):
+                        # Use specific image for this prompt
+                        current_input_image_sources = input_images[prompt_idx_flux]
+                        print(f"🖼️ Using specific reference image for prompt #{prompt_idx_flux}")
+                    else:
+                        # No image available for this prompt index
+                        print(f"⚠️ No input image available for prompt #{prompt_idx_flux} (input_images length: {len(input_images)})")
+                        current_input_image_sources = None
                     
-                    # FLUX 1.1 Pro supports image_prompt parameter
-                    if current_input_image_sources:
-                        image_source = current_input_image_sources[0]  # Use first image as reference
-                        print(f"🖼️ Using input image for FLUX: {str(image_source)[:70]}...")
-                        flux_input["image_prompt"] = image_source
+                    if current_input_image_sources is not None:
+                        if not isinstance(current_input_image_sources, list):
+                            current_input_image_sources = [current_input_image_sources]
+                        
+                        # FLUX 1.1 Pro supports image_prompt parameter
+                        if current_input_image_sources:
+                            image_source = current_input_image_sources[0]  # Use first image as reference
+                            print(f"🖼️ Using input image for FLUX: {str(image_source)[:70]}...")
+                            flux_input["image_prompt"] = image_source
                 
                 print(f"🔧 FLUX 1.1 Pro Parameters:")
                 for key, value in flux_input.items():
@@ -977,16 +1015,30 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                 }
                 
                 # Add image input if provided (SeeDream 3 supports image conditioning)
-                if input_images and prompt_idx_seedream < len(input_images):
-                    current_input_image_sources = input_images[prompt_idx_seedream]
-                    if not isinstance(current_input_image_sources, list):
-                        current_input_image_sources = [current_input_image_sources]
+                if input_images:
+                    # Support both: one image per prompt OR one image for all prompts
+                    if len(input_images) == 1:
+                        # Use the same image for all prompts
+                        current_input_image_sources = input_images[0]
+                        print(f"🖼️ Using single reference image for all prompts (prompt #{prompt_idx_seedream})")
+                    elif prompt_idx_seedream < len(input_images):
+                        # Use specific image for this prompt
+                        current_input_image_sources = input_images[prompt_idx_seedream]
+                        print(f"🖼️ Using specific reference image for prompt #{prompt_idx_seedream}")
+                    else:
+                        # No image available for this prompt index
+                        print(f"⚠️ No input image available for prompt #{prompt_idx_seedream} (input_images length: {len(input_images)})")
+                        current_input_image_sources = None
                     
-                    # SeeDream 3 supports image input for conditioning
-                    if current_input_image_sources:
-                        image_source = current_input_image_sources[0]  # Use first image as reference
-                        print(f"🖼️ Using input image for SeeDream 3: {str(image_source)[:70]}...")
-                        seedream_input["image"] = image_source
+                    if current_input_image_sources is not None:
+                        if not isinstance(current_input_image_sources, list):
+                            current_input_image_sources = [current_input_image_sources]
+                        
+                        # SeeDream 3 supports image input for conditioning
+                        if current_input_image_sources:
+                            image_source = current_input_image_sources[0]  # Use first image as reference
+                            print(f"🖼️ Using input image for SeeDream 3: {str(image_source)[:70]}...")
+                            seedream_input["image"] = image_source
                 
                 print(f"🔧 SeeDream 3 Parameters:")
                 for key, value in seedream_input.items():
@@ -1233,16 +1285,30 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                 }
                 
                 # Add image input if provided (Ideogram V3 supports image conditioning)
-                if input_images and prompt_idx_ideogram < len(input_images):
-                    current_input_image_sources = input_images[prompt_idx_ideogram]
-                    if not isinstance(current_input_image_sources, list):
-                        current_input_image_sources = [current_input_image_sources]
+                if input_images:
+                    # Support both: one image per prompt OR one image for all prompts
+                    if len(input_images) == 1:
+                        # Use the same image for all prompts
+                        current_input_image_sources = input_images[0]
+                        print(f"🖼️ Using single reference image for all prompts (prompt #{prompt_idx_ideogram})")
+                    elif prompt_idx_ideogram < len(input_images):
+                        # Use specific image for this prompt
+                        current_input_image_sources = input_images[prompt_idx_ideogram]
+                        print(f"🖼️ Using specific reference image for prompt #{prompt_idx_ideogram}")
+                    else:
+                        # No image available for this prompt index
+                        print(f"⚠️ No input image available for prompt #{prompt_idx_ideogram} (input_images length: {len(input_images)})")
+                        current_input_image_sources = None
                     
-                    # Ideogram V3 supports image input for conditioning
-                    if current_input_image_sources:
-                        image_source = current_input_image_sources[0]  # Use first image as reference
-                        print(f"🖼️ Using input image for Ideogram V3 Turbo: {str(image_source)[:70]}...")
-                        ideogram_input["image"] = image_source
+                    if current_input_image_sources is not None:
+                        if not isinstance(current_input_image_sources, list):
+                            current_input_image_sources = [current_input_image_sources]
+                        
+                        # Ideogram V3 supports image input for conditioning
+                        if current_input_image_sources:
+                            image_source = current_input_image_sources[0]  # Use first image as reference
+                            print(f"🖼️ Using input image for Ideogram V3 Turbo: {str(image_source)[:70]}...")
+                            ideogram_input["image"] = image_source
                 
                 print(f"🔧 Ideogram V3 Turbo Parameters:")
                 for key, value in ideogram_input.items():
@@ -1489,16 +1555,30 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                 }
                 
                 # Add image input if provided (Ideogram V3 supports image conditioning)
-                if input_images and prompt_idx_ideogram < len(input_images):
-                    current_input_image_sources = input_images[prompt_idx_ideogram]
-                    if not isinstance(current_input_image_sources, list):
-                        current_input_image_sources = [current_input_image_sources]
+                if input_images:
+                    # Support both: one image per prompt OR one image for all prompts
+                    if len(input_images) == 1:
+                        # Use the same image for all prompts
+                        current_input_image_sources = input_images[0]
+                        print(f"🖼️ Using single reference image for all prompts (prompt #{prompt_idx_ideogram})")
+                    elif prompt_idx_ideogram < len(input_images):
+                        # Use specific image for this prompt
+                        current_input_image_sources = input_images[prompt_idx_ideogram]
+                        print(f"🖼️ Using specific reference image for prompt #{prompt_idx_ideogram}")
+                    else:
+                        # No image available for this prompt index
+                        print(f"⚠️ No input image available for prompt #{prompt_idx_ideogram} (input_images length: {len(input_images)})")
+                        current_input_image_sources = None
                     
-                    # Ideogram V3 supports image input for conditioning
-                    if current_input_image_sources:
-                        image_source = current_input_image_sources[0]  # Use first image as reference
-                        print(f"🖼️ Using input image for Ideogram V3 Quality: {str(image_source)[:70]}...")
-                        ideogram_input["image"] = image_source
+                    if current_input_image_sources is not None:
+                        if not isinstance(current_input_image_sources, list):
+                            current_input_image_sources = [current_input_image_sources]
+                        
+                        # Ideogram V3 supports image input for conditioning
+                        if current_input_image_sources:
+                            image_source = current_input_image_sources[0]  # Use first image as reference
+                            print(f"🖼️ Using input image for Ideogram V3 Quality: {str(image_source)[:70]}...")
+                            ideogram_input["image"] = image_source
                 
                 print(f"🔧 Ideogram V3 Quality Parameters:")
                 for key, value in ideogram_input.items():
@@ -2262,6 +2342,18 @@ async def generate_images_with_prompts(
     # Use default user number if empty
     if not user_number or user_number == "--user_number_not_needed--":
         user_number = "+17145986105"
+    
+    # Debug: Log all function parameters
+    print(f"🔍 DEBUG: generate_images_with_prompts called with:")
+    print(f"   user_number: {user_number}")
+    print(f"   prompts: {prompts}")
+    print(f"   model_version: {model_version}")
+    print(f"   input_images: {input_images}")
+    print(f"   aspect_ratio: {aspect_ratio}")
+    print(f"   quality: {quality}")
+    print(f"   output_format: {output_format}")
+    print(f"   output_compression: {output_compression}")
+    print(f"   moderation: {moderation}")
     
     # Force moderation to "low" for GPT-1 models
     if model_version == "gpt-image-1":

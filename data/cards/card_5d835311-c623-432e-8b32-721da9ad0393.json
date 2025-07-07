@@ -1,0 +1,17 @@
+{
+  "id": "5d835311-c623-432e-8b32-721da9ad0393",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_272f5dfe.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_751d320e.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_36d70c88.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_fixed_e93679c3.png",
+  "createdAt": 1751558545.423035,
+  "expiresAt": 1783094545.4230359,
+  "version": 1,
+  "generatedPrompts": {
+    "backCover": "A simple and elegant back cover with a Japanese-style ink wash (sumi-e) background depicting gentle mountains and mist. A small, single ukiyo-e style painting of a floating ramen bowl is in the upper left corner. The design is clean and leaves the bottom-right corner clear for a QR code, with visible washi paper texture.",
+    "frontCover": "A Japanese ukiyo-e style painting of a majestic, slightly confused-looking minibernedoodle dog wearing a samurai helmet, sitting on a throne made of stacked ramen bowls. The background is a serene Japanese landscape with a cherry blossom tree and a distant Mount Fuji under a starry night sky. The dog embodies 'main character energy'. The words \"Happy Birthday Milo\" are elegantly painted in a shimmering gold calligraphy font below the throne. The style features rich, traditional colors, artistic brush strokes, and organic paint bleeds on textured washi paper.",
+    "leftInterior": "A ukiyo-e style watercolor illustration of a hand dramatically presenting a single, glowing grain of rice, as if it's a precious jewel. The background is a dynamic scene of crashing waves inspired by 'The Great Wave off Kanagawa', representing 'it has the juice'. The style is both powerful and strangely beautiful, with traditional Japanese colors and artistic brush strokes on washi paper.",
+    "rightInterior": "A serene Japanese watercolor background depicting a night sky with cherry blossom branches and faint gold star splatters. The message is centered and painted in a striking, beautiful handwritten cursive script using a shimmering gold watercolor paint: \"Milo, no cap, you actually did the thing. It's giving main character energy and I'm literally screaming, crying, throwing up rn. You absolutely ate and left no crumbs, periodt. Unhinged levels of proud of you, Jordan\"."
+  }
+}

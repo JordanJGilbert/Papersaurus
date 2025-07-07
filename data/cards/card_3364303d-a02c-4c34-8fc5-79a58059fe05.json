@@ -1,0 +1,17 @@
+{
+  "id": "3364303d-a02c-4c34-8fc5-79a58059fe05",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_34291155.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_74c5a7c4.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_ecca548e.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_d36f3f81.png",
+  "createdAt": 1751513739.4978838,
+  "expiresAt": 1783049739.4978848,
+  "version": 1,
+  "generatedPrompts": {
+    "backCover": "A simple watercolor design featuring a cluster of three pinecones and a couple of olive green pine needles, painted in a loose, expressive style. The colors are earthy browns and greens, matching the front cover's rustic theme, set against a creamy beige watercolor wash background. The bottom-right corner remains blank.",
+    "frontCover": "A whimsical watercolor scene of a group of woodland creatures (a fox, a squirrel, a bear) having a 'New Year's Resolution' meeting in a snowy forest. A chalkboard behind them has \"1. Eat More Veggies\" written, but they are all happily munching on stolen Christmas cookies. The squirrel is cheekily hiding a cookie behind its back. In the center, in a friendly, rounded font, is the text \"Merry Christmas Jordan!\". The color palette is earthy and rustic: terracotta orange, deep olive green, chocolate brown, and creamy beige, with soft watercolor strokes on a textured paper.",
+    "leftInterior": "A funny watercolor illustration of a 'Cookie Weightlifting' scene. A determined fox is trying to bench press a giant cookie that looks like a barbell weight. The fox is straining with a comical expression. The background is a simple, snowy forest floor with soft shadows, all painted in an earthy, rustic watercolor style.",
+    "rightInterior": "A warm and rustic watercolor background featuring a soft wash of terracotta and beige. The placeholder text \"Jasmine,\n\nMerry Christmas! I hope your holiday is filled with more joy and laughter than the number of times we've both promised to start our diets \"in the new year.\" Wishing you all the best, and maybe a few extra cookies!\n\nWarmly,\nJordan\" is written in the center in a beautiful, flowing, handwritten cursive script in a deep chocolate brown color. A simple, painted border of olive green leaves frames the central area, keeping the text safe and centered."
+  }
+}

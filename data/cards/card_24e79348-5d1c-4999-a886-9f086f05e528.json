@@ -1,0 +1,17 @@
+{
+  "id": "24e79348-5d1c-4999-a886-9f086f05e528",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_f9192608.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_fe84f1aa.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_3897ba5c.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_b97f4b71.png",
+  "createdAt": 1751510347.6710682,
+  "expiresAt": 1783046347.671069,
+  "version": 1,
+  "generatedPrompts": {
+    "backCover": "A simple, minimalist design with a clean, full-bleed soft sky-blue background. A single, stylized graphic of a tiny patriotic top hat sits askew in the top-center, as if it has gently floated down. The bottom-right corner is intentionally left clear and undecorated. The overall feeling is serene and resolved.",
+    "frontCover": "A flat 2D illustration in a Smart Style of a cool, anthropomorphic hot dog wearing sunglasses, a patriotic top hat, and blue denim shorts. The hot dog is mid-air, having been launched from a birthday cake that has a single, lit firework candle erupting from the center. The background is a vibrant, full-bleed pattern of red, white, and blue geometric shapes on a soft sky-blue backdrop. Centered text below the action reads \"Happy Birthday!\" in an elegant, flowing, dark blue handwritten cursive script. The main character is positioned centrally, away from edges.",
+    "leftInterior": "An artistic, abstract representation of a firework explosion in the Smart Style. The image is a dynamic burst of concentric circles and radiating lines using the card's red, white, and dark blue color palette against the soft sky-blue background. The shapes are clean, geometric, and stylized, capturing the joyful energy of a firework in a modern, non-literal way. The design is celebratory and visually connects to the firework candle on the front cover, while remaining an elegant, abstract piece of art.",
+    "rightInterior": "A clean, soft sky-blue background matching the rest of the card. The message is centered, written in a beautiful, flowing, dark blue handwritten cursive script. The text reads: \"Wishing you a birthday that's even more spectacular than a firework finale! May your day be full of fun and celebration, and may all your hot dogs stay safely on your plate. Happy Birthday!\". The text is elegantly framed by a cascade of small, minimalist star illustrations in red and white, gently falling down from the top corners towards the center, as if they are sparks from the firework finale."
+  }
+}

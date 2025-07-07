@@ -1,0 +1,17 @@
+{
+  "id": "30c761a2-a08d-4fbe-9e46-00b477f28392",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_97c0a70f.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_6daefd31.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_097d7a43.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_9e26caf3.png",
+  "createdAt": 1751509962.3308742,
+  "expiresAt": 1783045962.3308754,
+  "version": 1,
+  "generatedPrompts": {
+    "backCover": "A minimalist and playful design featuring a single, stylized blue jean pocket isolated in the center-left of a sunny yellow background. A tiny, red and white checkered napkin peeks out from the top of the pocket. The design uses the same flat 2D vector art style and color palette as the rest of the card, creating a subtle, witty callback to the front cover's theme. The bottom-right corner is intentionally left blank.",
+    "frontCover": "A humorous and smart illustration of a cartoon hot dog character, with a joyful expression, proudly wearing a pair of tiny, perfectly tailored blue jeans. The hot dog stands on a vibrant, flat-colored background of sunny yellow. Above the character, the text \"Happy Birthday\" is written in a beautiful, clearly readable handwritten cursive script. The style is flat 2D vector art with clean lines and a simple, cheerful color palette of red, blue, yellow, and white. The entire composition is centered, whimsical, and full of personality.",
+    "leftInterior": "An artistic and unexpected pattern of stylized, abstract shapes that subtly evoke picnic elements. Deconstructed forms of red and white checkered blankets, splashes of yellow mustard, and green relish shapes are scattered playfully across a clean white background. The composition is dynamic and modern, using the same smart, flat 2D vector art style and color palette, creating a visually interesting page that complements the card's theme without being literal.",
+    "rightInterior": "The message \"Hope your birthday is as special as a hot dog who finally got a pair of pants. May all your slightly weird and wonderful wishes come true this year! Happy Birthday!\" is the centerpiece, written in an elegant, legible handwritten cursive script with a natural pen-on-paper feel. The text is gracefully framed by a minimalist, artistic border made of a single, continuous, whimsical line that loops and curls, occasionally forming subtle shapes reminiscent of swirling mustard and ketchup. The background is a clean, soft white, and the border uses the vibrant yellow, red, and blue from the main color palette, creating a sophisticated and humorous frame for the heartfelt message."
+  }
+}

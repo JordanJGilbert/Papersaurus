@@ -1,0 +1,17 @@
+{
+  "id": "a6f7d3e9-a8f0-45fa-bc84-15f12f65a780",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_5c090262.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_de83116f.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_4e111d54.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_a36a6c67.png",
+  "createdAt": 1751514127.5214276,
+  "expiresAt": 1783050127.5214286,
+  "version": 1,
+  "generatedPrompts": {
+    "backCover": "A minimalist and elegant design. The background is a solid dusty rose color. A single, small, gold-colored icon of a simplified dinosaur is placed in the top center of the card. The bottom-right corner is left empty.",
+    "frontCover": "A sophisticated, retro-inspired illustration using a pastel color palette of mint green, dusty rose, and muted gold. Craig is drawn in a mid-century modern style, wearing vintage attire and riding a classic cruiser bicycle. He is positioned centrally, winking at the viewer, and holding a greeting card. The card features a charming, stylized green dinosaur holding a smaller card with a simple, elegant gold heart. The background is a flat, mint green color with subtle geometric patterns reminiscent of 1960s wallpaper. The 'Happy Birthday' text is in an elegant, retro script font in dusty rose, arched gracefully above the main illustration.",
+    "leftInterior": "A humorous, full-bleed illustration depicting a museum exhibit. In the center, on a pedestal under a spotlight, is the card-within-a-card from the front cover. A small plaque below it reads: 'The Recursion Card, circa Now'. The walls of the museum are pastel mint green, and the overall style is clean and retro.",
+    "rightInterior": "A soft, cream-colored background. In the center, the placeholder text 'Craig,\n\nIs this card meta enough for you? We're now at three levels of card-ception, which is probably a new world record. Hope your birthday is as ridiculously awesome and multi-layered as this card!\n\nHappy Birthday, pal!\n- Jordan' is rendered in a beautiful, flowing cursive script, using a metallic gold color that shimmers elegantly against the pastel background."
+  }
+}
