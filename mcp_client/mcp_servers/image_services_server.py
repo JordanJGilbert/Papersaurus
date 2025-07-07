@@ -465,6 +465,20 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                 print(f"🎯 OpenAI (Image API) Prompt #{prompt_idx_openai}: '{prompt_text[:50]}...'")
                 start_time_openai = time.time()
                 
+                # Cost calculation setup for GPT-image-1
+                # Pricing: Text input $10/1M tokens, Image input $10/1M tokens, Image output $40/1M tokens
+                input_cost_per_token = 0.00001  # $10 per million tokens
+                image_input_cost_per_token = 0.00001  # $10 per million tokens  
+                output_cost_per_token = 0.00004  # $40 per million tokens
+                
+                # Estimate text input tokens (rough approximation: 4 chars per token)
+                estimated_input_tokens = len(prompt_text) // 4
+                text_input_cost = estimated_input_tokens * input_cost_per_token
+                
+                # Track image input costs
+                image_input_cost = 0.0
+                image_input_tokens = 0
+                
                 gpt_size = "1024x1024"
                 if aspect_ratio == "16:9": gpt_size = "1536x1024"
                 elif aspect_ratio == "9:16": gpt_size = "1024x1536"
@@ -519,7 +533,14 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                                     img_file = BytesIO(img_bytes)
                                     img_file.name = f"input_image_{source_index}.png"
                                     input_image_files.append(img_file)
-                                    print(f"✅ Added input image #{source_index} for Image API (size: {len(img_bytes)} bytes)")
+                                    
+                                    # Calculate image input cost (estimate tokens based on image size)
+                                    # Rough estimation: larger images = more tokens, typical range 500-2000 tokens per image
+                                    estimated_image_tokens = min(2000, max(500, len(img_bytes) // 5000))
+                                    image_input_tokens += estimated_image_tokens
+                                    image_input_cost += estimated_image_tokens * image_input_cost_per_token
+                                    
+                                    print(f"✅ Added input image #{source_index} for Image API (size: {len(img_bytes)} bytes, ~{estimated_image_tokens} tokens)")
 
                             except Exception as e_proc_img:
                                 print(f"⚠️ Failed to process input_image source #{source_index} for prompt #{prompt_idx_openai}: {e_proc_img}")
@@ -570,6 +591,7 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                         prompt=prompt_text,
                         model="gpt-image-1",
                         size=gpt_size,
+                        quality=quality if quality != "auto" else "standard",  # ✅ Now includes quality!
                         n=1
                     )
                 else:
@@ -593,6 +615,30 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                 if not generated_image_b64:
                     return {"error": f"OpenAI Image API returned empty image data for prompt: {prompt_text[:100]}..."}
 
+                # Extract actual token usage from OpenAI API response
+                actual_input_tokens = 0
+                actual_output_tokens = 0
+                actual_total_tokens = 0
+                
+                if hasattr(response_openai, 'usage') and response_openai.usage:
+                    # Modern usage format
+                    if hasattr(response_openai.usage, 'input_tokens'):
+                        actual_input_tokens = response_openai.usage.input_tokens
+                    elif hasattr(response_openai.usage, 'prompt_tokens'):
+                        actual_input_tokens = response_openai.usage.prompt_tokens
+                    
+                    if hasattr(response_openai.usage, 'output_tokens'):
+                        actual_output_tokens = response_openai.usage.output_tokens
+                    elif hasattr(response_openai.usage, 'completion_tokens'):
+                        actual_output_tokens = response_openai.usage.completion_tokens
+                    
+                    actual_total_tokens = getattr(response_openai.usage, 'total_tokens', actual_input_tokens + actual_output_tokens)
+                
+                # Calculate actual costs using real token counts
+                actual_text_input_cost = actual_input_tokens * input_cost_per_token
+                actual_output_cost = actual_output_tokens * output_cost_per_token
+                total_image_cost = actual_text_input_cost + image_input_cost + actual_output_cost
+                
                 # Process and save the image
                 image_bytes_data = base64.b64decode(generated_image_b64)
                 pil_image_obj = Image.open(BytesIO(image_bytes_data))
@@ -602,7 +648,15 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                 await asyncio.to_thread(pil_image_obj.save, local_path_openai, format="PNG")
                 
                 image_url_openai = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename_openai}"
+                
+                # Log detailed cost information
                 print(f"✅ OpenAI (Image API) Success: Prompt #{prompt_idx_openai}. Generated image: {image_url_openai}")
+                print(f"💰 Cost Breakdown:")
+                print(f"   📝 Text Input: {actual_input_tokens} tokens = ${actual_text_input_cost:.6f}")
+                if image_input_cost > 0:
+                    print(f"   🖼️ Image Input: {image_input_tokens} tokens = ${image_input_cost:.6f}")
+                print(f"   📤 Image Output: {actual_output_tokens} tokens = ${actual_output_cost:.6f}")
+                print(f"   🎯 Total Cost: ${total_image_cost:.6f}")
                 
                 # QA Check for spelling mistakes (skip for low quality)
                 if quality != "low":
@@ -630,6 +684,7 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                                 prompt=regeneration_prompt,
                                 model="gpt-image-1",
                                 size=gpt_size,
+                                quality=quality if quality != "auto" else "standard",  # ✅ Quality in regeneration too!
                                 n=1
                             )
                         else:
@@ -643,6 +698,16 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                             )
                         
                         if regeneration_response.data and regeneration_response.data[0].b64_json:
+                            # Calculate regeneration cost
+                            regen_cost = 0.0
+                            if hasattr(regeneration_response, 'usage') and regeneration_response.usage:
+                                regen_input_tokens = getattr(regeneration_response.usage, 'input_tokens', 
+                                                            getattr(regeneration_response.usage, 'prompt_tokens', 0))
+                                regen_output_tokens = getattr(regeneration_response.usage, 'output_tokens',
+                                                             getattr(regeneration_response.usage, 'completion_tokens', 0))
+                                regen_cost = (regen_input_tokens * input_cost_per_token + 
+                                            regen_output_tokens * output_cost_per_token + image_input_cost)
+                            
                             # Save regenerated image
                             regenerated_image_bytes = base64.b64decode(regeneration_response.data[0].b64_json)
                             regenerated_pil_image = Image.open(BytesIO(regenerated_image_bytes))
@@ -653,6 +718,7 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                             
                             regenerated_url = f"{DOMAIN}/user_data/{user_number_safe}/images/{regenerated_filename}"
                             print(f"✅ Successfully regenerated image with corrected spelling: {regenerated_url}")
+                            print(f"💰 Regeneration Cost: ${regen_cost:.6f}")
                             
                             # Remove the original image with errors
                             try:

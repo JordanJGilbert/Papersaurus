@@ -5374,7 +5374,7 @@ Return only the numeric score (1-100) for each image.`;
                             🎨 Draft Mode (Recommended)
                           </p>
                           <p className="text-purple-700 dark:text-purple-300 text-xs mt-1">
-                            Generate 4 different design variations quickly with low quality, then pick your favorite for high-quality generation. Perfect for exploring options!
+                            Generate 10 different design variations quickly with low quality, then pick your favorite for high-quality generation. Perfect for exploring options!
                           </p>
                         </div>
                       </div>
@@ -5393,13 +5393,13 @@ Return only the numeric score (1-100) for each image.`;
                           {isGeneratingMessage ? (
                             <span>Writing your message...</span>
                           ) : (
-                            <span>Creating 4 design options...</span>
+                            <span>Creating 10 design options...</span>
                           )}
                         </>
                       ) : (
                         <>
                           <Palette className="w-5 h-5 mr-2" />
-                          <span>Create 4 Design Options</span>
+                          <span>Create 10 Design Options</span>
                         </>
                       )}
                     </Button>
@@ -5546,7 +5546,7 @@ Return only the numeric score (1-100) for each image.`;
                   return (
                     <div
                       key={index}
-                      className={`relative cursor-pointer rounded-lg border-2 p-4 transition-all ${
+                      className={`relative cursor-pointer rounded-lg border-2 p-3 transition-all ${
                         selectedDraftIndex === index
                           ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
                           : card
@@ -5558,7 +5558,7 @@ Return only the numeric score (1-100) for each image.`;
                       {card ? (
                         <>
                           {/* Card Preview Grid */}
-                          <div className="grid grid-cols-2 gap-2 mb-4">
+                          <div className="grid grid-cols-2 gap-1 mb-3">
                             {/* Front Cover */}
                             <div className="space-y-1">
                               <div className="aspect-[2/3] relative overflow-hidden rounded border">
@@ -5612,21 +5612,21 @@ Return only the numeric score (1-100) for each image.`;
                           </div>
                           
                           {/* Card Info */}
-                          <div className="text-center space-y-2">
-                            <h4 className="font-medium text-sm">Design Variation {index + 1}</h4>
-                            <div className="flex items-center justify-center gap-2">
-                              <Badge variant="outline" className="text-xs">
-                                Low Quality Preview
+                          <div className="text-center space-y-1">
+                            <h4 className="font-medium text-xs">Design {index + 1}</h4>
+                            <div className="flex items-center justify-center gap-1">
+                              <Badge variant="outline" className="text-xs px-1 py-0">
+                                Preview
                               </Badge>
                               {selectedDraftIndex === index && (
-                                <Badge className="bg-purple-600 text-white text-xs">
-                                  ✓ Selected
+                                <Badge className="bg-purple-600 text-white text-xs px-1 py-0">
+                                  ✓
                                 </Badge>
                               )}
                             </div>
                             
                             {/* Action Buttons */}
-                            <div className="flex gap-2 justify-center">
+                            <div className="flex gap-1 justify-center">
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -5634,10 +5634,10 @@ Return only the numeric score (1-100) for each image.`;
                                   e.stopPropagation();
                                   setPreviewingDraftIndex(index);
                                 }}
-                                className="text-xs px-2 py-1 h-6"
+                                className="text-xs px-1 py-0 h-5"
                               >
-                                <Eye className="w-3 h-3 mr-1" />
-                                Preview
+                                <Eye className="w-2 h-2 mr-0.5" />
+                                View
                               </Button>
                               <Button
                                 variant={selectedDraftIndex === index ? "default" : "outline"}
@@ -5646,22 +5646,18 @@ Return only the numeric score (1-100) for each image.`;
                                   e.stopPropagation();
                                   setSelectedDraftIndex(index);
                                 }}
-                                className="text-xs px-2 py-1 h-6"
+                                className="text-xs px-1 py-0 h-5"
                               >
-                                {selectedDraftIndex === index ? "Selected" : "Select"}
+                                {selectedDraftIndex === index ? "✓" : "Pick"}
                               </Button>
                             </div>
-                            
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                              Preview to see details, then select for high-quality generation
-                            </p>
                           </div>
                         </>
                       ) : (
-                        <div className="flex flex-col items-center justify-center py-8">
-                          <div className="w-12 h-12 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                          <h4 className="font-medium text-sm mb-1">Design {index + 1}</h4>
-                          <p className="text-xs text-gray-500">Generating variation...</p>
+                        <div className="flex flex-col items-center justify-center py-6">
+                          <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                          <h4 className="font-medium text-xs mb-1">Design {index + 1}</h4>
+                          <p className="text-xs text-gray-500">Creating...</p>
                         </div>
                       )}
                     </div>
@@ -5669,7 +5665,7 @@ Return only the numeric score (1-100) for each image.`;
                 })}
               </div>
               
-              {draftCards.filter(c => c).length === 4 && (
+              {draftCards.filter(c => c).length === 10 && (
                 <div className="mt-6 text-center">
                   <Button
                     onClick={() => handleGenerateFinalFromDraft(selectedDraftIndex)}
@@ -5706,7 +5702,7 @@ Return only the numeric score (1-100) for each image.`;
           });
           return null;
         })()}
-        {generatedCard && !isDraftMode && !isGeneratingFinalCard && draftCards.length === 0 && (
+        {generatedCard && !isGeneratingFinalCard && (
                   <Card className="shadow-lg">
                     <CardHeader>
                       <div className="flex items-center justify-between">
