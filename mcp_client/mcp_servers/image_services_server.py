@@ -658,15 +658,11 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                 print(f"   📤 Image Output: {actual_output_tokens} tokens = ${actual_output_cost:.6f}")
                 print(f"   🎯 Total Cost: ${total_image_cost:.6f}")
                 
-                # QA Check for spelling mistakes (skip for low quality)
-                if quality != "low":
-                    print(f"🔍 Starting QA check for spelling mistakes...")
-                    qa_result = await qa_check_spelling(image_url_openai, prompt_text)
-                else:
-                    print(f"⚡ Skipping QA check for low quality generation")
-                    qa_result = {"has_errors": False, "errors": []}
+                # QA Check for spelling mistakes (DISABLED)
+                print(f"⚡ QA check and regeneration for spelling mistakes is disabled")
+                qa_result = {"has_errors": False, "errors": []}
                 
-                if qa_result["has_errors"]:
+                if False:  # Disabled regeneration
                     print(f"❌ QA Check: Spelling errors detected in image {prompt_idx_openai}")
                     print(f"   Errors: {qa_result['errors']}")
                     print(f"🔄 Regenerating image to fix spelling errors...")
@@ -929,15 +925,11 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                     image_url_flux = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename_flux}"
                     print(f"✅ FLUX 1.1 Pro Success: Prompt #{prompt_idx_flux}. Generated image: {image_url_flux}")
                     
-                    # QA Check for spelling mistakes (skip for low quality)
-                    if quality != "low":
-                        print(f"🔍 Starting QA check for spelling mistakes...")
-                        qa_result = await qa_check_spelling(image_url_flux, prompt_text)
-                    else:
-                        print(f"⚡ Skipping QA check for low quality generation")
-                        qa_result = {"has_errors": False, "errors": []}
+                    # QA Check for spelling mistakes (DISABLED)
+                    print(f"⚡ QA check and regeneration for spelling mistakes is disabled")
+                    qa_result = {"has_errors": False, "errors": []}
                     
-                    if qa_result["has_errors"]:
+                    if False:  # Disabled regeneration
                         print(f"❌ QA Check: Spelling errors detected in image {prompt_idx_flux}")
                         print(f"   Errors: {qa_result['errors']}")
                         print(f"🔄 Regenerating image to fix spelling errors...")
@@ -1190,15 +1182,11 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                     image_url_seedream = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename_seedream}"
                     print(f"✅ SeeDream 3 Success: Prompt #{prompt_idx_seedream}. Generated image: {image_url_seedream}")
                     
-                    # QA Check for spelling mistakes (skip for low quality)
-                    if quality != "low":
-                        print(f"🔍 Starting QA check for spelling mistakes...")
-                        qa_result = await qa_check_spelling(image_url_seedream, prompt_text)
-                    else:
-                        print(f"⚡ Skipping QA check for low quality generation")
-                        qa_result = {"has_errors": False, "errors": []}
+                    # QA Check for spelling mistakes (DISABLED)
+                    print(f"⚡ QA check and regeneration for spelling mistakes is disabled")
+                    qa_result = {"has_errors": False, "errors": []}
                     
-                    if qa_result["has_errors"]:
+                    if False:  # Disabled regeneration
                         print(f"❌ QA Check: Spelling errors detected in image {prompt_idx_seedream}")
                         print(f"   Errors: {qa_result['errors']}")
                         print(f"🔄 Regenerating image to fix spelling errors...")
@@ -1460,82 +1448,9 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                     image_url_ideogram = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename_ideogram}"
                     print(f"✅ Ideogram V3 Turbo Success: Prompt #{prompt_idx_ideogram}. Generated image: {image_url_ideogram}")
                     
-                    # QA Check for spelling mistakes (skip for low quality)
-                    if quality != "low":
-                        print(f"🔍 Starting QA check for spelling mistakes...")
-                        qa_result = await qa_check_spelling(image_url_ideogram, prompt_text)
-                    else:
-                        print(f"⚡ Skipping QA check for low quality generation")
-                        qa_result = {"has_errors": False, "errors": []}
-                    
-                    if qa_result["has_errors"]:
-                        print(f"❌ QA Check: Spelling errors detected in image {prompt_idx_ideogram}")
-                        print(f"   Errors: {qa_result['errors']}")
-                        print(f"🔄 Regenerating image to fix spelling errors...")
-                        
-                        # Try regeneration once
-                        try:
-                            regeneration_prompt = f"{prompt_text}\n\nIMPORTANT: Pay special attention to correct spelling of all text. Double-check every word for spelling accuracy."
-                            
-                            regeneration_input = ideogram_input.copy()
-                            regeneration_input["prompt"] = regeneration_prompt
-                            
-                            regeneration_response = await asyncio.to_thread(
-                                replicate_client.run,
-                                "ideogram-ai/ideogram-v3-turbo",
-                                input=regeneration_input
-                            )
-                            
-                            if regeneration_response:
-                                # Process regenerated image
-                                if hasattr(regeneration_response, 'read'):
-                                    regen_image_bytes = regeneration_response.read()
-                                elif isinstance(regeneration_response, str) and regeneration_response.startswith('http'):
-                                    regen_resp = await asyncio.to_thread(requests.get, regeneration_response, timeout=30)
-                                    regen_resp.raise_for_status()
-                                    regen_image_bytes = regen_resp.content
-                                else:
-                                    raise Exception(f"Unexpected regeneration response format: {type(regeneration_response)}")
-                                
-                                if regen_image_bytes:
-                                    regenerated_pil_image = Image.open(BytesIO(regen_image_bytes))
-                                    
-                                    regenerated_filename = f"ideogram_v3_turbo_fixed_{uuid.uuid4().hex[:8]}.{output_format.lower()}"
-                                    regenerated_local_path = os.path.join(image_dir, regenerated_filename)
-                                    
-                                    # Save regenerated image with same format settings
-                                    if save_format == "JPEG" and regenerated_pil_image.mode == "RGBA":
-                                        rgb_img = Image.new("RGB", regenerated_pil_image.size, (255, 255, 255))
-                                        rgb_img.paste(regenerated_pil_image, mask=regenerated_pil_image.split()[-1])
-                                        regenerated_pil_image = rgb_img
-                                    
-                                    if save_format in ["JPEG", "WEBP"]:
-                                        await asyncio.to_thread(
-                                            regenerated_pil_image.save, 
-                                            regenerated_local_path, 
-                                            format=save_format, 
-                                            quality=output_compression, 
-                                            optimize=True
-                                        )
-                                    else:
-                                        await asyncio.to_thread(regenerated_pil_image.save, regenerated_local_path, format=save_format, optimize=True)
-                                    
-                                    regenerated_url = f"{DOMAIN}/user_data/{user_number_safe}/images/{regenerated_filename}"
-                                    print(f"✅ Successfully regenerated image with corrected spelling: {regenerated_url}")
-                                    
-                                    # Remove the original image with errors
-                                    try:
-                                        os.remove(local_path_ideogram)
-                                        print(f"🗑️ Removed original image with spelling errors")
-                                    except Exception:
-                                        pass
-                                    
-                                    return [regenerated_url]
-                                    
-                        except Exception as regen_error:
-                            print(f"⚠️ Regeneration failed: {regen_error}, keeping original image")
-                    else:
-                        print(f"✅ QA Check: No spelling errors detected in image {prompt_idx_ideogram}")
+                    # QA Check for spelling mistakes (DISABLED)
+                    print(f"⚡ QA check and regeneration for spelling mistakes is disabled")
+                    qa_result = {"has_errors": False, "errors": []}
                     
                     return [image_url_ideogram]
                     
@@ -1730,82 +1645,9 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
                     image_url_ideogram = f"{DOMAIN}/user_data/{user_number_safe}/images/{filename_ideogram}"
                     print(f"✅ Ideogram V3 Quality Success: Prompt #{prompt_idx_ideogram}. Generated image: {image_url_ideogram}")
                     
-                    # QA Check for spelling mistakes (skip for low quality)
-                    if quality != "low":
-                        print(f"🔍 Starting QA check for spelling mistakes...")
-                        qa_result = await qa_check_spelling(image_url_ideogram, prompt_text)
-                    else:
-                        print(f"⚡ Skipping QA check for low quality generation")
-                        qa_result = {"has_errors": False, "errors": []}
-                    
-                    if qa_result["has_errors"]:
-                        print(f"❌ QA Check: Spelling errors detected in image {prompt_idx_ideogram}")
-                        print(f"   Errors: {qa_result['errors']}")
-                        print(f"🔄 Regenerating image to fix spelling errors...")
-                        
-                        # Try regeneration once
-                        try:
-                            regeneration_prompt = f"{prompt_text}\n\nIMPORTANT: Pay special attention to correct spelling of all text. Double-check every word for spelling accuracy."
-                            
-                            regeneration_input = ideogram_input.copy()
-                            regeneration_input["prompt"] = regeneration_prompt
-                            
-                            regeneration_response = await asyncio.to_thread(
-                                replicate_client.run,
-                                "ideogram-ai/ideogram-v3-turbo",
-                                input=regeneration_input
-                            )
-                            
-                            if regeneration_response:
-                                # Process regenerated image (same logic as original)
-                                if hasattr(regeneration_response, 'read'):
-                                    regen_image_bytes = regeneration_response.read()
-                                elif isinstance(regeneration_response, str) and regeneration_response.startswith('http'):
-                                    regen_resp = await asyncio.to_thread(requests.get, regeneration_response, timeout=30)
-                                    regen_resp.raise_for_status()
-                                    regen_image_bytes = regen_resp.content
-                                else:
-                                    raise Exception(f"Unexpected regeneration response format: {type(regeneration_response)}")
-                                
-                                if regen_image_bytes:
-                                    regenerated_pil_image = Image.open(BytesIO(regen_image_bytes))
-                                    
-                                    regenerated_filename = f"ideogram_v3_quality_fixed_{uuid.uuid4().hex[:8]}.{output_format.lower()}"
-                                    regenerated_local_path = os.path.join(image_dir, regenerated_filename)
-                                    
-                                    # Save regenerated image with same format settings
-                                    if save_format == "JPEG" and regenerated_pil_image.mode == "RGBA":
-                                        rgb_img = Image.new("RGB", regenerated_pil_image.size, (255, 255, 255))
-                                        rgb_img.paste(regenerated_pil_image, mask=regenerated_pil_image.split()[-1])
-                                        regenerated_pil_image = rgb_img
-                                    
-                                    if save_format in ["JPEG", "WEBP"]:
-                                        await asyncio.to_thread(
-                                            regenerated_pil_image.save, 
-                                            regenerated_local_path, 
-                                            format=save_format, 
-                                            quality=output_compression, 
-                                            optimize=True
-                                        )
-                                    else:
-                                        await asyncio.to_thread(regenerated_pil_image.save, regenerated_local_path, format=save_format, optimize=True)
-                                    
-                                    regenerated_url = f"{DOMAIN}/user_data/{user_number_safe}/images/{regenerated_filename}"
-                                    print(f"✅ Successfully regenerated image with corrected spelling: {regenerated_url}")
-                                    
-                                    # Remove the original image with errors
-                                    try:
-                                        os.remove(local_path_ideogram)
-                                        print(f"🗑️ Removed original image with spelling errors")
-                                    except Exception:
-                                        pass
-                                    
-                                    return [regenerated_url]
-                                    
-                        except Exception as regen_error:
-                            print(f"⚠️ Regeneration failed: {regen_error}, keeping original image")
-                    else:
-                        print(f"✅ QA Check: No spelling errors detected in image {prompt_idx_ideogram}")
+                    # QA Check for spelling mistakes (DISABLED)
+                    print(f"⚡ QA check and regeneration for spelling mistakes is disabled")
+                    qa_result = {"has_errors": False, "errors": []}
                     
                     return [image_url_ideogram]
                     
@@ -1983,91 +1825,11 @@ async def _generate_images_with_prompts_concurrent(user_number, prompts, model_v
             # Filter out None results (errors during saving/processing)
             successful_urls = [url for url in image_url_results if url is not None]
             
-            # QA Check each image for spelling mistakes (skip for low quality)
-            final_urls = []
-            for url in successful_urls:
-                if quality != "low":
-                    print(f"🔍 Starting QA check for spelling mistakes on image: {url}")
-                    qa_result = await qa_check_spelling(url, prompt)
-                else:
-                    print(f"⚡ Skipping QA check for low quality generation on image: {url}")
-                    qa_result = {"has_errors": False, "errors": []}
-                
-                if qa_result["has_errors"]:
-                    print(f"❌ QA Check: Spelling errors detected in image {url}")
-                    print(f"   Errors: {qa_result['errors']}")
-                    print(f"🔄 Regenerating image to fix spelling errors...")
-                    
-                    # Try regeneration once with corrected prompt
-                    try:
-                        regeneration_prompt = f"{prompt}\n\nIMPORTANT: Pay special attention to correct spelling of all text. Double-check every word for spelling accuracy."
-                        
-                        # Find the client and project for regeneration (use first available)
-                        if generation_clients:
-                            regen_project_id, regen_client = generation_clients[0]
-                            print(f"🔄 Regenerating with project: {regen_project_id}")
-                            
-                            # Map aspect ratio for regeneration
-                            genai_aspect_ratio = aspect_ratio
-                            if aspect_ratio == "16:9":
-                                genai_aspect_ratio = "16:9"
-                            elif aspect_ratio == "9:16":
-                                genai_aspect_ratio = "9:16"
-                            elif aspect_ratio == "1:1":
-                                genai_aspect_ratio = "1:1"
-                            elif aspect_ratio == "4:3":
-                                genai_aspect_ratio = "4:3"
-                            elif aspect_ratio == "3:4":
-                                genai_aspect_ratio = "3:4"
-                            else:
-                                genai_aspect_ratio = "16:9"
-                            
-                            regen_response = await asyncio.to_thread(
-                                regen_client.models.generate_images,
-                                model=model_version,
-                                prompt=regeneration_prompt,
-                                config=types.GenerateImagesConfig(
-                                    aspect_ratio=genai_aspect_ratio,
-                                    number_of_images=1,
-                                    safety_filter_level="BLOCK_MEDIUM_AND_ABOVE",
-                                    person_generation="ALLOW_ADULT",
-                                )
-                            )
-                            
-                            # Process regenerated image
-                            if hasattr(regen_response, 'generated_images') and regen_response.generated_images:
-                                regen_image = regen_response.generated_images[0]
-                                if hasattr(regen_image, 'image'):
-                                    regen_filename = f"img_fixed_{uuid.uuid4().hex[:8]}.png"
-                                    regen_local_path = os.path.join(image_dir, regen_filename)
-                                    await asyncio.to_thread(regen_image.image.save, regen_local_path)
-                                    regen_url = f"{DOMAIN}/user_data/{user_number_safe}/images/{regen_filename}"
-                                    
-                                    print(f"✅ Successfully regenerated image with corrected spelling: {regen_url}")
-                                    
-                                    # Remove the original image with errors
-                                    try:
-                                        original_filename = url.split('/')[-1]
-                                        original_path = os.path.join(image_dir, original_filename)
-                                        os.remove(original_path)
-                                        print(f"🗑️ Removed original image with spelling errors")
-                                    except Exception:
-                                        pass
-                                    
-                                    final_urls.append(regen_url)
-                                    continue
-                                    
-                        print(f"⚠️ Regeneration failed, keeping original image despite spelling errors")
-                        
-                    except Exception as regen_error:
-                        print(f"⚠️ Regeneration failed: {regen_error}, keeping original image")
-                else:
-                    print(f"✅ QA Check: No spelling errors detected in image {url}")
-                
-                final_urls.append(url)
+            # QA Check for spelling mistakes (DISABLED)
+            print(f"⚡ QA check and regeneration for spelling mistakes is disabled")
             
-            # Return only the successfully processed URLs (with QA checks and potential regenerations)
-            return final_urls
+            # Return only the successfully processed URLs (no QA checks)
+            return successful_urls
 
         async def generate_for_prompt(prompt, idx, project_client_tuple):
             project_id, client = project_client_tuple

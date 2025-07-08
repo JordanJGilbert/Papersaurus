@@ -50,6 +50,11 @@ interface GeneratedCard {
     leftPage?: string;
     rightPage?: string;
   };
+  // Style information for smart style mode
+  styleInfo?: {
+    styleName?: string;
+    styleLabel?: string;
+  };
 }
 
 // Common card types with custom option
@@ -114,6 +119,18 @@ const artisticStyles = [
     promptModifier: "in minimalist style with clean lines, simple shapes, plenty of white space, sophisticated typography, and elegant simplicity"
   },
   { 
+    id: "botanical", 
+    label: "🌿 Botanical", 
+    description: "Beautiful flowers and nature elements",
+    promptModifier: "in botanical illustration style with detailed flowers, leaves, and natural elements, soft organic shapes, elegant floral arrangements, and nature-inspired designs perfect for greeting cards"
+  },
+  { 
+    id: "comic-book", 
+    label: "💥 Comic Book", 
+    description: "Bold graphic novel style",
+    promptModifier: "in comic book art style with bold outlines, vibrant colors, dynamic poses, speech bubble aesthetics, halftone patterns, and superhero comic book visual elements that create an exciting and energetic feel"
+  },
+  { 
     id: "dreamy-fantasy", 
     label: "🌸 Dreamy Fantasy", 
     description: "Enchanting anime-inspired art",
@@ -126,16 +143,22 @@ const artisticStyles = [
     promptModifier: "in vintage Art Deco style with geometric patterns, gold accents, elegant typography, luxurious details, and 1920s glamour"
   },
   { 
-    id: "pop-art", 
-    label: "🎭 Pop Art", 
-    description: "Bold, colorful comic book style",
-    promptModifier: "in pop art style like Andy Warhol and Roy Lichtenstein, with bold colors, comic book elements, halftone dots, and graphic design aesthetics"
+    id: "vintage-illustration", 
+    label: "📚 Vintage Illustration", 
+    description: "Classic storybook charm",
+    promptModifier: "in vintage illustration style like classic children's books, with warm nostalgic colors, charming characters, whimsical details, and timeless fairy-tale aesthetics"
   },
   {
-    id: "impressionist", 
-    label: "🖼️ Impressionist", 
-    description: "Soft brushstrokes like Monet",
-    promptModifier: "in impressionist painting style like Monet and Renoir, with soft brush strokes, light and shadow play, and dreamy atmospheric effects"
+    id: "modern-geometric", 
+    label: "🔷 Modern Geometric", 
+    description: "Clean contemporary shapes",
+    promptModifier: "in modern geometric style with clean shapes, contemporary design elements, balanced compositions, and sophisticated color palettes perfect for modern greeting cards"
+  },
+  {
+    id: "soft-pastel", 
+    label: "🌸 Soft Pastel", 
+    description: "Gentle, soothing colors",
+    promptModifier: "in soft pastel style with gentle colors, dreamy atmosphere, delicate textures, and calming visual elements that create a peaceful and heartwarming feeling"
   },
   {
     id: "retro-vintage", 
@@ -333,12 +356,14 @@ async function chatWithAI(userMessage: string, options: {
   model?: string;
   includeThoughts?: boolean;
   jsonSchema?: any;
+  attachments?: string[];  // Add support for image attachments
 } = {}) {
   const {
     systemPrompt = null,
     model = 'gemini-2.5-pro',
     includeThoughts = false,  // Default to false to avoid thinking content in responses
-    jsonSchema = null
+    jsonSchema = null,
+    attachments = []  // Default to empty array
   } = options;
   
   try {
@@ -352,7 +377,8 @@ async function chatWithAI(userMessage: string, options: {
           system_prompt: systemPrompt,
           model: model,
           include_thoughts: includeThoughts,
-          json_schema: jsonSchema
+          json_schema: jsonSchema,
+          ...(attachments.length > 0 && { attachments })  // Only include if there are attachments
         }
       })
     });
@@ -409,7 +435,7 @@ export default function CardStudioPage() {
 
   // Advanced options state
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [selectedArtisticStyle, setSelectedArtisticStyle] = useState<string>("ai-smart-style");
+  const [selectedArtisticStyle, setSelectedArtisticStyle] = useState<string>("watercolor");
   const [customStyleDescription, setCustomStyleDescription] = useState<string>("");
   const [selectedImageModel, setSelectedImageModel] = useState<string>("gpt-image-1");
 
@@ -428,12 +454,14 @@ export default function CardStudioPage() {
   // Fast preview mode state
   const [fastPreviewMode, setFastPreviewMode] = useState<boolean>(true);
   
-  // Draft mode state - generate 4 low-quality cards for selection
+  // Draft mode state - generate 10 low-quality cards for selection
   const [isDraftMode, setIsDraftMode] = useState<boolean>(false);
-  const [draftCards, setDraftCards] = useState<GeneratedCard[]>([]);
-  const [selectedDraftIndex, setSelectedDraftIndex] = useState<number>(-1);
+  const [draftCards, setDraftCards] = useState<GeneratedCard[]>([]); // Cards in completion order (left to right)
+  const [draftIndexMapping, setDraftIndexMapping] = useState<number[]>([]); // Maps display position to original draft index
+  const [selectedDraftIndex, setSelectedDraftIndex] = useState<number>(-1); // Display position index
   const [isGeneratingFinalCard, setIsGeneratingFinalCard] = useState<boolean>(false);
-  const [previewingDraftIndex, setPreviewingDraftIndex] = useState<number>(-1);
+  const [previewingDraftIndex, setPreviewingDraftIndex] = useState<number>(-1); // Display position index
+  const [draftCompletionShown, setDraftCompletionShown] = useState<boolean>(false);
 
   // Helper function to format countdown as MM:SS
   const formatCountdown = (seconds: number): string => {
@@ -580,6 +608,9 @@ export default function CardStudioPage() {
             setIsGenerating(false);
             setGenerationProgress("");
             
+            // Scroll to card preview
+            scrollToCardPreview();
+            
             // Set all sections as completed
             setSectionLoadingStates({
               frontCover: 'completed',
@@ -610,8 +641,7 @@ export default function CardStudioPage() {
                }
                
                const cardsData = {
-                 cards: [cardForStorage],
-                 selectedIndex: 0,
+                 mostRecentCard: cardForStorage,
                  generationDuration: statusResponse.cardData.generationTimeSeconds || null
                };
                localStorage.setItem('vibecarding-generated-cards', JSON.stringify(cardsData));
@@ -690,39 +720,80 @@ export default function CardStudioPage() {
             // Handle draft card completion - no QR code needed for drafts
             console.log(`🎨 Draft variation ${draftIndex + 1} completed!`);
             
+            // Get style info for smart style mode
+            let styleInfo: { styleName: string; styleLabel: string } | undefined = undefined;
+            if (selectedArtisticStyle === "ai-smart-style") {
+              const predefinedStyles = [
+                "watercolor", "botanical", "hand-drawn", "dreamy-fantasy", "minimalist",
+                "vintage-illustration", "art-deco", "soft-pastel", "modern-geometric", "watercolor"
+              ];
+              const styleLabels = [
+                "🎨 Watercolor", "🌿 Botanical", "✏️ Hand-Drawn", "🌸 Dreamy Fantasy", "✨ Minimalist",
+                "📚 Vintage Illustration", "✨ Art Deco", "🌸 Soft Pastel", "🔷 Modern Geometric", "🎨 Watercolor"
+              ];
+              if (draftIndex >= 0 && draftIndex < predefinedStyles.length) {
+                styleInfo = {
+                  styleName: predefinedStyles[draftIndex],
+                  styleLabel: styleLabels[draftIndex]
+                };
+              }
+            }
+
             const draftCard: GeneratedCard = {
               id: `draft-${draftIndex + 1}-${Date.now()}`,
               prompt: statusResponse.cardData.prompt || `Draft Variation ${draftIndex + 1}`,
               frontCover: statusResponse.cardData.frontCover || "",
-              backCover: statusResponse.cardData.backCover || "",
-              leftPage: statusResponse.cardData.leftPage || "",
-              rightPage: statusResponse.cardData.rightPage || "",
+              backCover: "", // Draft mode only generates front cover
+              leftPage: "", // Will be generated in final high-quality version
+              rightPage: "", // Will be generated in final high-quality version
               createdAt: new Date(),
-              generatedPrompts: statusResponse.cardData.generatedPrompts
+              generatedPrompts: {
+                frontCover: statusResponse.cardData.generatedPrompts?.frontCover || "" // Only store front cover prompt for draft mode
+              },
+              styleInfo: styleInfo // Store style information for smart style mode
             };
             
-            // Update only the draft cards state
+            // Update draft cards state - populate from left to right as they complete
             setDraftCards(prev => {
               const updated = [...prev];
-              updated[draftIndex] = draftCard;
-              
-              // Check if all 10 variations are complete
-              const completedCount = updated.filter(c => c).length;
-              console.log(`📊 Draft progress: ${completedCount}/10 variations complete`);
-              
-              if (completedCount === 10) {
-                setIsGenerating(false);
-                setGenerationProgress("");
-                setProgressPercentage(100);
-                stopElapsedTimeTracking();
-                toast.success("🎨 All 10 design variations ready! Choose your favorite below.");
-              } else {
-                setGenerationProgress(`✨ ${completedCount}/10 variations complete...`);
-                setProgressPercentage((completedCount / 10) * 100);
-              }
-              
+              updated.push(draftCard); // Add to next available position (left to right)
               return updated;
             });
+            
+            // Update mapping to track which display position corresponds to which original draft index
+            setDraftIndexMapping(prev => {
+              const updatedMapping = [...prev];
+              updatedMapping.push(draftIndex); // Map new display position to original draft index
+              return updatedMapping;
+            });
+            
+            // Update progress and check completion
+            const newCompletedCount = draftCards.length + 1; // +1 because state update is async
+            console.log(`📊 Draft progress: ${newCompletedCount}/5 front cover variations complete`);
+            
+            // Scroll to draft preview when first card appears
+            if (newCompletedCount === 1) {
+              scrollToCardPreview();
+            }
+            
+            if (newCompletedCount === 5) {
+              setIsGenerating(false);
+              setGenerationProgress("");
+              setProgressPercentage(100);
+              stopElapsedTimeTracking();
+              
+              // Only show completion toast once using a flag, and only if user hasn't moved to final generation
+              setDraftCompletionShown(prev => {
+                if (!prev && !isGeneratingFinalCard) {
+                  toast.success("🎨 All 5 front cover variations ready! Choose your favorite below.");
+                  return true;
+                }
+                return prev;
+              });
+            } else {
+              setGenerationProgress(`✨ ${newCompletedCount}/5 front cover variations complete... ${newCompletedCount >= 2 ? "You can select one now to proceed!" : ""}`);
+              setProgressPercentage((newCompletedCount / 5) * 100);
+            }
             
             removeJobFromStorage(jobId);
           } else {
@@ -801,7 +872,11 @@ export default function CardStudioPage() {
             setIsGenerating(false);
             setIsGeneratingFinalCard(false);
             setIsDraftMode(false);
+            setDraftCompletionShown(false); // Reset completion flag
             setGenerationProgress("");
+            
+            // Scroll to card preview
+            scrollToCardPreview();
             
             // Set all sections as completed
             setSectionLoadingStates({
@@ -838,8 +913,7 @@ export default function CardStudioPage() {
               }
               
               const cardsData = {
-                cards: [cardForStorage],
-                selectedIndex: 0,
+                mostRecentCard: cardForStorage,
                 generationDuration: statusResponse.cardData.generationTimeSeconds || null
               };
               localStorage.setItem('vibecarding-generated-cards', JSON.stringify(cardsData));
@@ -1160,8 +1234,18 @@ export default function CardStudioPage() {
     return `${seconds}s`;
   };
 
+  // Helper function to scroll to card preview
+  const scrollToCardPreview = () => {
+    setTimeout(() => {
+      const cardPreviewElement = document.querySelector('[data-card-preview]');
+      if (cardPreviewElement) {
+        cardPreviewElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 500);
+  };
+
   // Start elapsed time tracking
-  const startElapsedTimeTracking = (startTime?: number) => {
+  const startElapsedTimeTracking = (startTime?: number, estimatedTotalSeconds?: number) => {
     const start = startTime || Date.now();
     setGenerationStartTime(start);
     
@@ -1178,8 +1262,8 @@ export default function CardStudioPage() {
       const elapsed = (Date.now() - start) / 1000; // Convert to seconds
       setCurrentElapsedTime(elapsed);
       
-      // Smooth progress: estimate 150 seconds (2.5 minutes) total
-      const estimatedTotal = 150;
+      // Use provided estimated total or default based on mode
+      const estimatedTotal = estimatedTotalSeconds || (isDraftMode ? 45 : 150); // 45 seconds for draft mode, 150 seconds (2.5 minutes) for final
       const percentage = Math.min((elapsed / estimatedTotal) * 100, 95); // Cap at 95% until completion
       setProgressPercentage(percentage);
     }, 1000);
@@ -1224,10 +1308,10 @@ export default function CardStudioPage() {
           setSelectedType(formData.selectedType || "birthday");
           setCustomCardType(formData.customCardType || "");
           setSelectedTone(formData.selectedTone || "funny");
-          setSelectedArtisticStyle(formData.selectedArtisticStyle || "ai-smart-style");
+          setSelectedArtisticStyle(formData.selectedArtisticStyle || "watercolor");
           setCustomStyleDescription(formData.customStyleDescription || "");
           setSelectedImageModel(formData.selectedImageModel || "gpt-image-1");
-          setSelectedDraftModel(formData.selectedDraftModel || "flux-1.1-pro");
+          setSelectedDraftModel(formData.selectedDraftModel || "gpt-image-1");
           setNumberOfCards(formData.numberOfCards || 1);
           setUserEmail(formData.userEmail || "");
           setReferenceImageUrls(formData.referenceImageUrls || []);
@@ -1254,20 +1338,72 @@ export default function CardStudioPage() {
         const savedCards = localStorage.getItem('vibecarding-generated-cards');
         if (savedCards) {
           const cardsData = JSON.parse(savedCards);
-          // Convert createdAt strings back to Date objects
-          const cardsWithDates = (cardsData.cards || []).map((card: any) => ({
-            ...card,
-            createdAt: new Date(card.createdAt)
-          }));
-          setGeneratedCards(cardsWithDates);
-          setSelectedCardIndex(cardsData.selectedIndex || 0);
-          if (cardsWithDates.length > 0) {
-            setGeneratedCard(cardsWithDates[cardsData.selectedIndex || 0]);
+          
+          // Check for old format (with cards array) and migrate to new format
+          if (cardsData.cards && Array.isArray(cardsData.cards)) {
+            console.log('🔄 Detected old localStorage format, migrating to new format...');
+            
+            // Get the most recent card from the old format
+            let mostRecentCard = null;
+            if (cardsData.cards.length > 0) {
+              // Use selected card if available, otherwise use the last card in array
+              const selectedIndex = cardsData.selectedIndex || 0;
+              mostRecentCard = cardsData.cards[selectedIndex] || cardsData.cards[cardsData.cards.length - 1];
+              
+              if (mostRecentCard) {
+                // Convert to new format and save immediately
+                const newCardsData = {
+                  mostRecentCard: mostRecentCard,
+                  generationDuration: cardsData.generationDuration || null
+                };
+                
+                try {
+                  localStorage.setItem('vibecarding-generated-cards', JSON.stringify(newCardsData));
+                  console.log('✅ Migrated to new localStorage format with most recent card');
+                } catch (error) {
+                  console.error('❌ Failed to save migrated data:', error);
+                }
+                
+                // Set up the UI with the migrated card
+                const cardWithDate = {
+                  ...mostRecentCard,
+                  createdAt: new Date(mostRecentCard.createdAt)
+                };
+                setGeneratedCards([cardWithDate]);
+                setSelectedCardIndex(0);
+                setGeneratedCard(cardWithDate);
+                
+                if (cardsData.generationDuration) {
+                  setGenerationDuration(cardsData.generationDuration);
+                }
+              }
+            } else {
+              // Old format but no cards, just clear it
+              console.log('🧹 Old format with no cards, clearing localStorage');
+              localStorage.removeItem('vibecarding-generated-cards');
+            }
           }
-          // Restore generation duration if available
-          if (cardsData.generationDuration) {
-            setGenerationDuration(cardsData.generationDuration);
-            console.log('⏱️ Restored generation duration:', cardsData.generationDuration, 'seconds');
+          // Handle new format (with mostRecentCard)
+          else if (cardsData.mostRecentCard) {
+            const mostRecentCard = {
+              ...cardsData.mostRecentCard,
+              createdAt: new Date(cardsData.mostRecentCard.createdAt)
+            };
+            setGeneratedCards([mostRecentCard]);
+            setSelectedCardIndex(0);
+            setGeneratedCard(mostRecentCard);
+            
+            // Restore generation duration if available
+            if (cardsData.generationDuration) {
+              setGenerationDuration(cardsData.generationDuration);
+              console.log('⏱️ Restored generation duration:', cardsData.generationDuration, 'seconds');
+            }
+            console.log('✅ Most recent card loaded from localStorage');
+          }
+          // Invalid or empty format, clear it
+          else {
+            console.log('🧹 Invalid localStorage format detected, clearing...');
+            localStorage.removeItem('vibecarding-generated-cards');
           }
         }
       } catch (error) {
@@ -1275,7 +1411,85 @@ export default function CardStudioPage() {
       }
     };
 
+    // Cleanup function to remove any stale or unnecessary localStorage data
+    const cleanupLocalStorage = () => {
+      try {
+        // List of keys we want to keep
+        const keepKeys = [
+          'vibecarding-form-data',
+          'vibecarding-generated-cards',
+          'vibecarding-templates',
+          'vibecarding-templates-timestamp',
+          'generation-start-time'
+        ];
+        
+        // Get all localStorage keys that start with 'vibecarding-' or other app-related prefixes
+        const keysToCheck = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith('vibecarding-') || key.startsWith('cardJob_') || key === 'pendingCardJobs')) {
+            keysToCheck.push(key);
+          }
+        }
+        
+        // Remove any keys that are not in our keep list
+        let removedCount = 0;
+        keysToCheck.forEach(key => {
+          if (!keepKeys.includes(key)) {
+            // Special handling for job-related keys - keep recent ones, remove old ones
+            if (key.startsWith('cardJob_') || key === 'pendingCardJobs') {
+              try {
+                if (key === 'pendingCardJobs') {
+                  const pendingJobs = JSON.parse(localStorage.getItem(key) || '[]');
+                  // Keep only jobs from the last 24 hours
+                  const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+                  const recentJobs = pendingJobs.filter((jobId: string) => {
+                    const jobData = localStorage.getItem(`cardJob_${jobId}`);
+                    if (jobData) {
+                      const job = JSON.parse(jobData);
+                      return job.createdAt && job.createdAt > oneDayAgo;
+                    }
+                    return false;
+                  });
+                  
+                  if (recentJobs.length !== pendingJobs.length) {
+                    localStorage.setItem(key, JSON.stringify(recentJobs));
+                    console.log(`🧹 Cleaned up ${pendingJobs.length - recentJobs.length} old pending jobs`);
+                  }
+                } else if (key.startsWith('cardJob_')) {
+                  const jobData = localStorage.getItem(key);
+                  if (jobData) {
+                    const job = JSON.parse(jobData);
+                    const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+                    if (!job.createdAt || job.createdAt < oneDayAgo) {
+                      localStorage.removeItem(key);
+                      removedCount++;
+                    }
+                  }
+                }
+              } catch (error) {
+                // If we can't parse the job data, it's probably corrupted, so remove it
+                localStorage.removeItem(key);
+                removedCount++;
+              }
+            } else {
+              // Remove any other unknown keys
+              localStorage.removeItem(key);
+              removedCount++;
+            }
+          }
+        });
+        
+        if (removedCount > 0) {
+          console.log(`🧹 Cleaned up ${removedCount} stale localStorage items`);
+        }
+      } catch (error) {
+        console.error('Error during localStorage cleanup:', error);
+      }
+    };
+
     loadSavedState();
+    cleanupLocalStorage();
     setIsInitialLoadComplete(true);
     
     // Start preloading template cards immediately on page load
@@ -1346,30 +1560,32 @@ export default function CardStudioPage() {
     saveFormData();
       }, [isInitialLoadComplete, prompt, finalCardMessage, toField, fromField, selectedType, customCardType, selectedTone, selectedArtisticStyle, customStyleDescription, selectedImageModel, numberOfCards, userEmail, referenceImageUrls, imageTransformation, isHandwrittenMessage, isFrontBackOnly, selectedPaperSize, showAdvanced, handwritingSampleUrl, isTextareaExpanded, isMessageExpanded, messageHistory, currentMessageIndex, showRefinementBox, showSettings, showPrintConfirmation, isCardCompleted, generationDuration]);
 
-  // Save generated cards to localStorage whenever they change
+  // Save only the most recent card to localStorage whenever it changes
   useEffect(() => {
     const saveGeneratedCards = () => {
       try {
-        // Create lightweight versions without base64 QR codes for localStorage
-        const cardsForStorage = generatedCards.map(card => {
-          const cardCopy = { ...card };
-          if (cardCopy.backCover && cardCopy.backCover.startsWith('data:image/png;base64,')) {
-            // Don't store the base64 QR code version - it's too large for localStorage
-            // The QR code will be regenerated when needed
-            console.log('💾 Skipping base64 QR code storage for card:', cardCopy.id);
-            // Keep the original back cover URL if we have it
-            // Note: In practice, we'd need to store the original URL separately
-            // For now, we'll just not save the base64 version
-          }
-          return cardCopy;
-        });
+        if (generatedCards.length === 0) return;
+        
+        // Get the most recent card (the last one in the array, or the selected one)
+        const mostRecentCard = generatedCard || generatedCards[generatedCards.length - 1];
+        
+        // Create lightweight version without base64 QR codes for localStorage
+        const cardForStorage = { ...mostRecentCard };
+        if (cardForStorage.backCover && cardForStorage.backCover.startsWith('data:image/png;base64,')) {
+          // Don't store the base64 QR code version - it's too large for localStorage
+          // The QR code will be regenerated when needed
+          console.log('💾 Skipping base64 QR code storage for card:', cardForStorage.id);
+          // Keep the original back cover URL if we have it
+          // Note: In practice, we'd need to store the original URL separately
+          // For now, we'll just not save the base64 version
+        }
         
         const cardsData = {
-          cards: cardsForStorage,
-          selectedIndex: selectedCardIndex,
+          mostRecentCard: cardForStorage,
           generationDuration: generationDuration
         };
         localStorage.setItem('vibecarding-generated-cards', JSON.stringify(cardsData));
+        console.log('💾 Most recent card saved to localStorage:', cardForStorage.id);
       } catch (error) {
         console.error('Error saving generated cards:', error);
       }
@@ -1378,7 +1594,7 @@ export default function CardStudioPage() {
     if (generatedCards.length > 0) {
       saveGeneratedCards();
     }
-  }, [generatedCards, selectedCardIndex, generationDuration]);
+  }, [generatedCards, generatedCard, generationDuration]);
 
   // Track manual message changes for version control
   useEffect(() => {
@@ -1470,9 +1686,11 @@ export default function CardStudioPage() {
     // Clear all draft mode states to prevent UI conflicts
     setIsDraftMode(false);
     setDraftCards([]);
+    setDraftIndexMapping([]);
     setSelectedDraftIndex(-1);
     setIsGeneratingFinalCard(false);
     setPreviewingDraftIndex(-1);
+    setDraftCompletionShown(false); // Reset completion flag
     
     // Clear any existing card states
     setGeneratedCards([]);
@@ -1559,22 +1777,24 @@ export default function CardStudioPage() {
       const enhancedPrompts = { ...prompts };
       if (inputImages.length > 0 && selectedImageModel === "gpt-image-1") {
         const totalReferenceImages = (templateCustomizations.referenceImageUrls?.length || 0) + (referenceImageUrls?.length || 0);
-        const characterInstructions = `\n\nCRITICAL CHARACTER REFERENCE INSTRUCTIONS: I have provided ${totalReferenceImages > 1 ? 'multiple reference photos' : 'a reference photo'} as input image${totalReferenceImages > 1 ? 's' : ''}. You MUST create cartoon/illustrated characters that accurately represent the people in ${totalReferenceImages > 1 ? 'these reference photos' : 'this reference photo'} with high fidelity to their appearance.
+        const characterInstructions = `\n\nCRITICAL CHARACTER REFERENCE INSTRUCTIONS: I have provided ${totalReferenceImages > 1 ? 'multiple reference photos' : 'a reference photo'} as input image${totalReferenceImages > 1 ? 's' : ''}. You MUST create cartoon/illustrated characters that accurately represent ONLY the people who are actually visible in ${totalReferenceImages > 1 ? 'these reference photos' : 'this reference photo'} with high fidelity to their appearance.
 
-MANDATORY CHARACTER MATCHING REQUIREMENTS:
-- REPRESENT ALL PEOPLE: If multiple reference photos are provided, create cartoon versions of ALL people shown, bringing them together in the same scene
-- EXACT hair color, hair style, and hair length from each reference photo
-- PRECISE facial features for each person: eye color, eye shape, nose shape, face structure, skin tone
-- ACCURATE clothing: replicate the EXACT clothing items, colors, patterns, and styles worn by each person in their reference photo
-- COMPLETE accessories: include ALL accessories visible on each person (glasses, jewelry, hats, watches, bags, etc.)
+MANDATORY CHARACTER MATCHING REQUIREMENTS - ONLY INCLUDE WHAT IS ACTUALLY VISIBLE:
+- REPRESENT ONLY PEOPLE ACTUALLY IN THE PHOTOS: Create cartoon versions of ONLY the people who are actually shown in the reference photos. Do NOT add, create, or imagine any additional people not present in the reference images.
+- EXACT hair color, hair style, and hair length from each reference photo - only what is actually visible
+- PRECISE facial features for each person: eye color, eye shape, nose shape, face structure, skin tone - exactly as shown in the reference
+- ACCURATE clothing: replicate ONLY the EXACT clothing items, colors, patterns, and styles actually worn by each person in their reference photo - do not add or change any clothing items
+- ACCESSORIES ONLY IF VISIBLE: Include accessories (glasses, jewelry, hats, watches, bags, etc.) ONLY if they are actually visible on each person in the reference photo. DO NOT add glasses if they are not wearing glasses in the photo. DO NOT add jewelry if they are not wearing jewelry in the photo. DO NOT add any accessories that are not clearly visible in the reference image.
 - CORRECT body proportions and posture as shown for each person in their reference
-- FAITHFUL age representation and gender presentation for each individual
+- FAITHFUL age representation and gender presentation for each individual - exactly as they appear
 - AUTHENTIC facial expressions and poses from the reference images, lean towards making the people look happier unless the user specifically asks for a different expression
-- GROUP COMPOSITION: If multiple people, arrange them naturally together in a pleasing composition that fits the card's theme
+- GROUP COMPOSITION: If multiple people are actually shown in the photos, arrange them naturally together in a pleasing composition that fits the card's theme
 
-${templateCustomizations.referenceImageTransformation || imageTransformation || 'Study every detail of the people in the reference image and recreate them as stylized cartoon characters while maintaining 100% accuracy to their distinctive visual features. The characters must be immediately recognizable as the same people from the reference photo. Pay special attention to clothing details, accessories, and unique personal style elements that make each person distinctive.'}
+CRITICAL RESTRICTION: Do not add, remove, or modify any visual elements beyond what is actually visible in the reference photos. Only include people, clothing, and accessories that are clearly shown in the reference images.
 
-The cartoon style should be charming and artistic while preserving complete visual accuracy to the reference photo. Every person in the reference must be represented with their exact appearance, clothing, and accessories.`;
+${templateCustomizations.referenceImageTransformation || imageTransformation || 'Study every detail of the people actually in the reference image and recreate them as stylized cartoon characters while maintaining 100% accuracy to their distinctive visual features. The characters must be immediately recognizable as the same people from the reference photo. Pay special attention to clothing details and accessories that are actually visible, and unique personal style elements that make each person distinctive. Do not add or imagine any elements not present in the reference.'}
+
+The cartoon style should be charming and artistic while preserving complete visual accuracy to the reference photo. Only represent people, clothing, and accessories that are actually visible in the reference images.`;
 
         if (enhancedPrompts.frontCover) {
           enhancedPrompts.frontCover += characterInstructions;
@@ -1721,9 +1941,11 @@ Return the modified prompts in JSON format:
           // Clear draft mode states to prevent UI conflicts
           setIsDraftMode(false);
           setDraftCards([]);
+          setDraftIndexMapping([]);
           setSelectedDraftIndex(-1);
           setIsGeneratingFinalCard(false);
           setPreviewingDraftIndex(-1);
+          setDraftCompletionShown(false); // Reset completion flag
           
           // Clear progress states
           setGenerationProgress("");
@@ -1812,9 +2034,11 @@ CUSTOMIZATION REQUEST: ${templateCustomizations.promptChanges}`;
     // Clear draft mode states to prevent UI conflicts
     setIsDraftMode(false);
     setDraftCards([]);
+    setDraftIndexMapping([]);
     setSelectedDraftIndex(-1);
     setIsGeneratingFinalCard(false);
     setPreviewingDraftIndex(-1);
+    setDraftCompletionShown(false); // Reset completion flag
     
     // Clear progress states
     setGenerationProgress("");
@@ -1852,7 +2076,7 @@ CUSTOMIZATION REQUEST: ${templateCustomizations.promptChanges}`;
     setSelectedType("birthday");
     setCustomCardType("");
     setSelectedTone("funny");
-    setSelectedArtisticStyle("ai-smart-style");
+    setSelectedArtisticStyle("watercolor");
     setCustomStyleDescription("");
     setSelectedImageModel("gpt-image-1");
     setNumberOfCards(1);
@@ -1875,9 +2099,11 @@ CUSTOMIZATION REQUEST: ${templateCustomizations.promptChanges}`;
     // Clear draft mode states
     setIsDraftMode(false);
     setDraftCards([]);
+    setDraftIndexMapping([]);
     setSelectedDraftIndex(-1);
     setIsGeneratingFinalCard(false);
     setPreviewingDraftIndex(-1);
+    setDraftCompletionShown(false);
     
     // Clear progress and states
     setGenerationProgress("");
@@ -1918,9 +2144,11 @@ CUSTOMIZATION REQUEST: ${templateCustomizations.promptChanges}`;
     // Clear draft mode states
     setIsDraftMode(false);
     setDraftCards([]);
+    setDraftIndexMapping([]);
     setSelectedDraftIndex(-1);
     setIsGeneratingFinalCard(false);
     setPreviewingDraftIndex(-1);
+    setDraftCompletionShown(false);
     
     // Clear progress and states
     setGenerationProgress("");
@@ -2249,11 +2477,13 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
 
     setIsDraftMode(true);
     setIsGenerating(true);
-    startElapsedTimeTracking();
-    setGenerationProgress("🎨 Creating 4 design variations for you to choose from...");
+    startElapsedTimeTracking(undefined, 45); // 45 seconds for draft mode
+    setGenerationProgress("🎨 Creating 10 front cover variations for you to choose from...");
     setProgressPercentage(0);
     setDraftCards([]);
+    setDraftIndexMapping([]);
     setSelectedDraftIndex(-1);
+    setDraftCompletionShown(false); // Reset completion flag
     
     // Clear any previous card state to avoid UI conflicts
     setGeneratedCard(null);
@@ -2261,52 +2491,86 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
     setIsCardCompleted(false);
 
     try {
-      console.log("🚀 Starting draft mode generation with 10 variations");
+      console.log("🚀 Starting draft mode generation with 5 variations");
       
       // Show specific message for GPT-1 users about quality enforcement
       if (selectedDraftModel === "gpt-image-1") {
-        toast.success("🎨 Generating 10 design variations with GPT-1 (using low quality for fast previews)!");
+        const styleMessage = selectedArtisticStyle === "ai-smart-style" 
+          ? " across 5 curated artistic styles!"
+          : " (using low quality for fast previews)!";
+        toast.success(`🎨 Generating 5 front cover variations with GPT-1${styleMessage}`);
       } else {
-        toast.success("🎨 Generating 10 design variations for you to choose from!");
+        const styleMessage = selectedArtisticStyle === "ai-smart-style" 
+          ? " across 5 curated artistic styles!"
+          : " for you to choose from!";
+        toast.success(`🎨 Generating 5 front cover variations${styleMessage}`);
       }
 
-      // Generate 10 draft variations by calling the consolidated function 10 times
-      const draftPromises = Array.from({ length: 10 }, async (_, index) => {
-        try {
-          console.log(`🎨 Starting draft variation ${index + 1}`);
-          await handleGenerateCardAsyncInternal({
-            isDraftMode: true,
-            draftIndex: index,
-            onDraftComplete: (card: GeneratedCard, idx: number) => {
-              console.log(`✅ Draft variation ${idx + 1} completed:`, card.id);
-              setDraftCards(prev => {
-                const updated = [...prev];
-                updated[idx] = card;
-                
-                // Check if all 4 variations are complete
-                const completedCount = updated.filter(c => c).length;
-                console.log(`📊 Draft progress: ${completedCount}/4 variations complete`);
-                
-                if (completedCount === 4) {
-                  setIsGenerating(false);
-                  setGenerationProgress("");
-                  setProgressPercentage(100);
-                  stopElapsedTimeTracking();
-                  toast.success("🎨 All 4 design variations ready! Choose your favorite below.");
-                } else {
-                  setGenerationProgress(`✨ ${completedCount}/4 variations complete...`);
-                  setProgressPercentage((completedCount / 4) * 100);
-                }
-                
-                return updated;
-              });
+              // Generate 5 draft variations with smart style distribution
+        const draftPromises = Array.from({ length: 5 }, async (_, index) => {
+          try {
+            console.log(`🎨 Starting draft variation ${index + 1}`);
+            
+            // For smart style, use predefined styles for all 5 variations
+            let styleOverride: string | undefined = undefined;
+            let styleLabel: string | undefined = undefined;
+            if (selectedArtisticStyle === "ai-smart-style") {
+              const predefinedStyles = [
+                "watercolor",
+                "botanical",
+                "comic-book", 
+                "dreamy-fantasy",
+                "minimalist"
+              ];
+              
+              const styleLabels = [
+                "🎨 Watercolor",
+                "🌿 Botanical", 
+                "💥 Comic Book",
+                "🌸 Dreamy Fantasy",
+                "✨ Minimalist"
+              ];
+              
+              styleOverride = predefinedStyles[index];
+              styleLabel = styleLabels[index];
+              console.log(`🎨 Draft ${index + 1}: Using predefined style "${styleOverride}" (${styleLabel})`);
             }
-          });
-        } catch (error) {
-          console.error(`❌ Draft variation ${index + 1} failed:`, error);
-          toast.error(`Draft variation ${index + 1} failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-      });
+            
+            await handleGenerateCardAsyncInternal({
+              isDraftMode: true,
+              draftIndex: index,
+              styleOverride: styleOverride,
+              styleLabel: styleLabel,
+              onDraftComplete: (card: GeneratedCard, idx: number) => {
+                console.log(`✅ Draft variation ${idx + 1} completed:`, card.id);
+                setDraftCards(prev => {
+                  const updated = [...prev];
+                  updated[idx] = card;
+                  
+                  // Check if all 5 variations are complete
+                  const completedCount = updated.filter(c => c).length;
+                  console.log(`📊 Draft progress: ${completedCount}/5 variations complete`);
+                  
+                  if (completedCount === 5) {
+                    setIsGenerating(false);
+                    setGenerationProgress("");
+                    setProgressPercentage(100);
+                    stopElapsedTimeTracking();
+                    toast.success("🎨 All 5 design variations ready! Choose your favorite below.");
+                  } else {
+                    setGenerationProgress(`✨ ${completedCount}/5 variations complete...`);
+                    setProgressPercentage((completedCount / 5) * 100);
+                  }
+                  
+                  return updated;
+                });
+              }
+            });
+          } catch (error) {
+            console.error(`❌ Draft variation ${index + 1} failed:`, error);
+            toast.error(`Draft variation ${index + 1} failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
+        });
 
       // Wait for all draft generations to start (but not complete)
       await Promise.allSettled(draftPromises);
@@ -2318,6 +2582,7 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
       
       setIsGenerating(false);
       setIsDraftMode(false);
+      setDraftCompletionShown(false); // Reset completion flag
       setGenerationProgress("");
       stopElapsedTimeTracking();
     }
@@ -2326,30 +2591,134 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
 
 
   // Generate final high-quality card from selected draft
-  const handleGenerateFinalFromDraft = async (draftIndex: number) => {
-    if (draftIndex < 0 || draftIndex >= draftCards.length || !draftCards[draftIndex]) {
+  const handleGenerateFinalFromDraft = async (displayIndex: number) => {
+    if (displayIndex < 0 || displayIndex >= draftCards.length || !draftCards[displayIndex]) {
       toast.error("Invalid draft selection");
       return;
     }
 
+    // Get the original draft index from the mapping
+    const originalDraftIndex = draftIndexMapping[displayIndex];
+    if (originalDraftIndex === undefined) {
+      toast.error("Could not find original draft data");
+      return;
+    }
+
+    // Stop remaining draft generations to focus on the selected design
+    const remainingDrafts = 5 - draftCards.length;
+    if (remainingDrafts > 0 && isGenerating) {
+      setIsGenerating(false); // Stop the draft generation process
+      toast.info(`🎯 Focusing on your selected design! Skipping ${remainingDrafts} remaining variations.`);
+    }
+
     setIsGeneratingFinalCard(true);
-    setSelectedDraftIndex(draftIndex);
-    startElapsedTimeTracking();
+    setSelectedDraftIndex(displayIndex); // Store display index for UI
+    startElapsedTimeTracking(undefined, 120); // 120 seconds for final card generation
     setGenerationProgress("🎨 Creating high-quality version of your selected design...");
 
     try {
-      const selectedDraft = draftCards[draftIndex];
+      const selectedDraft = draftCards[displayIndex];
       const jobId = uuidv4();
       
-      // Use the same prompts as the selected draft but with high quality
-      // Replace "MESSAGE GOES HERE" placeholder with actual message content
-      const finalPrompts = { ...selectedDraft.generatedPrompts };
-      if (finalPrompts.rightInterior && !isHandwrittenMessage && finalCardMessage.trim()) {
-        finalPrompts.rightInterior = finalPrompts.rightInterior
-          .replace(/Include placeholder text: "MESSAGE GOES HERE"/g, `Include message text: "${finalCardMessage}"`)
-          .replace(/"MESSAGE GOES HERE"/g, `"${finalCardMessage}"`)
-          .replace(/MESSAGE GOES HERE/g, finalCardMessage);
+      // Generate the missing prompts using the stored frontCover prompt + user info
+      console.log("🔄 Generating complete prompts from stored front cover prompt + user info");
+      
+      // The draft should have at least the frontCover prompt
+      const storedFrontCoverPrompt = selectedDraft.generatedPrompts?.frontCover;
+      if (!storedFrontCoverPrompt) {
+        throw new Error("Selected draft is missing frontCover prompt");
       }
+      
+      console.log("✅ Found stored front cover prompt:", storedFrontCoverPrompt.substring(0, 100) + "...");
+      
+      // Now generate the missing 3 prompts using the front cover context + user info
+      const cardTypeForPrompt = selectedType === "custom" ? customCardType : selectedType;
+      const selectedToneObj = cardTones.find(tone => tone.id === selectedTone);
+      const toneDescription = selectedToneObj ? selectedToneObj.description.toLowerCase() : "heartfelt and sincere";
+      const effectivePrompt = prompt.trim() || `A beautiful ${cardTypeForPrompt} card with ${toneDescription} style`;
+      
+      let messageContent = finalCardMessage;
+      if (isHandwrittenMessage) {
+        messageContent = "[Blank space for handwritten message]";
+      }
+      
+      // Get style from the selected draft or fall back to current setting  
+      const draftStyleInfo = selectedDraft.styleInfo;
+      let styleModifier = "";
+      if (draftStyleInfo && draftStyleInfo.styleName) {
+        const selectedStyle = artisticStyles.find(style => style.id === draftStyleInfo.styleName);
+        styleModifier = selectedStyle?.promptModifier || "";
+      } else {
+        const selectedStyle = artisticStyles.find(style => style.id === selectedArtisticStyle);
+        styleModifier = selectedArtisticStyle === "custom" 
+          ? customStyleDescription 
+          : selectedStyle?.promptModifier || "";
+      }
+      
+      const generateOtherPromptsQuery = `You are creating the remaining prompts for a greeting card. You already have the front cover prompt below.
+
+EXISTING FRONT COVER PROMPT:
+"${storedFrontCoverPrompt}"
+
+CARD CONTEXT:
+- Type: ${cardTypeForPrompt}
+- Theme: "${effectivePrompt}"  
+- Tone: ${toneDescription}
+${toField ? `- To: ${toField}` : ""}
+${fromField ? `- From: ${fromField}` : ""}
+${!isFrontBackOnly ? `- Message: "${messageContent}"` : ""}
+${isHandwrittenMessage ? "- Note: Include space for handwritten message" : ""}
+
+TASK: Create prompts for the remaining card sections that are visually cohesive with the existing front cover. Use the same color palette, artistic style, lighting, and visual elements from the front cover to create a unified design.
+
+Requirements:
+- Maintain visual continuity with the front cover design
+- Use the same artistic style: ${styleModifier}
+- Keep consistent color palette, lighting, and mood
+- Full-bleed backgrounds extending to edges
+- Keep text/faces 0.5" from left/right edges for safe printing
+- IMPORTANT: Keep text, faces, and key elements at least 10% away from top/bottom edges
+
+Generate prompts for:
+
+1. Back Cover: Create a simple, peaceful design that complements the front cover. Reference subtle elements from the front cover but keep it minimal and serene. NO PEOPLE, just beautiful artistic elements. IMPORTANT: Leave the bottom-right corner area (approximately 1 inch square) completely clear and undecorated for QR code placement.
+
+${!isFrontBackOnly ? `2. Left Interior: Creative decorative art that harmonizes with the front cover style. NO PEOPLE or characters, focus on artistic elements like patterns, landscapes, objects, or abstract art that matches the front cover's mood and style.
+
+3. Right Interior: ${isHandwrittenMessage ? `Design elegant writing space with decorative elements that complement the front cover style. Position decorative elements safely away from edges. NO PEOPLE or characters.` : `Include message text: "${messageContent}" in beautiful handwritten cursive script, integrated into decorative artwork that matches the front cover style. NO PEOPLE or characters.`}` : ''}
+
+Return JSON:
+{
+  "frontCover": "${storedFrontCoverPrompt}",
+  "backCover": "detailed back cover prompt"${!isFrontBackOnly ? ',\n  "leftInterior": "detailed left interior prompt",\n  "rightInterior": "detailed right interior prompt"' : ''}
+}`;
+
+      const finalPrompts = await chatWithAI(generateOtherPromptsQuery, {
+        jsonSchema: {
+          type: "object",
+          properties: {
+            frontCover: { type: "string" },
+            backCover: { type: "string" },
+            ...(isFrontBackOnly ? {} : { 
+              leftInterior: { type: "string" },
+              rightInterior: { type: "string" }
+            })
+          },
+          required: ["frontCover", "backCover", ...(isFrontBackOnly ? [] : ["leftInterior", "rightInterior"])]
+        },
+        model: "gemini-2.5-pro"
+      });
+
+      if (!finalPrompts || !finalPrompts.frontCover || !finalPrompts.backCover) {
+        throw new Error("Failed to generate complete prompts for final card");
+      }
+      
+      console.log("✅ Generated complete prompts for final card:", {
+        hasFrontCover: !!finalPrompts.frontCover,
+        hasBackCover: !!finalPrompts.backCover,
+        hasLeftInterior: !!finalPrompts.leftInterior,
+        hasRightInterior: !!finalPrompts.rightInterior
+      });
       
       // Prepare input images for final generation (reference photos)
       const inputImages: string[] = [];
@@ -2418,9 +2787,11 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
   const handleGenerateCardAsyncInternal = async (options: {
     isDraftMode?: boolean;
     draftIndex?: number;
+    styleOverride?: string;
+    styleLabel?: string;
     onDraftComplete?: (card: GeneratedCard, index: number) => void;
   } = {}) => {
-    const { isDraftMode = false, draftIndex = 0, onDraftComplete } = options;
+    const { isDraftMode = false, draftIndex = 0, styleOverride = undefined, styleLabel = undefined, onDraftComplete } = options;
     
     console.log(`🔍 handleGenerateCardAsyncInternal called:`, { isDraftMode, draftIndex, hasOnDraftComplete: !!onDraftComplete });
     if (!userEmail.trim()) {
@@ -2454,7 +2825,7 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
     // Only set global generating state if not in draft mode (draft mode manages its own state)
     if (!isDraftMode) {
       setIsGenerating(true);
-      startElapsedTimeTracking();
+      startElapsedTimeTracking(undefined, 120); // 120 seconds for regular card generation
       setGenerationProgress("Creating your personalized card...");
       setProgressPercentage(0);
     }
@@ -2525,8 +2896,16 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
       }
 
       // Generate style and paper config
-      const selectedStyle = artisticStyles.find(style => style.id === selectedArtisticStyle);
-      const styleModifier = selectedArtisticStyle === "custom" 
+      let effectiveArtisticStyle = selectedArtisticStyle;
+      
+      // Use style override if provided (for smart style distribution in draft mode)
+      if (styleOverride) {
+        effectiveArtisticStyle = styleOverride;
+        console.log(`🎨 Using style override: ${styleOverride} instead of ${selectedArtisticStyle}`);
+      }
+      
+      const selectedStyle = artisticStyles.find(style => style.id === effectiveArtisticStyle);
+      const styleModifier = effectiveArtisticStyle === "custom" 
         ? customStyleDescription 
         : selectedStyle?.promptModifier || "";
 
@@ -2535,7 +2914,29 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
       setGenerationProgress("🎨 Creating artistic vision for your card...");
 
       // Generate prompts for all cards
-      const basePromptGenerationQuery = `You are an expert AI greeting card designer tasked with creating cohesive, visually stunning prompts for a ${cardTypeForPrompt} greeting card${numberOfCards > 1 ? ` (this is variant ${1} of ${numberOfCards} unique designs)` : ''}.
+      // In draft mode, only generate frontCover prompt for speed
+      const promptGenerationQuery = isDraftMode ? 
+        `You are an expert AI greeting card designer. Create a front cover prompt for a ${cardTypeForPrompt} greeting card.
+
+Theme: "${effectivePrompt}"
+Style: ${selectedStyle?.label || "Default"}
+Tone: ${selectedToneObj ? selectedToneObj.label : "Heartfelt"} - ${toneDescription}
+${toField ? `To: ${toField}` : ""}
+${fromField ? `From: ${fromField}` : ""}
+${referenceImageUrls.length > 0 ? `Reference Photos: I have attached ${referenceImageUrls.length} reference photo${referenceImageUrls.length > 1 ? 's' : ''} for character creation.
+Transformation instructions: "${imageTransformation || 'Create stylized cartoon characters that accurately represent the people in the reference photos'}"` : ""}
+
+Front Cover Requirements:
+- Include "${cardTypeForPrompt}" greeting text positioned safely in center area (avoid top/bottom 10%)
+- Use beautiful, readable handwritten cursive script
+- ${referenceImageUrls.length > 0 ? 'Create cartoon/illustrated characters from reference photos' : 'Create charming cartoon-style figures if needed'}
+- Be creative and unique, avoid generic designs
+- Flat 2D artwork for printing
+- Style: ${styleModifier}
+
+Return ONLY the front cover prompt as plain text.` 
+        :
+        `You are an expert AI greeting card designer tasked with creating cohesive, visually stunning prompts for a ${cardTypeForPrompt} greeting card${numberOfCards > 1 ? ` (this is variant ${1} of ${numberOfCards} unique designs)` : ''}.
 
 Theme: "${effectivePrompt}"
 Style: ${selectedStyle?.label || "Default"}
@@ -2544,7 +2945,8 @@ ${toField ? `To: ${toField}` : ""}
 ${fromField ? `From: ${fromField}` : ""}
 ${!isFrontBackOnly ? `Message: "${messageContent}"` : ""}
 ${isHandwrittenMessage ? "Note: Include space for handwritten message" : ""}
-${referenceImageUrls.length > 0 ? `Reference: "${imageTransformation || 'artistic transformation'}"` : ""}
+${referenceImageUrls.length > 0 ? `Reference Photos: I have attached ${referenceImageUrls.length} reference photo${referenceImageUrls.length > 1 ? 's' : ''} for you to analyze. Please look at ${referenceImageUrls.length > 1 ? 'these photos' : 'this photo'} to understand what the people look like - their hair color/style, facial features, clothing, accessories, body type, age, etc. Use this visual information to create accurate cartoon/illustrated versions of ${referenceImageUrls.length > 1 ? 'these people' : 'this person'} in the prompts.
+Transformation instructions: "${imageTransformation || 'Create stylized cartoon characters that accurately represent the people in the reference photos while maintaining their distinctive features'}"` : ""}
 
 CRITICAL: Create a cohesive visual narrative that flows chronologically through the card experience:
 1. FRONT COVER: First impression - sets the scene/introduces the story
@@ -2600,7 +3002,26 @@ Return JSON:
   "backCover": "detailed prompt with story conclusion elements"${!isFrontBackOnly ? ',\n  "leftInterior": "detailed prompt with story development elements",\n  "rightInterior": "detailed prompt with story climax elements"' : ''}
 }`;
 
-      const generatedPrompts = await chatWithAI(basePromptGenerationQuery, {
+      let generatedPrompts;
+
+      if (isDraftMode) {
+        // For draft mode, get just the front cover prompt as plain text
+        const frontCoverPrompt = await chatWithAI(promptGenerationQuery, {
+          model: "gemini-2.5-pro",
+          attachments: referenceImageUrls
+        });
+
+        if (!frontCoverPrompt?.trim()) {
+          console.error("❌ Failed to generate front cover prompt:", frontCoverPrompt);
+          throw new Error("Failed to generate front cover prompt");
+        }
+
+        generatedPrompts = {
+          frontCover: frontCoverPrompt.trim()
+        };
+      } else {
+        // For regular mode, get all prompts as JSON
+        generatedPrompts = await chatWithAI(promptGenerationQuery, {
         jsonSchema: {
           type: "object",
           properties: {
@@ -2613,12 +3034,14 @@ Return JSON:
           },
           required: ["frontCover", "backCover", ...(isFrontBackOnly ? [] : ["leftInterior", "rightInterior"])]
         },
-        model: "gemini-2.5-pro"
+        model: "gemini-2.5-pro",
+          attachments: referenceImageUrls
       });
 
       if (!generatedPrompts || !generatedPrompts.frontCover) {
         console.error("❌ Failed to generate image prompts:", generatedPrompts);
         throw new Error("Failed to generate image prompts");
+        }
       }
       
       console.log("✅ Generated prompts successfully:", { 
@@ -2630,22 +3053,24 @@ Return JSON:
 
       // Enhance front cover prompt with reference image instructions if available
       if (referenceImageUrls.length > 0 && modelToUse === "gpt-image-1") {
-        generatedPrompts.frontCover = `${generatedPrompts.frontCover}\n\nCRITICAL CHARACTER REFERENCE INSTRUCTIONS: I have provided ${referenceImageUrls.length > 1 ? 'multiple reference photos' : 'a reference photo'} as input image${referenceImageUrls.length > 1 ? 's' : ''}. You MUST create cartoon/illustrated characters that accurately represent the people in ${referenceImageUrls.length > 1 ? 'these reference photos' : 'this reference photo'} with high fidelity to their appearance.
+        generatedPrompts.frontCover = `${generatedPrompts.frontCover}\n\nCRITICAL CHARACTER REFERENCE INSTRUCTIONS: I have provided ${referenceImageUrls.length > 1 ? 'multiple reference photos' : 'a reference photo'} as input image${referenceImageUrls.length > 1 ? 's' : ''}. You MUST create cartoon/illustrated characters that accurately represent ONLY the people who are actually visible in ${referenceImageUrls.length > 1 ? 'these reference photos' : 'this reference photo'} with high fidelity to their appearance.
 
-MANDATORY CHARACTER MATCHING REQUIREMENTS:
-- REPRESENT ALL PEOPLE: If multiple reference photos are provided, create cartoon versions of ALL people shown, bringing them together in the same scene
-- EXACT hair color, hair style, and hair length from each reference photo
-- PRECISE facial features for each person: eye color, eye shape, nose shape, face structure, skin tone
-- ACCURATE clothing: replicate the EXACT clothing items, colors, patterns, and styles worn by each person in their reference photo
-- COMPLETE accessories: include ALL accessories visible on each person (glasses, jewelry, hats, watches, bags, etc.)
+MANDATORY CHARACTER MATCHING REQUIREMENTS - ONLY INCLUDE WHAT IS ACTUALLY VISIBLE:
+- REPRESENT ONLY PEOPLE ACTUALLY IN THE PHOTOS: Create cartoon versions of ONLY the people who are actually shown in the reference photos. Do NOT add, create, or imagine any additional people not present in the reference images.
+- EXACT hair color, hair style, and hair length from each reference photo - only what is actually visible
+- PRECISE facial features for each person: eye color, eye shape, nose shape, face structure, skin tone - exactly as shown in the reference
+- ACCURATE clothing: replicate ONLY the EXACT clothing items, colors, patterns, and styles actually worn by each person in their reference photo - do not add or change any clothing items
+- ACCESSORIES ONLY IF VISIBLE: Include accessories (glasses, jewelry, hats, watches, bags, etc.) ONLY if they are actually visible on each person in the reference photo. DO NOT add glasses if they are not wearing glasses in the photo. DO NOT add jewelry if they are not wearing jewelry in the photo. DO NOT add any accessories that are not clearly visible in the reference image.
 - CORRECT body proportions and posture as shown for each person in their reference
-- FAITHFUL age representation and gender presentation for each individual
+- FAITHFUL age representation and gender presentation for each individual - exactly as they appear
 - AUTHENTIC facial expressions and poses from the reference images, lean towards making the people look happier unless the user specifically asks for a different expression
-- GROUP COMPOSITION: If multiple people, arrange them naturally together in a pleasing composition that fits the card's theme
+- GROUP COMPOSITION: If multiple people are actually shown in the photos, arrange them naturally together in a pleasing composition that fits the card's theme
 
-${imageTransformation || 'Study every detail of the people in the reference image and recreate them as stylized cartoon characters while maintaining 100% accuracy to their distinctive visual features. The characters must be immediately recognizable as the same people from the reference photo. Pay special attention to clothing details, accessories, and unique personal style elements that make each person distinctive.'}
+CRITICAL RESTRICTION: Do not add, remove, or modify any visual elements beyond what is actually visible in the reference photos. Only include people, clothing, and accessories that are clearly shown in the reference images.
 
-The cartoon style should be charming and artistic while preserving complete visual accuracy to the reference photo. Every person in the reference must be represented with their exact appearance, clothing, and accessories.`;
+${imageTransformation || 'Study every detail of the people actually in the reference image and recreate them as stylized cartoon characters while maintaining 100% accuracy to their distinctive visual features. The characters must be immediately recognizable as the same people from the reference photo. Pay special attention to clothing details and accessories that are actually visible, and unique personal style elements that make each person distinctive. Do not add or imagine any elements not present in the reference.'}
+
+The cartoon style should be charming and artistic while preserving complete visual accuracy to the reference photo. Only represent people, clothing, and accessories that are actually visible in the reference images.`;
       }
 
       // Save job data to localStorage and server
@@ -2695,7 +3120,7 @@ The cartoon style should be charming and artistic while preserving complete visu
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jobId,
-          prompts: generatedPrompts,
+          prompts: isDraftMode ? { frontCover: generatedPrompts.frontCover } : generatedPrompts, // Draft mode: front cover only
           config: {
             userNumber: "+17145986105",
             modelVersion: modelToUse,
@@ -2710,6 +3135,7 @@ The cartoon style should be charming and artistic while preserving complete visu
             cardType: cardTypeForPrompt,
             toField,
             fromField,
+            isDraftMode: isDraftMode, // Add flag to help backend understand this is draft mode
             ...(inputImages.length > 0 && { 
               input_images: inputImages,
               input_images_mode: "front_cover_only" // All reference images should go to front cover for character creation
@@ -2736,7 +3162,7 @@ The cartoon style should be charming and artistic while preserving complete visu
 
       // Start polling for completion
       if (isDraftMode) {
-        setGenerationProgress(`✨ Creating draft variation ${draftIndex + 1}...`);
+        setGenerationProgress("✨ Creating draft generations...");
         console.log(`🔄 Starting polling for draft job ${jobId}`);
         // For draft mode, we'll handle polling differently if needed
         pollJobStatus(jobId);
@@ -2771,7 +3197,7 @@ The cartoon style should be charming and artistic while preserving complete visu
 
   // Wrapper function for regular card generation (used as click handler)
   const handleGenerateCardAsync = async () => {
-    return handleGenerateCardAsyncInternal();
+    return handleGenerateCardAsyncInternal({});
   };
 
   // Original synchronous card generation (keep as fallback)
@@ -2938,7 +3364,7 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
     // Only set global generating state if not in draft mode (draft mode manages its own state)
     if (!isDraftMode) {
       setIsGenerating(true);
-      startElapsedTimeTracking();
+      startElapsedTimeTracking(undefined, 120); // 120 seconds for regular card generation  
       setGenerationProgress("Creating your personalized card...");
       setProgressPercentage(0);
     }
@@ -3031,7 +3457,7 @@ Make it feel like something created with love for someone special.`;
       setGenerationProgress(`🎯 Crafting ${numberOfCards} masterpiece design${numberOfCards > 1 ? 's' : ''}...`);
       
       // Create the base prompt generation query that will be used for each card variant
-      const basePromptGenerationQuery = `Create ${isFrontBackOnly ? '2' : '4'} prompts for a cohesive, chronologically flowing ${cardTypeForPrompt} greeting card that tells a visual story (${paperConfig.aspectRatio} ratio):
+      const legacyPromptGenerationQuery = `Create ${isFrontBackOnly ? '2' : '4'} prompts for a cohesive, chronologically flowing ${cardTypeForPrompt} greeting card that tells a visual story (${paperConfig.aspectRatio} ratio):
 
 🎨 CREATIVITY MANDATE: Be genuinely creative, unique, and innovative! Avoid generic or cliché designs. Think outside the box, surprise with unexpected elements, use bold artistic choices, and create something truly memorable and special. Push creative boundaries while staying appropriate for the card type and tone.
 
@@ -3042,7 +3468,8 @@ ${toField ? `To: ${toField}` : ""}
 ${fromField ? `From: ${fromField}` : ""}
 ${!isFrontBackOnly ? `Message: "${messageContent}"` : ""}
 ${isHandwrittenMessage ? "Note: Include space for handwritten message" : ""}
-${referenceImageUrls.length > 0 ? `Reference: "${imageTransformation || 'artistic transformation'}"` : ""}
+${referenceImageUrls.length > 0 ? `Reference Photos: I have attached ${referenceImageUrls.length} reference photo${referenceImageUrls.length > 1 ? 's' : ''} for you to analyze. Please look at ${referenceImageUrls.length > 1 ? 'these photos' : 'this photo'} to understand what the people look like - their hair color/style, facial features, clothing, accessories, body type, age, etc. Use this visual information to create accurate cartoon/illustrated versions of ${referenceImageUrls.length > 1 ? 'these people' : 'this person'} in the prompts.
+Transformation instructions: "${imageTransformation || 'Create stylized cartoon characters that accurately represent the people in the reference photos while maintaining their distinctive features'}"` : ""}
 
 CRITICAL: Create a cohesive visual narrative that flows chronologically through the card experience:
 1. FRONT COVER: First impression - sets the scene/introduces the story
@@ -3100,7 +3527,7 @@ Return JSON:
 
       // Generate multiple unique prompt sets in parallel
       const promptGenerationPromises = Array.from({ length: numberOfCards }, (_, cardIndex) => {
-        const uniquePromptQuery = basePromptGenerationQuery + `
+        const uniquePromptQuery = legacyPromptGenerationQuery + `
 
 🎨 CARD VARIANT ${cardIndex + 1} CREATIVE DIRECTION: 
 Create a completely unique visual interpretation that's distinctly different from other possible variants. Use different:
@@ -3133,7 +3560,8 @@ Return JSON:
             },
             required: ["frontCover", "backCover", ...(isFrontBackOnly ? [] : ["leftInterior", "rightInterior"])]
           },
-          includeThoughts: false  // Don't include thinking content for prompt generation
+          includeThoughts: false,  // Don't include thinking content for prompt generation
+          attachments: referenceImageUrls  // Pass reference images to AI for better prompt generation
         });
       });
 
@@ -3187,20 +3615,24 @@ Return JSON:
         let enhancedFrontCoverPrompt = generatedPrompts.frontCover;
         if (referenceImageUrls.length > 0 && modelToUse === "gpt-image-1") {
           // GPT-1 with direct image input - focus on character creation
-          enhancedFrontCoverPrompt = `${generatedPrompts.frontCover}\n\nCRITICAL CHARACTER REFERENCE INSTRUCTIONS: I have provided ${referenceImageUrls.length > 1 ? 'multiple reference photos' : 'a reference photo'} as input image${referenceImageUrls.length > 1 ? 's' : ''}. You MUST create cartoon/illustrated characters that accurately represent the people in ${referenceImageUrls.length > 1 ? 'these reference photos' : 'this reference photo'} with high fidelity to their appearance.
+          enhancedFrontCoverPrompt = `${generatedPrompts.frontCover}\n\nCRITICAL CHARACTER REFERENCE INSTRUCTIONS: I have provided ${referenceImageUrls.length > 1 ? 'multiple reference photos' : 'a reference photo'} as input image${referenceImageUrls.length > 1 ? 's' : ''}. You MUST create cartoon/illustrated characters that accurately represent ONLY the people who are actually visible in ${referenceImageUrls.length > 1 ? 'these reference photos' : 'this reference photo'} with high fidelity to their appearance.
 
-MANDATORY CHARACTER MATCHING REQUIREMENTS:
-- EXACT hair color, hair style, and hair length from the reference photo
-- PRECISE facial features: eye color, eye shape, nose shape, face structure, skin tone
-- ACCURATE clothing: replicate the EXACT clothing items, colors, patterns, and styles worn in the reference photo
-- COMPLETE accessories: include ALL accessories visible (glasses, jewelry, hats, watches, bags, etc.)
+MANDATORY CHARACTER MATCHING REQUIREMENTS - ONLY INCLUDE WHAT IS ACTUALLY VISIBLE:
+- REPRESENT ONLY PEOPLE ACTUALLY IN THE PHOTOS: Create cartoon versions of ONLY the people who are actually shown in the reference photos. Do NOT add, create, or imagine any additional people not present in the reference images.
+- EXACT hair color, hair style, and hair length from the reference photo - only what is actually visible
+- PRECISE facial features: eye color, eye shape, nose shape, face structure, skin tone - exactly as shown in the reference
+- ACCURATE clothing: replicate ONLY the EXACT clothing items, colors, patterns, and styles actually worn in the reference photo - do not add or change any clothing items
+- ACCESSORIES ONLY IF VISIBLE: Include accessories (glasses, jewelry, hats, watches, bags, etc.) ONLY if they are actually visible on each person in the reference photo. DO NOT add glasses if they are not wearing glasses in the photo. DO NOT add jewelry if they are not wearing jewelry in the photo. DO NOT add any accessories that are not clearly visible in the reference image.
 - CORRECT body proportions and posture as shown in the reference
-- FAITHFUL age representation and gender presentation
-- AUTHENTIC facial expressions and poses from the reference image, learn towards making the people look happier unless the user specifically asks for a different expression.
+- FAITHFUL age representation and gender presentation - exactly as they appear
+- AUTHENTIC facial expressions and poses from the reference image, lean towards making the people look happier unless the user specifically asks for a different expression.
+- GROUP COMPOSITION: If multiple people are actually shown in the photos, arrange them naturally together in a pleasing composition that fits the card's theme
 
-${imageTransformation || 'Study every detail of the people in the reference image and recreate them as stylized cartoon characters while maintaining 100% accuracy to their distinctive visual features. The characters must be immediately recognizable as the same people from the reference photo. Pay special attention to clothing details, accessories, and unique personal style elements that make each person distinctive.'}
+CRITICAL RESTRICTION: Do not add, remove, or modify any visual elements beyond what is actually visible in the reference photos. Only include people, clothing, and accessories that are clearly shown in the reference images.
 
-The cartoon style should be charming and artistic while preserving complete visual accuracy to the reference photo. Every person in the reference must be represented with their exact appearance, clothing, and accessories.`;
+${imageTransformation || 'Study every detail of the people actually in the reference image and recreate them as stylized cartoon characters while maintaining 100% accuracy to their distinctive visual features. The characters must be immediately recognizable as the same people from the reference photo. Pay special attention to clothing details and accessories that are actually visible, and unique personal style elements that make each person distinctive. Do not add or imagine any elements not present in the reference.'}
+
+The cartoon style should be charming and artistic while preserving complete visual accuracy to the reference photo. Only represent people, clothing, and accessories that are actually visible in the reference images.`;
         }
         
         const cardPayloads = [
@@ -3783,6 +4215,9 @@ Return only the rewritten prompt, no explanations.`;
         setIsGenerating(false);
         setGenerationProgress("");
         
+        // Scroll to card preview
+        scrollToCardPreview();
+        
         toast.success(`✨ Template loaded! You can now print or email this card from the preview below.`);
       } else {
         // Template is incomplete, try to fetch complete data from API
@@ -3818,6 +4253,9 @@ Return only the rewritten prompt, no explanations.`;
               setIsGenerating(false);
               setGenerationProgress("");
               
+              // Scroll to card preview
+              scrollToCardPreview();
+              
               toast.success(`✅ Complete template loaded with all images!`);
             } else {
               throw new Error("Complete card data not found");
@@ -3842,6 +4280,9 @@ Return only the rewritten prompt, no explanations.`;
           setIsCardCompleted(true);
           setIsGenerating(false);
           setGenerationProgress("");
+          
+          // Scroll to card preview
+          scrollToCardPreview();
           
           toast.info(`📋 Template loaded! Some images may be repeated from the front cover.`);
         }
@@ -4538,68 +4979,79 @@ Return only the numeric score (1-100) for each image.`;
       <div className="container mx-auto px-4 py-6 max-w-2xl">
         {/* Main Form */}
         <Card className="shadow-lg mb-6">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <Sparkles className="w-5 h-5 text-blue-600" />
-                      Create Your Card
-                    </CardTitle>
-                    <CardDescription className="flex items-center justify-between">
-                      <span>Describe your card and we'll create it for you</span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setShowTemplateGallery(true);
-                        }}
-                        className="gap-2 text-xs"
-                      >
-                        <Eye className="w-3 h-3" />
-                        Use Template
-                      </Button>
-                    </CardDescription>
-                  </div>
-                  {(prompt || toField || fromField || generatedCards.length > 0) && (
-                    <div className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      Auto-saved
+              <CardHeader className="bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20 rounded-t-lg">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-lg flex items-center justify-center shadow-lg">
+                        <Sparkles className="w-6 h-6 text-white" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent whitespace-nowrap">
+                          Create Your Card
+                        </CardTitle>
+                      </div>
                     </div>
-                  )}
+                    {(prompt || toField || fromField || generatedCards.length > 0) && (
+                      <div className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        <span className="hidden sm:inline">Auto-saved</span>
+                        <span className="sm:hidden">Saved</span>
+                      </div>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setShowTemplateGallery(true);
+                    }}
+                    className="w-full sm:w-auto gap-2 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border-gray-200 dark:border-gray-700"
+                  >
+                    <Eye className="w-4 h-4" />
+                    <span>Browse Templates</span>
+                  </Button>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent className="space-y-6 pt-6">
             {/* Card Type */}
-                <div>
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-                    Card Type
-                  </label>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-8 bg-gradient-to-b from-blue-500 to-cyan-500 rounded-full" />
+                    <label className="text-base font-semibold text-gray-800 dark:text-gray-200">
+                      Card Type
+                    </label>
+                  </div>
                   <Select value={selectedType} onValueChange={setSelectedType}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-12 border-2 hover:border-blue-300 dark:hover:border-blue-700 transition-colors">
                       <SelectValue>
                         {(() => {
                           const selected = cardTypes.find((type) => type.id === selectedType);
                           if (!selected) return <span className="text-gray-400">Choose card type</span>;
                           const IconComponent = selected.icon;
                           return (
-                            <div className="flex items-center gap-2">
-                              <IconComponent className="w-4 h-4 text-gray-500" />
-                              <span className="font-medium">{selected.label}</span>
+                            <div className="flex items-center gap-3">
+                              <div className="w-6 h-6 bg-gradient-to-br from-blue-100 to-cyan-100 dark:from-blue-900 dark:to-cyan-900 rounded-lg flex items-center justify-center">
+                                <IconComponent className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                              </div>
+                              <span className="font-medium text-gray-900 dark:text-gray-100">{selected.label}</span>
                             </div>
                           );
                         })()}
                       </SelectValue>
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-[400px]">
                       {cardTypes.map((type) => {
                         const IconComponent = type.icon;
                         return (
-                          <SelectItem key={type.id} value={type.id}>
-                            <div className="flex items-center gap-2">
-                              <IconComponent className="w-4 h-4 text-gray-500" />
-                              <div>
-                                <div className="font-medium">{type.label}</div>
-                                <div className="text-xs text-muted-foreground">{type.description}</div>
+                          <SelectItem key={type.id} value={type.id} className="cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20">
+                            <div className="flex items-center gap-3 py-1">
+                              <div className="w-8 h-8 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 rounded-lg flex items-center justify-center">
+                                <IconComponent className="w-4 h-4 text-gray-700 dark:text-gray-300" />
+                              </div>
+                              <div className="flex-1">
+                                <div className="font-semibold text-gray-900 dark:text-gray-100">{type.label}</div>
+                                <div className="text-xs text-gray-600 dark:text-gray-400">{type.description}</div>
                               </div>
                             </div>
                           </SelectItem>
@@ -4610,17 +5062,19 @@ Return only the numeric score (1-100) for each image.`;
                   
                   {/* Custom Card Type Input */}
                   {selectedType === "custom" && (
-                    <div className="mt-3">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-                        Describe Your Card Type
+                    <div className="mt-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800 animate-in slide-in-from-top-2 duration-300">
+                      <label className="text-sm font-semibold text-purple-900 dark:text-purple-100 mb-3 block flex items-center gap-2">
+                        <Wrench className="w-4 h-4" />
+                        Describe Your Custom Card Type
                       </label>
                       <Input
                         placeholder="✨ E.g., 'Promotion at work', 'Moving away', 'First day of school'"
                         value={customCardType}
                         onChange={(e) => setCustomCardType(e.target.value)}
+                        className="h-12 border-2 border-purple-300 dark:border-purple-700 focus:border-purple-500 dark:focus:border-purple-500"
                         style={{ fontSize: '16px' }}
                       />
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      <p className="text-xs text-purple-700 dark:text-purple-300 mt-2">
                         What type of card is this? This helps personalize the message and style.
                       </p>
                     </div>
@@ -5322,8 +5776,8 @@ Return only the numeric score (1-100) for each image.`;
                   </CollapsibleContent>
                 </Collapsible>
 
-                {/* Clean Progress Indicator */}
-                {(isGenerating || isGeneratingMessage) && (
+                {/* Clean Progress Indicator - Hide when draft cards are available for selection */}
+                {(isGenerating || isGeneratingMessage) && !isGeneratingFinalCard && !(isDraftMode && draftCards.length > 0) && (
                   <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/30 dark:to-cyan-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
                     <div className="space-y-3">
                       {/* Progress Message */}
@@ -5354,7 +5808,7 @@ Return only the numeric score (1-100) for each image.`;
                             </span>
                           )}
                           <span className="text-gray-500">
-                            ~2-3 min expected
+                            {isDraftMode && !isGeneratingFinalCard ? '~30-60 sec expected' : '~1:30-2:00 min expected'}
                           </span>
                         </div>
                       </div>
@@ -5373,9 +5827,12 @@ Return only the numeric score (1-100) for each image.`;
                           <p className="font-medium text-purple-900 dark:text-purple-100">
                             🎨 Draft Mode (Recommended)
                           </p>
-                          <p className="text-purple-700 dark:text-purple-300 text-xs mt-1">
-                            Generate 10 different design variations quickly with low quality, then pick your favorite for high-quality generation. Perfect for exploring options!
-                          </p>
+                                                  <p className="text-purple-700 dark:text-purple-300 text-xs mt-1">
+                          Generate 5 different front cover designs quickly with low quality, then pick your favorite for complete high-quality card generation. 
+                          {selectedArtisticStyle === "ai-smart-style" && (
+                            <span className="font-medium"> With Smart Style, you'll see your card in 5 of our curated artistic styles!</span>
+                          )}
+                        </p>
                         </div>
                       </div>
                     </div>
@@ -5397,10 +5854,10 @@ Return only the numeric score (1-100) for each image.`;
                           )}
                         </>
                       ) : (
-                        <>
-                          <Palette className="w-5 h-5 mr-2" />
-                          <span>Create 10 Design Options</span>
-                        </>
+                                              <>
+                        <Palette className="w-5 h-5 mr-2" />
+                        <span>Create 5 Front Cover Options</span>
+                      </>
                       )}
                     </Button>
                     
@@ -5462,7 +5919,7 @@ Return only the numeric score (1-100) for each image.`;
                               </span>
                             )}
                             <span className="text-gray-500">
-                              ~2-3 min expected
+                              {isDraftMode && !isGeneratingFinalCard ? '~30-60 sec expected' : '~1:30-2:00 min expected'}
                             </span>
                           </div>
                         </div>
@@ -5529,157 +5986,135 @@ Return only the numeric score (1-100) for each image.`;
 
         {/* Draft Cards Selection */}
         {isDraftMode && draftCards.length > 0 && !isGeneratingFinalCard && !generatedCard && (
-          <Card className="shadow-lg">
+          <Card className="shadow-lg" data-card-preview>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Palette className="w-5 h-5 text-purple-600" />
                 Choose Your Favorite Design
               </CardTitle>
               <CardDescription>
-                10 design variations created with low quality for fast preview. Select your favorite to generate the high-quality version!
+                5 front cover variations created with low quality for fast preview. Select your favorite to generate the complete high-quality card!
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-                {Array.from({ length: 10 }, (_, index) => {
-                  const card = draftCards[index];
-                  return (
-                    <div
-                      key={index}
-                      className={`relative cursor-pointer rounded-lg border-2 p-3 transition-all ${
-                        selectedDraftIndex === index
-                          ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
-                          : card
-                          ? 'border-gray-200 dark:border-gray-700 hover:border-purple-300 hover:bg-purple-50/50 dark:hover:bg-purple-900/10'
-                          : 'border-dashed border-gray-300 dark:border-gray-600'
-                      }`}
-
-                    >
-                      {card ? (
-                        <>
-                          {/* Card Preview Grid */}
-                          <div className="grid grid-cols-2 gap-1 mb-3">
-                            {/* Front Cover */}
-                            <div className="space-y-1">
-                              <div className="aspect-[2/3] relative overflow-hidden rounded border">
-                                <img
-                                  src={card.frontCover}
-                                  alt={`Design ${index + 1} - Front`}
-                                  className="w-full h-full object-cover"
-                                />
-                              </div>
-                              <p className="text-xs text-center text-gray-500 dark:text-gray-400">Front</p>
-                            </div>
-                            
-                            {/* Interior (Left + Right combined view) */}
-                            <div className="space-y-1">
-                              <div className="aspect-[2/3] relative overflow-hidden rounded border bg-white">
-                                <div className="flex h-full">
-                                  {/* Left Interior */}
-                                  <div className="w-1/2 relative">
-                                    {card.leftPage ? (
-                                      <img
-                                        src={card.leftPage}
-                                        alt={`Design ${index + 1} - Left Interior`}
-                                        className="w-full h-full object-cover"
-                                      />
-                                    ) : (
-                                      <div className="w-full h-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
-                                        <span className="text-xs text-gray-400">Left</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                  {/* Divider */}
-                                  <div className="w-px bg-gray-300"></div>
-                                  {/* Right Interior */}
-                                  <div className="w-1/2 relative">
-                                    {card.rightPage ? (
-                                      <img
-                                        src={card.rightPage}
-                                        alt={`Design ${index + 1} - Right Interior`}
-                                        className="w-full h-full object-cover"
-                                      />
-                                    ) : (
-                                      <div className="w-full h-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
-                                        <span className="text-xs text-gray-400">Right</span>
-                                      </div>
-                                    )}
-                                  </div>
+            <CardContent className="space-y-4">
+              {/* Unified horizontal scrolling view for all screen sizes */}
+              <div className="w-full">
+                <div className="flex overflow-x-auto gap-3 pb-4 -mx-4 px-4 snap-x snap-mandatory">
+                  {Array.from({ length: 5 }, (_, displayIndex) => {
+                    const card = draftCards[displayIndex];
+                    const originalIndex = draftIndexMapping[displayIndex];
+                    const isLoading = displayIndex >= draftCards.length;
+                    
+                    return (
+                                              <div
+                          key={displayIndex}
+                          className={`flex-shrink-0 w-48 sm:w-56 snap-center rounded-lg border-2 p-2 sm:p-3 transition-all ${
+                          selectedDraftIndex === displayIndex
+                            ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 shadow-lg'
+                            : card
+                            ? 'border-gray-200 dark:border-gray-700 hover:border-purple-300 hover:bg-purple-50/50 dark:hover:bg-purple-900/10'
+                            : 'border-dashed border-gray-300 dark:border-gray-600'
+                        }`}
+                        onClick={() => card && setSelectedDraftIndex(displayIndex)}
+                      >
+                        {card ? (
+                                                  <>
+                            {/* Single front cover preview */}
+                            <div className="aspect-[2/3] relative overflow-hidden rounded border mb-2 sm:mb-3">
+                            <img
+                              src={card.frontCover}
+                              alt={`Design ${originalIndex + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                            {selectedDraftIndex === displayIndex && (
+                              <div className="absolute inset-0 bg-purple-600/20 flex items-center justify-center">
+                                <div className="bg-white rounded-full p-2">
+                                    <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600" />
                                 </div>
                               </div>
-                              <p className="text-xs text-center text-gray-500 dark:text-gray-400">Interior</p>
-                            </div>
+                            )}
                           </div>
                           
-                          {/* Card Info */}
-                          <div className="text-center space-y-1">
-                            <h4 className="font-medium text-xs">Design {index + 1}</h4>
-                            <div className="flex items-center justify-center gap-1">
-                              <Badge variant="outline" className="text-xs px-1 py-0">
-                                Preview
-                              </Badge>
-                              {selectedDraftIndex === index && (
-                                <Badge className="bg-purple-600 text-white text-xs px-1 py-0">
-                                  ✓
-                                </Badge>
+                            {/* Card info */}
+                            <div className="text-center space-y-1 sm:space-y-2">
+                            <h4 className="font-medium text-sm">Design {originalIndex + 1}</h4>
+                            {selectedArtisticStyle === "ai-smart-style" && card.styleInfo && (
+                              <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
+                                {card.styleInfo.styleLabel}
+                              </p>
                               )}
-                            </div>
-                            
-                            {/* Action Buttons */}
-                            <div className="flex gap-1 justify-center">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setPreviewingDraftIndex(index);
-                                }}
-                                className="text-xs px-1 py-0 h-5"
-                              >
-                                <Eye className="w-2 h-2 mr-0.5" />
-                                View
-                              </Button>
-                              <Button
-                                variant={selectedDraftIndex === index ? "default" : "outline"}
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedDraftIndex(index);
-                                }}
-                                className="text-xs px-1 py-0 h-5"
-                              >
-                                {selectedDraftIndex === index ? "✓" : "Pick"}
-                              </Button>
-                            </div>
+                              <div className="space-y-1">
+                                {selectedDraftIndex === displayIndex && (
+                                  <Badge className="bg-purple-600 text-white text-xs px-2 py-1 mb-1">
+                                    ✓ Selected
+                                  </Badge>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPreviewingDraftIndex(displayIndex);
+                              }}
+                                  className="w-full text-xs h-7 sm:h-8"
+                            >
+                              <Eye className="w-3 h-3 mr-1" />
+                                  <span className="hidden sm:inline">Preview Design</span>
+                                  <span className="sm:hidden">Preview</span>
+                            </Button>
+                              </div>
                           </div>
                         </>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center py-6">
-                          <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                          <h4 className="font-medium text-xs mb-1">Design {index + 1}</h4>
-                          <p className="text-xs text-gray-500">Creating...</p>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                        ) : (
+                          <div className="flex flex-col items-center justify-center py-6 sm:py-8">
+                            <div className="w-6 h-6 sm:w-8 sm:h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2 sm:mb-3" />
+                            <h4 className="font-medium text-sm mb-1">Creating...</h4>
+                            <p className="text-xs text-gray-500">Generating front cover...</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Selection indicator */}
+                {selectedDraftIndex !== -1 && draftIndexMapping[selectedDraftIndex] !== undefined && (
+                  <div className="text-center bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3">
+                    <p className="text-sm font-medium text-purple-900 dark:text-purple-100">
+                      ✓ Design {draftIndexMapping[selectedDraftIndex] + 1} selected
+                    </p>
+                  </div>
+                )}
               </div>
               
-              {draftCards.filter(c => c).length === 10 && (
-                <div className="mt-6 text-center">
+              {/* Generate button - show as soon as user selects a card */}
+              {draftCards.length > 0 && (
+                <div className="mt-6 text-center space-y-3">
                   <Button
                     onClick={() => handleGenerateFinalFromDraft(selectedDraftIndex)}
                     disabled={selectedDraftIndex === -1}
-                    className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white"
+                    className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white w-full md:w-auto"
                     size="lg"
                   >
                     <Sparkles className="w-5 h-5 mr-2" />
-                    Generate High-Quality Version
+                    Generate Complete High-Quality Card
                   </Button>
-                  {selectedDraftIndex === -1 && (
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                      Please select a design variation above
+                  
+                  {selectedDraftIndex === -1 ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Please select a design variation above to proceed
                     </p>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-sm text-green-600 dark:text-green-400 font-medium">
+                        ✓ Design {draftIndexMapping[selectedDraftIndex] + 1} selected - ready to generate!
+                      </p>
+                      {draftCards.length < 10 && isGenerating && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Remaining variations will be cancelled to focus on your selected design
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -5703,7 +6138,7 @@ Return only the numeric score (1-100) for each image.`;
           return null;
         })()}
         {generatedCard && !isGeneratingFinalCard && (
-                  <Card className="shadow-lg">
+                  <Card className="shadow-lg" data-card-preview>
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <div>
@@ -6099,168 +6534,206 @@ Return only the numeric score (1-100) for each image.`;
 
         {/* Template Gallery Dialog */}
         <Dialog open={showTemplateGallery} onOpenChange={setShowTemplateGallery}>
-          <DialogContent className="sm:max-w-6xl max-h-[90vh] overflow-hidden">
-            <DialogHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <DialogTitle className="flex items-center gap-2">
-                    <Eye className="w-5 h-5 text-blue-600" />
-                    Choose a Template
-                  </DialogTitle>
-                  <DialogDescription>
-                    Use AI to find perfect templates or browse all existing cards. Click any card to use as a template!
-                  </DialogDescription>
-                </div>
-                
-                {/* Show Prompts Toggle */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowPrompts(!showPrompts)}
-                  className="gap-2 text-xs"
-                >
-                  <MessageSquare className="w-3 h-3" />
-                  {showPrompts ? 'Hide Prompts' : 'Show Prompts'}
-                </Button>
-              </div>
-            </DialogHeader>
-            
-            {/* Template Search Section */}
-            <div className="space-y-4 pb-4 border-b">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-purple-600" />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Template Search</span>
-                </div>
-                
-                {/* Search Mode Toggle */}
-                <Select value={searchMode} onValueChange={(value: 'text' | 'ai' | 'hybrid') => setSearchMode(value)}>
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="text">
-                      <div className="flex items-center gap-2">
-                        <span>📝</span>
-                        <span>Text</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="ai">
-                      <div className="flex items-center gap-2">
-                        <span>🎨</span>
-                        <span>AI Vision</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="hybrid">
-                      <div className="flex items-center gap-2">
-                        <span>⚡</span>
-                        <span>Hybrid</span>
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              {/* Search Mode Description */}
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                {searchMode === 'text' && "📝 Fast keyword search through card descriptions + AI-generated visual prompts (instant results)"}
-                {searchMode === 'ai' && "🎨 AI analyzes card images for visual style, colors, and themes (10-15 seconds)"}
-                {searchMode === 'hybrid' && "⚡ Combines fast text search with AI visual analysis for best results"}
-              </div>
-              
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <Input
-                    placeholder={
-                      searchMode === 'text' 
-                        ? "🎯 e.g., 'birthday dog', 'funny anniversary', 'watercolor'..."
-                        : searchMode === 'ai'
-                        ? "🎯 e.g., 'watercolor style', 'cute animals', 'bright colors'..."
-                        : "🎯 e.g., 'birthday and dogs', 'funny anniversary', 'watercolor flowers'..."
-                    }
-                    value={templateSearchQuery}
-                    onChange={(e) => setTemplateSearchQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleTemplateSearch();
-                      }
-                    }}
-                    disabled={isSearchingTemplates}
-                    style={{ fontSize: '16px' }}
-                  />
-                </div>
-                <Button
-                  onClick={handleTemplateSearch}
-                  disabled={isSearchingTemplates || !templateSearchQuery.trim()}
-                  className={`gap-2 ${
-                    searchMode === 'text' 
-                      ? 'bg-blue-600 hover:bg-blue-700' 
-                      : searchMode === 'ai'
-                      ? 'bg-purple-600 hover:bg-purple-700'
-                      : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
-                  } text-white`}
-                >
-                  {isSearchingTemplates ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      {searchMode === 'hybrid' ? 'Analyzing...' : 'Searching...'}
-                    </>
-                  ) : (
-                    <>
-                      {searchMode === 'text' && <span>📝</span>}
-                      {searchMode === 'ai' && <Zap className="w-4 h-4" />}
-                      {searchMode === 'hybrid' && <span>⚡</span>}
-                      {searchMode === 'text' ? 'Text Search' : searchMode === 'ai' ? 'AI Search' : 'Hybrid Search'}
-                    </>
-                  )}
-                </Button>
-                {(templateSearchQuery || aiFilteredCards.length > 0 || textFilteredCards.length > 0) && (
+          <DialogContent className="w-[95vw] max-w-7xl h-[85vh] sm:max-h-[95vh] overflow-hidden p-0 flex flex-col">
+            <div className="bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-blue-900/20 p-3 sm:p-6 flex-shrink-0">
+              <DialogHeader>
+                <div className="flex items-center justify-between mb-2 sm:mb-4">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="w-8 h-8 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center shadow-lg">
+                      <Eye className="w-4 h-4 sm:w-7 sm:h-7 text-white" />
+                    </div>
+                    <div>
+                      <DialogTitle className="text-lg sm:text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                        Template Gallery
+                      </DialogTitle>
+                      <DialogDescription className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+                        Find the perfect starting point for your card
+                      </DialogDescription>
+                    </div>
+                  </div>
+                  
+                  {/* Show Prompts Toggle */}
                   <Button
                     variant="outline"
-                    onClick={clearTemplateSearch}
-                    className="gap-2"
+                    size="sm"
+                    onClick={() => setShowPrompts(!showPrompts)}
+                    className="gap-1 sm:gap-2 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm h-8 sm:h-9 text-xs sm:text-sm"
                   >
-                    <X className="w-4 h-4" />
-                    Clear
+                    <MessageSquare className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <span className="hidden sm:inline">{showPrompts ? 'Hide' : 'Show'} Prompts</span>
+                    <span className="sm:hidden">{showPrompts ? 'Hide' : 'Show'}</span>
                   </Button>
+                </div>
+              </DialogHeader>
+            
+              {/* Template Search Section - Compact Mobile Version */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-2 sm:p-6 shadow-sm space-y-2 sm:space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 sm:w-10 sm:h-10 bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900 dark:to-pink-900 rounded-lg flex items-center justify-center">
+                      <Sparkles className="w-3 h-3 sm:w-5 sm:h-5 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm sm:text-lg font-semibold text-gray-900 dark:text-gray-100">Search</h3>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 hidden sm:block">Find templates by keywords or visual style</p>
+                    </div>
+                  </div>
+                  
+                  {/* Search Mode Toggle - Compact on mobile */}
+                  <Select value={searchMode} onValueChange={(value: 'text' | 'ai' | 'hybrid') => setSearchMode(value)}>
+                    <SelectTrigger className="w-20 sm:w-36 h-7 sm:h-10 border text-xs sm:text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="text" className="cursor-pointer">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">📝</span>
+                          <span className="font-medium">Text Search</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="ai" className="cursor-pointer">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">🎨</span>
+                          <span className="font-medium">AI Vision</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="hybrid" className="cursor-pointer">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">⚡</span>
+                          <span className="font-medium">Hybrid</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              
+                {/* Search Mode Description - Hidden on mobile */}
+                <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-lg p-1 sm:p-3 hidden sm:block">
+                  <div className="text-xs sm:text-sm font-medium text-purple-900 dark:text-purple-100 mb-1">
+                    {searchMode === 'text' && "📝 Text Search Mode"}
+                    {searchMode === 'ai' && "🎨 AI Vision Mode"}
+                    {searchMode === 'hybrid' && "⚡ Hybrid Search Mode"}
+                  </div>
+                  <div className="text-xs text-purple-700 dark:text-purple-300">
+                    {searchMode === 'text' && "Fast keyword search through card descriptions + AI-generated visual prompts (instant results)"}
+                    {searchMode === 'ai' && "AI analyzes card images for visual style, colors, and themes (10-15 seconds)"}
+                    {searchMode === 'hybrid' && "Combines fast text search with AI visual analysis for best results"}
+                  </div>
+                </div>
+                
+                <div className="flex gap-1 sm:gap-3">
+                  <div className="flex-1 relative">
+                    <Input
+                      placeholder="Search templates..."
+                      value={templateSearchQuery}
+                      onChange={(e) => setTemplateSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleTemplateSearch();
+                        }
+                      }}
+                      disabled={isSearchingTemplates}
+                      className="h-8 sm:h-12 pl-8 sm:pl-12 pr-3 border text-sm sm:text-base"
+                      style={{ fontSize: '16px' }}
+                    />
+                    <div className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2">
+                      <div className="w-4 h-4 sm:w-6 sm:h-6 bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-800 dark:to-pink-800 rounded-full flex items-center justify-center">
+                        <span className="text-xs">🔍</span>
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={handleTemplateSearch}
+                    disabled={isSearchingTemplates || !templateSearchQuery.trim()}
+                    className={`h-8 sm:h-12 px-3 sm:px-6 gap-1 font-medium text-xs sm:text-base ${
+                      searchMode === 'text' 
+                        ? 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700' 
+                        : searchMode === 'ai'
+                        ? 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700'
+                        : 'bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 hover:from-blue-600 hover:via-purple-600 hover:to-pink-600'
+                    } text-white shadow-md hover:shadow-lg transition-all`}
+                  >
+                    {isSearchingTemplates ? (
+                      <>
+                        <div className="w-3 h-3 sm:w-4 sm:h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span className="hidden sm:inline">{searchMode === 'hybrid' ? 'Analyzing...' : 'Searching...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        {searchMode === 'text' && <span className="text-xs sm:text-lg">📝</span>}
+                        {searchMode === 'ai' && <span className="text-xs sm:text-lg">🎨</span>}
+                        {searchMode === 'hybrid' && <span className="text-xs sm:text-lg">⚡</span>}
+                        <span className="hidden sm:inline">Search</span>
+                      </>
+                    )}
+                  </Button>
+                  {(templateSearchQuery || aiFilteredCards.length > 0 || textFilteredCards.length > 0) && (
+                    <Button
+                      variant="outline"
+                      onClick={clearTemplateSearch}
+                      className="h-8 sm:h-12 px-2 sm:px-4 gap-1 border"
+                    >
+                      <X className="w-3 h-3 sm:w-4 sm:h-4" />
+                      <span className="hidden sm:inline">Clear</span>
+                    </Button>
+                  )}
+                </div>
+              
+                {/* Results Summary - Compact on mobile */}
+                {aiFilteredCards.length > 0 && (searchMode === 'ai' || searchMode === 'hybrid') && (
+                  <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-purple-600 dark:text-purple-400">
+                    <Sparkles className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <span>
+                      {searchMode === 'hybrid' ? 'Hybrid' : 'AI'} found {aiFilteredCards.length} matches
+                      <span className="hidden sm:inline"> for "{templateSearchQuery}"</span>
+                    </span>
+                  </div>
+                )}
+                
+                {textFilteredCards.length > 0 && searchMode === 'text' && (
+                  <div className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-blue-600 dark:text-blue-400">
+                    <span>📝</span>
+                    <span>Found {textFilteredCards.length} matches<span className="hidden sm:inline"> for "{templateSearchQuery}"</span></span>
+                  </div>
                 )}
               </div>
-              
-              {/* Results Summary */}
-              {aiFilteredCards.length > 0 && (searchMode === 'ai' || searchMode === 'hybrid') && (
-                <div className="flex items-center gap-2 text-sm text-purple-600 dark:text-purple-400">
-                  <Sparkles className="w-4 h-4" />
-                  <span>
-                    {searchMode === 'hybrid' ? 'Hybrid analysis' : 'AI vision'} found {aiFilteredCards.length} matches for "{templateSearchQuery}"
-                  </span>
-                </div>
-              )}
-              
-              {textFilteredCards.length > 0 && searchMode === 'text' && (
-                <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
-                  <span>📝</span>
-                  <span>Text search found {textFilteredCards.length} matches for "{templateSearchQuery}"</span>
-                </div>
-              )}
-            </div>
             
-            <div className="flex-1 overflow-auto">
+            <div className="flex-1 min-h-0 overflow-auto bg-gray-50 dark:bg-gray-900 rounded-xl p-2 sm:p-4">
               {(aiFilteredCards.length > 0 && (searchMode === 'ai' || searchMode === 'hybrid')) || (textFilteredCards.length > 0 && searchMode === 'text') ? (
                 // Show filtered results
-                <div className="space-y-4">
-                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {searchMode === 'text' && '📝 Text Search Results (ranked by keyword relevance)'}
-                    {searchMode === 'ai' && '🎯 AI Vision Results (ranked by visual relevance)'}
-                    {searchMode === 'hybrid' && '⚡ Hybrid Search Results (ranked by combined relevance)'}
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900 dark:to-pink-900 rounded-lg flex items-center justify-center">
+                      <span className="text-sm sm:text-base">
+                        {searchMode === 'text' && '📝'}
+                        {searchMode === 'ai' && '🎯'}
+                        {searchMode === 'hybrid' && '⚡'}
+                      </span>
+                    </div>
+                    <div>
+                      <h3 className="text-sm sm:text-base font-semibold text-gray-900 dark:text-gray-100">
+                        {searchMode === 'text' && 'Text Search Results'}
+                        {searchMode === 'ai' && 'AI Vision Results'}
+                        {searchMode === 'hybrid' && 'Hybrid Search Results'}
+                      </h3>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        {searchMode === 'text' && 'Ranked by keyword relevance'}
+                        {searchMode === 'ai' && 'Ranked by visual relevance'}
+                        {searchMode === 'hybrid' && 'Ranked by combined relevance'}
+                      </p>
+                    </div>
                   </div>
                   <div 
-                    className="flex overflow-x-auto gap-4 pb-4"
+                    className="flex overflow-x-scroll gap-3 sm:gap-4 pb-3 -mx-2 px-2 min-w-full"
                     style={{
                       scrollBehavior: 'smooth',
                       WebkitOverflowScrolling: 'touch',
                       scrollbarWidth: 'thin',
-                      scrollSnapType: 'x mandatory'
+                      scrollSnapType: 'x mandatory',
+                      touchAction: 'pan-x',
+                      overflowX: 'scroll',
+                      overflowY: 'hidden'
                     }}
                   >
                     {(searchMode === 'text' ? textFilteredCards : aiFilteredCards).map((card, index) => {
@@ -6269,7 +6742,7 @@ Return only the numeric score (1-100) for each image.`;
                       return (
                         <div
                           key={card.id}
-                          className="flex-shrink-0 w-64"
+                          className="flex-shrink-0 w-48 sm:w-64 touch-pan-x"
                           style={{ scrollSnapAlign: 'start' }}
                         >
                           <div className={`${
@@ -6278,16 +6751,16 @@ Return only the numeric score (1-100) for each image.`;
                               : searchMode === 'ai'
                               ? 'bg-gradient-to-br from-purple-900 to-blue-900 border-purple-400'
                               : 'bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900 border-gradient-to-r border-blue-400'
-                          } rounded-xl p-2 shadow-inner space-y-2 h-full border-2 relative`}>
-                            {/* Score badge */}
+                          } rounded-xl p-2 shadow-inner space-y-2 h-full border-2 relative flex flex-col`}>
+                            {/* Score badge - positioned to not cover full image */}
                             <div className="absolute top-2 left-2 z-10 flex gap-1">
                               <Badge className={`${
                                 searchMode === 'text' ? 'bg-blue-600' : 'bg-purple-600'
-                              } text-white text-xs`}>
+                              } text-white text-xs rounded-full shadow-md`}>
                                 #{index + 1}
                               </Badge>
                               {(card.aiScore || card.textScore) && (
-                                <Badge className="bg-green-600 text-white text-xs">
+                                <Badge className="bg-green-600 text-white text-xs rounded-full shadow-md">
                                   {searchMode === 'text' ? card.textScore : card.aiScore}
                                   {searchMode === 'ai' || searchMode === 'hybrid' ? '%' : ''}
                                 </Badge>
@@ -6305,46 +6778,46 @@ Return only the numeric score (1-100) for each image.`;
                                 }}
                               />
                             ) : (
-                              <div className="w-full h-48 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center">
+                              <div className="w-full h-32 sm:h-48 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center">
                                 <div className="text-center text-gray-500">
-                                  <ImageIcon className="w-8 h-8 mx-auto mb-2" />
-                                  <p className="text-sm">No preview</p>
+                                  <ImageIcon className="w-6 h-6 sm:w-8 sm:h-8 mx-auto mb-2" />
+                                  <p className="text-xs sm:text-sm">No preview</p>
                                 </div>
                               </div>
                             )}
                             
                             <div className={`text-xs ${
                               searchMode === 'text' ? 'text-blue-100 bg-blue-800/50' : 'text-purple-100 bg-purple-800/50'
-                            } px-2 py-1 rounded space-y-1`}>
-                              <div>
-                                {card.prompt?.substring(0, 60) || 'Untitled'}
-                                {card.prompt && card.prompt.length > 60 && '...'}
+                            } px-2 py-1 rounded space-y-1 flex-1 flex flex-col`}>
+                              <div className="line-clamp-2">
+                                {card.prompt?.substring(0, 50) || 'Untitled'}
+                                {card.prompt && card.prompt.length > 50 && '...'}
                               </div>
                               
-                              {/* Show Generated Prompts if enabled */}
+                              {/* Show Generated Prompts if enabled - Only on larger screens */}
                               {showPrompts && card.generatedPrompts && (
-                                <div className="text-xs opacity-80 border-t border-white/20 pt-1 space-y-1">
+                                <div className="text-xs opacity-80 border-t border-white/20 pt-1 space-y-1 hidden sm:block">
                                   {card.generatedPrompts.frontCover && (
                                     <div>
-                                      <span className="font-semibold">Front:</span> {card.generatedPrompts.frontCover.substring(0, 80)}
-                                      {card.generatedPrompts.frontCover.length > 80 && '...'}
+                                      <span className="font-semibold">Front:</span> {card.generatedPrompts.frontCover.substring(0, 60)}
+                                      {card.generatedPrompts.frontCover.length > 60 && '...'}
                                     </div>
                                   )}
                                   {card.generatedPrompts.backCover && (
                                     <div>
-                                      <span className="font-semibold">Back:</span> {card.generatedPrompts.backCover.substring(0, 80)}
-                                      {card.generatedPrompts.backCover.length > 80 && '...'}
+                                      <span className="font-semibold">Back:</span> {card.generatedPrompts.backCover.substring(0, 60)}
+                                      {card.generatedPrompts.backCover.length > 60 && '...'}
                                     </div>
                                   )}
                                 </div>
                               )}
                               
                               {/* Action Buttons */}
-                              <div className="flex gap-1 pt-2">
+                              <div className="flex flex-col gap-1 pt-2 mt-auto">
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="flex-1 h-6 text-xs bg-white/10 border-white/20 text-white hover:bg-white/20"
+                                  className="w-full h-6 sm:h-7 text-xs bg-white/10 border-white/20 text-white hover:bg-white/20"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     // Convert GalleryCard to GeneratedCard format for applyTemplate
@@ -6362,13 +6835,14 @@ Return only the numeric score (1-100) for each image.`;
                                     applyTemplate(template);
                                   }}
                                 >
-                                  <Wand2 className="w-3 h-3 mr-1" />
-                                  Customize
+                                  <Wand2 className="w-2 h-2 sm:w-3 sm:h-3 mr-1" />
+                                  <span className="hidden sm:inline">Customize</span>
+                                  <span className="sm:hidden">Custom</span>
                                 </Button>
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="flex-1 h-6 text-xs bg-blue-600/80 border-blue-500/50 text-white hover:bg-blue-600"
+                                  className="w-full h-6 sm:h-7 text-xs bg-blue-600/80 border-blue-500/50 text-white hover:bg-blue-600"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     // Convert GalleryCard to GeneratedCard format for preview
@@ -6386,7 +6860,7 @@ Return only the numeric score (1-100) for each image.`;
                                     handleTemplateSelect(template);
                                   }}
                                 >
-                                  <Eye className="w-3 h-3 mr-1" />
+                                  <Eye className="w-2 h-2 sm:w-3 sm:h-3 mr-1" />
                                   Select
                                 </Button>
                               </div>
@@ -6399,18 +6873,26 @@ Return only the numeric score (1-100) for each image.`;
                 </div>
               ) : (
                 // Show all templates
-                <div className="space-y-4">
-                  <div className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    📚 All Templates
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-br from-blue-100 to-cyan-100 dark:from-blue-900 dark:to-cyan-900 rounded-lg flex items-center justify-center">
+                      <span className="text-sm sm:text-base">📚</span>
+                    </div>
+                    <div>
+                      <h3 className="text-sm sm:text-base font-semibold text-gray-900 dark:text-gray-100">All Templates</h3>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Browse our entire collection</p>
+                    </div>
                   </div>
-                  <div className="w-full max-h-[50vh] overflow-auto">
                     <div 
-                      className="flex overflow-x-auto gap-4 pb-4"
+                      className="flex overflow-x-scroll gap-3 sm:gap-4 pb-3 -mx-2 px-2 min-w-full"
                       style={{
                         scrollBehavior: 'smooth',
                         WebkitOverflowScrolling: 'touch',
                         scrollbarWidth: 'thin',
-                        scrollSnapType: 'x mandatory'
+                        scrollSnapType: 'x mandatory',
+                        touchAction: 'pan-x',
+                        overflowX: 'scroll',
+                        overflowY: 'hidden'
                       }}
                     >
                       {(() => {
@@ -6423,10 +6905,10 @@ Return only the numeric score (1-100) for each image.`;
                           return (
                             <div
                               key={card.id}
-                              className="flex-shrink-0 w-64"
+                              className="flex-shrink-0 w-48 sm:w-64 touch-pan-x"
                               style={{ scrollSnapAlign: 'start' }}
                             >
-                              <div className="bg-gray-900 rounded-xl p-2 shadow-inner space-y-2 h-full">
+                              <div className="bg-gray-900 rounded-xl p-2 shadow-inner space-y-2 h-full flex flex-col">
                                 {frontImage ? (
                                   <img
                                     src={frontImage}
@@ -6438,44 +6920,44 @@ Return only the numeric score (1-100) for each image.`;
                                     }}
                                   />
                                 ) : (
-                                  <div className="w-full h-48 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center">
+                                  <div className="w-full h-32 sm:h-48 bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center">
                                     <div className="text-center text-gray-500">
-                                      <ImageIcon className="w-8 h-8 mx-auto mb-2" />
-                                      <p className="text-sm">No preview</p>
+                                      <ImageIcon className="w-6 h-6 sm:w-8 sm:h-8 mx-auto mb-2" />
+                                      <p className="text-xs sm:text-sm">No preview</p>
                                     </div>
                                   </div>
                                 )}
 
-                                <div className="text-xs text-gray-100 bg-gray-800/50 px-2 py-1 rounded space-y-1">
-                                  <div>
-                                    {card.prompt?.substring(0, 60) || 'Untitled'}
-                                    {card.prompt && card.prompt.length > 60 && '...'}
+                                <div className="text-xs text-gray-100 bg-gray-800/50 px-2 py-1 rounded space-y-1 flex-1 flex flex-col">
+                                  <div className="line-clamp-2">
+                                    {card.prompt?.substring(0, 50) || 'Untitled'}
+                                    {card.prompt && card.prompt.length > 50 && '...'}
                                   </div>
                                   
-                                  {/* Show Generated Prompts if enabled */}
+                                  {/* Show Generated Prompts if enabled - Only on larger screens */}
                                   {showPrompts && card.generatedPrompts && (
-                                    <div className="text-xs opacity-80 border-t border-white/20 pt-1 space-y-1">
+                                    <div className="text-xs opacity-80 border-t border-white/20 pt-1 space-y-1 hidden sm:block">
                                       {card.generatedPrompts.frontCover && (
                                         <div>
-                                          <span className="font-semibold">Front:</span> {card.generatedPrompts.frontCover.substring(0, 80)}
-                                          {card.generatedPrompts.frontCover.length > 80 && '...'}
+                                          <span className="font-semibold">Front:</span> {card.generatedPrompts.frontCover.substring(0, 60)}
+                                          {card.generatedPrompts.frontCover.length > 60 && '...'}
                                         </div>
                                       )}
                                       {card.generatedPrompts.backCover && (
                                         <div>
-                                          <span className="font-semibold">Back:</span> {card.generatedPrompts.backCover.substring(0, 80)}
-                                          {card.generatedPrompts.backCover.length > 80 && '...'}
+                                          <span className="font-semibold">Back:</span> {card.generatedPrompts.backCover.substring(0, 60)}
+                                          {card.generatedPrompts.backCover.length > 60 && '...'}
                                         </div>
                                       )}
                                     </div>
                                   )}
                                   
                                   {/* Action Buttons */}
-                                  <div className="flex gap-1 pt-2">
+                                  <div className="flex flex-col gap-1 pt-2 mt-auto">
                                     <Button
                                       size="sm"
                                       variant="outline"
-                                      className="flex-1 h-6 text-xs bg-white/10 border-white/20 text-white hover:bg-white/20"
+                                      className="w-full h-6 sm:h-7 text-xs bg-white/10 border-white/20 text-white hover:bg-white/20"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         // Convert GalleryCard to GeneratedCard format for applyTemplate
@@ -6493,13 +6975,14 @@ Return only the numeric score (1-100) for each image.`;
                                         applyTemplate(template);
                                       }}
                                     >
-                                      <Wand2 className="w-3 h-3 mr-1" />
-                                      Customize
+                                      <Wand2 className="w-2 h-2 sm:w-3 sm:h-3 mr-1" />
+                                      <span className="hidden sm:inline">Customize</span>
+                                      <span className="sm:hidden">Custom</span>
                                     </Button>
                                     <Button
                                       size="sm"
                                       variant="outline"
-                                      className="flex-1 h-6 text-xs bg-blue-600/80 border-blue-500/50 text-white hover:bg-blue-600"
+                                      className="w-full h-6 sm:h-7 text-xs bg-blue-600/80 border-blue-500/50 text-white hover:bg-blue-600"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         // Convert GalleryCard to GeneratedCard format for preview
@@ -6517,7 +7000,7 @@ Return only the numeric score (1-100) for each image.`;
                                         handleTemplateSelect(template);
                                       }}
                                     >
-                                      <Eye className="w-3 h-3 mr-1" />
+                                      <Eye className="w-2 h-2 sm:w-3 sm:h-3 mr-1" />
                                       Select
                                     </Button>
                                   </div>
@@ -6527,28 +7010,37 @@ Return only the numeric score (1-100) for each image.`;
                           );
                         });
                       })()}
-                    </div>
                   </div>
                 </div>
               )}
             </div>
             
-            <div className="flex justify-between items-center pt-4 border-t">
-              <p className="text-sm text-gray-500">
-                {aiFilteredCards.length > 0 
-                  ? "AI has ranked these templates by relevance to your search"
-                  : "Use 'Customize' to personalize templates with your own message and changes, or 'Select' to preview and print them as-is"
-                }
-              </p>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowTemplateGallery(false);
-                  clearTemplateSearch();
-                }}
-              >
-                Cancel
-              </Button>
+            <div className="bg-gray-100 dark:bg-gray-800 p-3 sm:p-4 rounded-b-xl -m-3 sm:-m-6 mt-4 flex-shrink-0">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 sm:w-6 sm:h-6 bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900 dark:to-pink-900 rounded-full flex items-center justify-center">
+                    <span className="text-xs">💡</span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300">
+                    {aiFilteredCards.length > 0 
+                      ? "AI has ranked these templates by relevance to your search"
+                      : "Use 'Customize' to personalize templates or 'Select' to use as-is"
+                    }
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowTemplateGallery(false);
+                    clearTemplateSearch();
+                  }}
+                  className="gap-1 sm:gap-2 border-2 h-8 sm:h-9 text-xs sm:text-sm w-full sm:w-auto"
+                >
+                  <X className="w-3 h-3 sm:w-4 sm:h-4" />
+                  Close
+                </Button>
+              </div>
+            </div>
             </div>
           </DialogContent>
         </Dialog>
@@ -6559,10 +7051,10 @@ Return only the numeric score (1-100) for each image.`;
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Eye className="w-5 h-5 text-purple-600" />
-                Design Variation {previewingDraftIndex + 1} - Detailed Preview
+                Front Cover Design {previewingDraftIndex !== -1 ? (draftIndexMapping[previewingDraftIndex] + 1) : 1} - Preview
               </DialogTitle>
               <DialogDescription>
-                Low quality preview of the complete card design. Select this design to generate the high-quality version.
+                Low quality preview of the front cover design. Select this design to generate the complete high-quality card.
               </DialogDescription>
             </DialogHeader>
             
@@ -6572,9 +7064,22 @@ Return only the numeric score (1-100) for each image.`;
                 <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
                   <CardPreview 
                     card={draftCards[previewingDraftIndex]} 
-                    isFrontBackOnly={isFrontBackOnly}
-                    fastPreviewMode={false}
+                    onCardUpdate={() => {}} // Draft cards are read-only
+                    isFrontBackOnly={true}
+                    onPrint={() => {}} // No print functionality for draft previews
+                    paperConfig={paperSizes.find(size => size.id === selectedPaperSize) || paperSizes[0]}
+                    sectionLoadingStates={{
+                      frontCover: 'completed',
+                      backCover: 'idle',
+                      leftInterior: 'idle',
+                      rightInterior: 'idle'
+                    }}
+                    selectedPaperSize={selectedPaperSize}
+                    onPaperSizeChange={() => {}} // No paper size change for draft previews
+                    paperSizes={paperSizes}
                     isCardCompleted={false}
+                    fastPreviewMode={false}
+                    onViewFullCard={() => {}} // No full card view for draft previews
                   />
                 </div>
                 

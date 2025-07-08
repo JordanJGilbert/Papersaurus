@@ -5538,6 +5538,10 @@ def generate_card_images_background(job_id, prompts, config):
             raise Exception("No valid prompts found for any sections")
         
         try:
+            # Determine quality - use medium for draft mode to get better quality than low but faster than high
+            is_draft_mode = config.get("isDraftMode", False)
+            quality_to_use = "medium" if is_draft_mode else config.get("quality", "high")
+            
             # Prepare MCP call data for all prompts at once
             mcp_data = {
                 "tool_name": "generate_images_with_prompts",
@@ -5546,7 +5550,7 @@ def generate_card_images_background(job_id, prompts, config):
                     "prompts": prompts_list,  # Pass all prompts at once
                     "model_version": config.get("modelVersion", "gpt-image-1"),
                     "aspect_ratio": config.get("aspectRatio", "9:16"),
-                    "quality": config.get("quality", "high"),
+                    "quality": quality_to_use,
                     "output_format": config.get("outputFormat", "jpeg"),
                     "output_compression": config.get("outputCompression", 100),
                     "moderation": config.get("moderation", "auto"),
@@ -5554,6 +5558,8 @@ def generate_card_images_background(job_id, prompts, config):
                     **({"input_images": config["input_images"]} if config.get("input_images") else {})
                 }
             }
+            
+            print(f"🎨 Using quality '{quality_to_use}' for {'draft mode' if is_draft_mode else 'normal mode'} generation")
             
             print(f"Making parallel MCP call for {len(prompts_list)} prompts")
             if config.get("input_images"):
@@ -5635,6 +5641,9 @@ def generate_card_images_background(job_id, prompts, config):
                         job_storage[job_id]["progress"] = f"Generating {section.replace('Cover', ' Cover').replace('Interior', ' Interior')} (fallback)..."
                     
                     # Single prompt call as fallback
+                    # Use same quality logic as main generation
+                    fallback_quality = "medium" if config.get("isDraftMode", False) else config.get("quality", "high")
+                    
                     single_mcp_data = {
                         "tool_name": "generate_images_with_prompts",
                         "arguments": {
@@ -5642,7 +5651,7 @@ def generate_card_images_background(job_id, prompts, config):
                             "prompts": [prompts[section]],
                             "model_version": config.get("modelVersion", "gpt-image-1"),
                             "aspect_ratio": config.get("aspectRatio", "9:16"),
-                            "quality": config.get("quality", "high"),
+                            "quality": fallback_quality,
                             "output_format": config.get("outputFormat", "jpeg"),
                             "output_compression": config.get("outputCompression", 100),
                             "moderation": config.get("moderation", "auto"),
@@ -5650,6 +5659,8 @@ def generate_card_images_background(job_id, prompts, config):
                             **({"input_images": config["input_images"]} if config.get("input_images") else {})
                         }
                     }
+                    
+                    print(f"🎨 Fallback using quality '{fallback_quality}' for {section}")
                     
                     mcp_response = call_mcp_service("generate_images_with_prompts", single_mcp_data["arguments"])
                     
@@ -5665,9 +5676,17 @@ def generate_card_images_background(job_id, prompts, config):
                     continue
         
         # Check if we have all required images
-        required_sections = ["frontCover", "backCover"]
-        if not config.get("isFrontBackOnly", False):
-            required_sections.extend(["leftInterior", "rightInterior"])
+        # (is_draft_mode already defined above)
+        
+        if is_draft_mode:
+            # Draft mode: only require sections that were actually requested (have prompts)
+            required_sections = [section for section in ["frontCover", "backCover", "leftInterior", "rightInterior"] if section in prompts]
+            print(f"🎨 Draft mode: requiring only sections with prompts: {required_sections}")
+        else:
+            # Normal mode: require all sections based on card type
+            required_sections = ["frontCover", "backCover"]
+            if not config.get("isFrontBackOnly", False):
+                required_sections.extend(["leftInterior", "rightInterior"])
         
         missing_sections = [s for s in required_sections if s not in generated_images]
         
@@ -5692,14 +5711,19 @@ def generate_card_images_background(job_id, prompts, config):
         card_data = {
             "id": job_id,
             "prompt": f"Generated card for {config.get('userEmail', 'user')}",
-            "frontCover": generated_images["frontCover"],
-            "backCover": generated_images["backCover"],
+            "frontCover": generated_images.get("frontCover", ""),
+            "backCover": generated_images.get("backCover", ""),
             "leftPage": generated_images.get("leftInterior", ""),
             "rightPage": generated_images.get("rightInterior", ""),
             "createdAt": job_storage[job_id]["createdAt"],
             "generatedPrompts": prompts,
             "generationTimeSeconds": generation_duration
         }
+        
+        # In draft mode, log what sections were actually generated
+        if is_draft_mode:
+            generated_section_names = list(generated_images.keys())
+            print(f"🎨 Draft mode completed with sections: {generated_section_names}")
         
         # Mark job as completed
         if job_id in job_storage:
