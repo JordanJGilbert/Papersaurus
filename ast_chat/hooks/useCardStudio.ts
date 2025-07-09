@@ -59,7 +59,11 @@ const formatGenerationTime = (durationSeconds: number) => {
 
 // Email Helper Function
 async function sendThankYouEmail(toEmail: string, cardType: string, cardUrl: string) {
-  if (!toEmail.trim()) return;
+  console.log('📧 sendThankYouEmail called with:', { toEmail, cardType, cardUrl });
+  if (!toEmail.trim()) {
+    console.log('📧 sendThankYouEmail - toEmail is empty, returning');
+    return;
+  }
   
   try {
     // Create HTML email body
@@ -121,6 +125,7 @@ The VibeCarding Team
 vibecarding@ast.engineer`;
 
     // Send to user
+    console.log('📧 Attempting to send email to user:', toEmail);
     const userResponse = await fetch(`${BACKEND_API_BASE_URL}/send_email_nodejs_style`, {
       method: 'POST',
       headers: { 
@@ -135,6 +140,12 @@ vibecarding@ast.engineer`;
         html: htmlBody
       })
     });
+    
+    console.log('📧 User email response status:', userResponse.status);
+    if (userResponse.ok) {
+      const userResponseData = await userResponse.json();
+      console.log('📧 User email response data:', userResponseData);
+    }
 
     // Send copy to jordan@ast.engineer
     const adminResponse = await fetch(`${BACKEND_API_BASE_URL}/send_email_nodejs_style`, {
@@ -502,6 +513,8 @@ export function useCardStudio() {
 
   // Job management functions
   const saveJobToStorage = (jobId: string, jobData: any) => {
+    if (typeof window === 'undefined') return;
+    
     try {
       localStorage.setItem(`cardJob_${jobId}`, JSON.stringify({
         ...jobData,
@@ -759,6 +772,8 @@ export function useCardStudio() {
 
   // Helper function to handle final card completion
   const handleFinalCardCompletion = useCallback(async (cardData: any) => {
+    console.log('🎯 handleFinalCardCompletion called with cardData:', cardData);
+    console.log('🎯 Current userEmail state:', userEmail);
     let cardWithQR = { ...cardData };
     
     // Ensure the card has a valid createdAt date
@@ -847,11 +862,16 @@ export function useCardStudio() {
     
     toast.success("🎉 Your card is ready!");
     
-    // Send thank you email
-    if (userEmail.trim()) {
-      const cardTypeForEmail = selectedType === "custom" ? customCardType : selectedType;
-      sendThankYouEmail(userEmail, cardTypeForEmail, cardWithQR.shareUrl || 'https://vibecarding.com');
-    }
+    // Email notifications are now handled by the backend on job completion
+    // Keeping this disabled to avoid duplicate emails
+    console.log('📧 Email sending disabled - backend handles email notifications');
+    // if (userEmail.trim()) {
+    //   const cardTypeForEmail = selectedType === "custom" ? customCardType : selectedType;
+    //   console.log('📧 Sending thank you email to:', userEmail, 'cardType:', cardTypeForEmail, 'shareUrl:', cardWithQR.shareUrl);
+    //   sendThankYouEmail(userEmail, cardTypeForEmail, cardWithQR.shareUrl || 'https://vibecarding.com');
+    // } else {
+    //   console.log('📧 No email sent - userEmail is empty or whitespace');
+    // }
     
     console.log('✅ Final card completion process finished successfully');
   }, [userEmail, selectedType, customCardType]);
@@ -894,7 +914,9 @@ export function useCardStudio() {
     const start = startTime || Date.now();
     setGenerationStartTime(start);
     
-    localStorage.setItem('generation-start-time', start.toString());
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('generation-start-time', start.toString());
+    }
     
     if (elapsedTimeInterval) {
       clearInterval(elapsedTimeInterval);
@@ -918,7 +940,9 @@ export function useCardStudio() {
       clearInterval(elapsedTimeInterval);
       setElapsedTimeInterval(null);
     }
-    localStorage.removeItem('generation-start-time');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('generation-start-time');
+    }
   };
 
   // File upload handler
@@ -1568,6 +1592,8 @@ Return ONLY the front cover prompt as plain text.`;
 
   // Remove job from storage
   const removeJobFromStorage = (jobId: string) => {
+    if (typeof window === 'undefined') return;
+    
     try {
       localStorage.removeItem(`cardJob_${jobId}`);
       
@@ -1581,6 +1607,12 @@ Return ONLY the front cover prompt as plain text.`;
 
   // Generate final high-quality card from selected draft
   const handleGenerateFinalFromDraft = async (displayIndex: number) => {
+    // Prevent duplicate calls if already generating final card
+    if (isGeneratingFinalCard) {
+      console.log('⚠️ Final card generation already in progress, skipping duplicate call');
+      return;
+    }
+    
     if (displayIndex < 0 || displayIndex >= draftCards.length || !draftCards[displayIndex]) {
       toast.error("Invalid draft selection");
       return;
@@ -1808,6 +1840,8 @@ Return JSON:
 
   // Recovery function - resume WebSocket subscriptions for pending jobs
   const checkPendingJobs = async () => {
+    if (typeof window === 'undefined') return;
+    
     try {
       const pendingJobs = JSON.parse(localStorage.getItem('pendingCardJobs') || '[]');
       
@@ -2046,6 +2080,7 @@ Return JSON:
     setElapsedTimeInterval,
     
     // Constants for UI
+    cardTones,
     artisticStyles,
     paperSizes,
     

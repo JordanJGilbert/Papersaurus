@@ -4822,84 +4822,16 @@ def queue_print_job():
         }), 500
 
 
-# Friendly URL generation arrays
-positiveAdjectives = [
-    "kind", "wise", "brave", "loyal", "joyful", "humble", "gentle", "zesty", "fun", "calm",
-    "pure", "bold", "bright", "sharp", "eager", "neat", "sweet", "clean", "free", "good",
-    "cool", "nice", "fair", "keen", "chill", "true", "open", "brisk", "warm", 
-    "gifted", "alert", "steady", "peppy", "fiery", "sly", "loving", "tender", "brilliant", "noble",
-    "energetic", "charismatic", "polite", "helpful", "jovial", "thoughtful", "fantastic", "pleasant", 
-    "affable", "cheerful", "delightful", "vibrant", "zestful", "creative", "kindhearted", "trustworthy", 
-    "optimistic", "charming", "adventurous", "confident", "affectionate", "respectful", "considerate", 
-    "motivated", "genuine", "determined", "compassionate", "faithful", "balanced", "exuberant", 
-    "hardworking", "insightful", "disciplined", "skilled", "openminded", "talented", "inspiring", 
-    "engaging", "peaceful", "innovative", "supportive", "resourceful", "funny", "modest", "perceptive", 
-    "excited", "grounded", "focused", "humorous", "gracious", "content", "knowledgeable", "sincere", 
-    "devoted", "reliable", "outgoing", "fascinating", "enthusiastic", "empowering", "diligent", 
-    "friendly", "welcoming", "honest", "careful", "lovable", "sympathetic", "empathetic", "productive", 
-    "dynamic", "resilient", "passionate", "curious", "dedicated", "capable", "encouraging", "caring", 
-    "intelligent", "ambitious", "generous", "positive", "honorable", "gracious"
-]
-
-positiveColors = [
-    "amber", "aqua", "apricot", "azure", "beige", "blush", "bronze", "cobalt", "coral", "crimson",
-    "emerald", "fuchsia", "gold", "green", "honey", "jade", "lavender", "lemon", "lilac", "lime",
-    "magenta", "mint", "moss", "nectar", "ocean", "peach", "pear", "periwinkle", "pink", "plum",
-    "poppy", "quartz", "rose", "ruby", "sapphire", "scarlet", "seafoam", "silver", "sky", "snow",
-    "sunshine", "tangerine", "topaz", "turquoise", "vanilla", "violet", "watermelon", "white", "yellow",
-    "caramel", "celeste", "champagne", "charcoal", "chocolate", "citrus", "copper", "ivory", "light", 
-    "melon", "midnight", "mocha", "mulberry", "navy", "orchid", "platinum", "sea", "slate", "sunset", 
-    "teal", "tomato", "wine", "blue", "candy", "clover", "cool", "dandelion", "dusty", "electric", 
-    "fandango", "fiesta", "flamingo", "forest", "frost", "grape", "guava", "hazel", "indigo", "jasmine", 
-    "kiwi", "lemonade", "magnolia", "neon", "peacock", "pineapple", "raspberry", "seashell", "shamrock", 
-    "snowflake", "soft", "spice", "spring", "sunflower", "swamp", "thistle", "wisteria", "apple", 
-    "banana", "butterscotch", "daisy", "fawn", "frosty", "goldenrod", "grapefruit", "honeysuckle", 
-    "jadeite", "mist", "morning", "nautical", "pearl", "peridot", "velvet", "wheat", "wild", "zinnia"
-]
-
-animals = [
-    "aardvark", "albatross", "alligator", "alpaca", "anaconda", "anteater", "antelope", "armadillo",
-    "baboon", "badger", "bat", "beagle", "bear", "beaver", "bee", "beetle", "beluga", "bison", 
-    "blackbird", "bobcat", "buffalo", "bulldog", "bullfrog", "buzzard", "caterpillar", "catfish", 
-    "chameleon", "cheetah", "chicken", "chimpanzee", "chipmunk", "clam", "clownfish", "cockroach", 
-    "coyote", "crab", "crane", "crocodile", "crow", "deer", "dingo", "dog", "dolphin", "donkey", 
-    "duck", "eagle", "echidna", "eel", "elephant", "elk", "emu", "falcon", "ferret", "finch", 
-    "firefly", "fish", "flamingo", "fox", "frog", "gerbil", "gibbon", "giraffe", "goat", "goldfish", 
-    "goose", "gorilla", "grasshopper", "guppy", "hamster", "hare", "hawk", "hedgehog", "hippopotamus", 
-    "hornet", "horse", "hummingbird", "hyena", "iguana", "impala", "jaguar", "jellyfish", "kangaroo", 
-    "kiwi", "koala", "komodo", "kookaburra", "ladybug", "leopard", "lion", "llama", "lobster", "lynx", 
-    "macaw", "manatee", "mandrill", "meerkat", "mole", "mongoose", "monkey", "moose", "mosquito", 
-    "mouse", "octopus", "ocelot", "orangutan", "ostrich", "otter", "owl", "ox", "panda", "panther", 
-    "parrot", "peacock", "pelican", "penguin", "pheasant", "pig", "pigeon", "platypus", "pony", 
-    "porcupine", "rabbit", "raccoon", "rat", "raven", "reindeer", "salamander", "salmon", "scorpion", 
-    "seahorse", "shark", "sheep", "shrimp", "skunk", "sloth", "slug", "snail", "snake", "sparrow", 
-    "spider", "squid", "squirrel", "starfish", "stingray", "stork", "swallow", "swan", "tadpole", 
-    "tarantula", "termite", "tiger", "toad", "toucan", "turkey", "turtle", "wallaby", "walrus", 
-    "warthog", "wasp", "weasel", "whale", "wolverine", "woodpecker", "worm", "yak", "zebra"
-]
+# Friendly URL generation using external API
 
 def generate_friendly_card_id():
     """Generate a friendly card ID using the random name API"""
-    try:
-        response = requests.get('https://16504442930.work/random-name')
-        if response.ok:
-            data = response.json()
-            return data['camelCase']
-        else:
-            # Fallback to local generation if API fails
-            import random
-            adjective = random.choice(positiveAdjectives)
-            color = random.choice(positiveColors)
-            animal = random.choice(animals)
-            return adjective + color.capitalize() + animal.capitalize()
-    except Exception as e:
-        print(f"Error fetching random name from API: {e}")
-        # Fallback to local generation
-        import random
-        adjective = random.choice(positiveAdjectives)
-        color = random.choice(positiveColors)
-        animal = random.choice(animals)
-        return adjective + color.capitalize() + animal.capitalize()
+    response = requests.get('https://16504442930.work/random-name')
+    if response.ok:
+        data = response.json()
+        return data['camelCase']
+    else:
+        raise Exception(f"Failed to generate readable card ID: {response.status_code}")
 
 def sync_write_data(key, value):
     """Synchronous version of write_data for Flask routes"""
@@ -4957,7 +4889,7 @@ def store_card():
         data = request.get_json()
         
         # Generate card ID if not provided
-        card_id = data.get('id') or str(uuid.uuid4())
+        card_id = data.get('id') or generate_friendly_card_id()
         
         # Create card data structure
         card_data = {
@@ -5843,48 +5775,56 @@ def generate_card_images_background(job_id, prompts, config):
         
         print(f"Job {job_id} completed successfully")
         
-        # Send email notification if user email is provided
+        # Send email notification if user email is provided (only for final cards, not drafts)
         user_email = config.get("userEmail")
-        if user_email:
+        if user_email and not is_draft_mode:
             try:
                 print(f"Sending completion email to {user_email}")
                 
-                # Prepare email content
-                subject = "🎨 Your Custom Card is Ready!"
+                # Get card type from config for better subject
+                card_type = config.get("cardType", "custom")
+                subject = f"🎉 Your {card_type} card is ready!"
                 
-                # Create HTML email body
+                # Create user-friendly HTML email body
                 body = f"""
                 <html>
                 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
                     <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-                        <h2 style="color: #4CAF50;">🎉 Your Card Generation is Complete!</h2>
-                        
-                        <p>Great news! Your custom card has been successfully generated and is ready for you.</p>
-                        
-                        <div style="background-color: #f9f9f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                            <h3 style="margin-top: 0;">📋 Card Details:</h3>
-                            <ul>
-                                <li><strong>Job ID:</strong> {job_id}</li>
-                                <li><strong>Generated Images:</strong> {len(generated_images)} sections</li>
-                                <li><strong>Sections:</strong> {', '.join(generated_images.keys())}</li>
-                                <li><strong>Generation Time:</strong> {generation_duration:.1f} seconds</li>
-                            </ul>
+                        <div style="text-align: center; margin-bottom: 30px;">
+                            <h1 style="color: #2563eb; margin-bottom: 10px;">🎉 Your Card is Ready!</h1>
                         </div>
                         
-                        <p>🔗 <strong>View your card:</strong> You can access your completed card through the same link or interface where you initiated the generation.</p>
+                        <p style="font-size: 16px; line-height: 1.6; margin-bottom: 20px;">Hi there!</p>
                         
-                        <p>✨ Your card includes all the sections you requested and is ready to use!</p>
-                        
-                        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-                        
-                        <p style="font-size: 14px; color: #666;">
-                            This is an automated notification from your card generation system.<br>
-                            If you have any questions, please don't hesitate to reach out.
+                        <p style="font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
+                            Thank you for using VibeCarding to create your beautiful <strong>{card_type}</strong> card!
                         </p>
                         
-                        <p style="text-align: center; margin-top: 30px;">
-                            <strong>🎨 Happy Creating! 🎨</strong>
+                        <p style="font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
+                            We hope you love how it turned out. Your card has been generated and is ready for printing or sharing.
                         </p>
+                        
+                        <div style="text-align: center; margin: 30px 0;">
+                            <a href="https://vibecarding.com/chat/" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                                View Your Card
+                            </a>
+                        </div>
+                        
+                        <p style="font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
+                            If you have any questions or feedback, feel free to reach out to us.
+                        </p>
+                        
+                        <p style="font-size: 16px; line-height: 1.6; margin-bottom: 20px;">
+                            Happy card making!
+                        </p>
+                        
+                        <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280;">
+                            <p style="margin-bottom: 5px;"><strong>Best regards,</strong></p>
+                            <p style="margin-bottom: 5px;">The VibeCarding Team</p>
+                            <p style="margin: 0;">
+                                <a href="mailto:vibecarding@ast.engineer" style="color: #2563eb; text-decoration: none;">vibecarding@ast.engineer</a>
+                            </p>
+                        </div>
                     </div>
                 </body>
                 </html>
@@ -5904,6 +5844,38 @@ def generate_card_images_background(job_id, prompts, config):
                             filename=None
                         )
                         print(f"✅ Completion email sent successfully to {user_email}, Message ID: {result.get('id')}")
+                        
+                        # Send admin notification to jordan@ast.engineer
+                        try:
+                            admin_subject = f"Card Created - {card_type} for {user_email}"
+                            admin_body = f"""
+                            <html>
+                            <body style="font-family: Arial, sans-serif; padding: 20px;">
+                                <h3 style="color: #2563eb;">New Card Created on VibeCarding</h3>
+                                <p><strong>User:</strong> {user_email}</p>
+                                <p><strong>Card Type:</strong> {card_type}</p>
+                                <p><strong>Generation Time:</strong> {generation_duration:.1f} seconds</p>
+                                <p><strong>Sections:</strong> {', '.join(generated_images.keys())}</p>
+                                <p><strong>Job ID:</strong> {job_id}</p>
+                                <p style="margin-top: 20px; color: #6b7280; font-size: 14px;">
+                                    This is an automated notification of card creation activity.
+                                </p>
+                            </body>
+                            </html>
+                            """
+                            
+                            admin_result = send_email_with_attachment(
+                                gmail_service=gmail_service,
+                                to="jordan@ast.engineer",
+                                subject=admin_subject,
+                                body=admin_body,
+                                attachment_base64=None,
+                                filename=None
+                            )
+                            print(f"✅ Admin notification sent to jordan@ast.engineer, Message ID: {admin_result.get('id')}")
+                        except Exception as admin_error:
+                            print(f"Failed to send admin notification: {admin_error}")
+                        
                     except Exception as gmail_error:
                         print(f"Failed to send email via Gmail API: {gmail_error}")
                         # Fall back to simple notification

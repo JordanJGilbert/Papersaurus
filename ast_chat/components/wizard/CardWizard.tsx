@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Sparkles, CheckCircle } from "lucide-react";
+import { toast } from "sonner";
 
 import StepIndicator from "./StepIndicator";
 import Step1CardBasics from "./steps/Step1CardBasics";
@@ -111,6 +112,85 @@ export default function CardWizard() {
   const updateFormData = (updates: any) => {
     // Update form data which will trigger persistence and sync to cardStudio
     cardForm.updateFormData(updates);
+  };
+
+  // Create a wrapper for handleGetMessageHelp that updates both form and cardStudio
+  const handleGetMessageHelpWrapper = async () => {
+    // We need to modify the cardStudio function to also update the form
+    // For now, let's create a custom implementation that does both
+    if (cardStudio.selectedType === "custom" && !cardStudio.customCardType.trim()) {
+      toast.error("Please describe your custom card type first!");
+      return;
+    }
+    
+    cardStudio.setIsGeneratingMessage(true);
+
+    try {
+      const cardTypeForPrompt = cardStudio.selectedType === "custom" ? cardStudio.customCardType : cardStudio.selectedType;
+      const selectedToneObj = cardStudio.cardTones.find(tone => tone.id === cardStudio.selectedTone);
+      const toneDescription = selectedToneObj ? selectedToneObj.description.toLowerCase() : "heartfelt and sincere";
+      
+      const effectivePrompt = cardStudio.prompt.trim() || `A beautiful ${cardTypeForPrompt} card with ${toneDescription} style`;
+      
+      const messagePrompt = `Create a ${toneDescription} message for a ${cardTypeForPrompt} greeting card.
+
+Card Theme/Description: "${effectivePrompt}"
+${cardStudio.toField ? `Recipient: ${cardStudio.toField}` : "Recipient: [not specified]"}
+${cardStudio.fromField ? `Sender: ${cardStudio.fromField}` : "Sender: [not specified]"}
+Card Tone: ${selectedToneObj ? selectedToneObj.label : "Heartfelt"} - ${toneDescription}
+
+Instructions:
+- Write a message that is ${toneDescription} and feels personal and genuine
+- ${cardStudio.toField ? `Address the message to ${cardStudio.toField} directly, using their name naturally` : "Write in a way that could be personalized to any recipient"}
+- ${cardStudio.fromField ? `Write as if ${cardStudio.fromField} is personally writing this message` : `Write in a ${toneDescription} tone`}
+- Match the ${toneDescription} tone and occasion of the ${cardTypeForPrompt} card type
+- Be inspired by the theme: "${effectivePrompt}"
+- Keep it concise but meaningful (2-4 sentences ideal)
+- Make it feel authentic, not generic
+- SAFETY: Never include brand names, character names, trademarked terms, or inappropriate content. If the theme references these, use generic alternatives or focus on the emotions/concepts instead
+- Keep content family-friendly and appropriate for all ages
+- ${cardStudio.selectedTone === 'funny' ? 'Include appropriate humor that fits the occasion' : ''}
+- ${cardStudio.selectedTone === 'genz-humor' ? 'Use GenZ humor with internet slang, memes, and chaotic energy - think "no cap", "periodt", "it\'s giving...", "slay", etc. Be unhinged but endearing' : ''}
+- ${cardStudio.selectedTone === 'professional' ? 'Keep it formal and business-appropriate' : ''}
+- ${cardStudio.selectedTone === 'romantic' ? 'Include loving and romantic language' : ''}
+- ${cardStudio.selectedTone === 'playful' ? 'Use fun and energetic language' : ''}
+- ${cardStudio.toField && cardStudio.fromField ? `Show the relationship between ${cardStudio.fromField} and ${cardStudio.toField} through the ${toneDescription} message tone` : ""}
+- ${cardStudio.fromField ? `End the message with a signature line like "Love, ${cardStudio.fromField}" or "- ${cardStudio.fromField}" or similar, naturally integrated into the message.` : ""}
+
+Return ONLY the message text that should appear inside the card - no quotes, no explanations, no markdown formatting (no *bold*, _italics_, or other markdown), just the complete ${toneDescription} message in plain text.
+
+IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outside these tags will be ignored.`;
+
+      const generatedMessage = await cardStudio.chatWithAI(messagePrompt, {
+        model: "gemini-2.5-pro",
+        includeThoughts: false
+      });
+
+      if (generatedMessage?.trim()) {
+        const messageMatch = generatedMessage.match(/<MESSAGE>([\s\S]*?)<\/MESSAGE>/);
+        let extractedMessage = messageMatch ? messageMatch[1].trim() : generatedMessage.trim();
+        
+        extractedMessage = extractedMessage.replace(/<\/?MESSAGE>/g, '').trim();
+        
+        // Update both cardStudio state and form data
+        cardStudio.setFinalCardMessage(extractedMessage);
+        updateFormData({
+          finalCardMessage: extractedMessage
+        });
+        
+        // Add to history
+        if (cardStudio.finalCardMessage.trim() && cardStudio.finalCardMessage.trim() !== extractedMessage) {
+          cardStudio.addMessageToHistory(cardStudio.finalCardMessage);
+        }
+        cardStudio.addMessageToHistory(extractedMessage);
+        
+        toast.success("✨ Personalized message created!");
+      }
+    } catch (error) {
+      toast.error("Failed to generate message. Please try again.");
+    } finally {
+      cardStudio.setIsGeneratingMessage(false);
+    }
   };
 
   // Handle template selection
@@ -244,7 +324,7 @@ export default function CardWizard() {
                 wizardState.markStepCompleted(2);
               }
             }}
-            handleGetMessageHelp={cardStudio.handleGetMessageHelp}
+            handleGetMessageHelp={handleGetMessageHelpWrapper}
             isGeneratingMessage={cardStudio.isGeneratingMessage}
           />
         );

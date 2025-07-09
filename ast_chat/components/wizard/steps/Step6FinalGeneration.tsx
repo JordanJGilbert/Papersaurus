@@ -107,13 +107,15 @@ export default function Step6FinalGeneration({
   const [printOption, setPrintOption] = useState<'physical' | 'email'>('physical');
   const [selectedPaperSize, setSelectedPaperSize] = useState<string>("standard");
 
-  // Auto-start final generation when component mounts
+  // State for confirmation flow
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  
+  // When a draft is selected, show confirmation instead of auto-starting
   useEffect(() => {
     if (selectedDraftIndex >= 0 && !isGeneratingFinalCard && !isCardCompleted && !generatedCard) {
-      console.log('🚀 Auto-starting final card generation for selected draft:', selectedDraftIndex);
-      onGenerateFinalCard(selectedDraftIndex);
+      setShowConfirmation(true);
     }
-  }, [selectedDraftIndex, isGeneratingFinalCard, isCardCompleted, generatedCard, onGenerateFinalCard]);
+  }, [selectedDraftIndex, isGeneratingFinalCard, isCardCompleted, generatedCard]);
 
   const selectedDraft = draftCards[selectedDraftIndex];
 
@@ -390,17 +392,36 @@ export default function Step6FinalGeneration({
           </CardHeader>
           <CardContent>
             <div className="text-center space-y-4">
-              <p className="text-amber-700 dark:text-amber-300">
-                Final card generation will start automatically...
+              <p className="text-gray-700 dark:text-gray-300">
+                Ready to create your final high-quality card?
               </p>
-              <Button 
-                onClick={() => onGenerateFinalCard(selectedDraftIndex)}
-                className="bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700"
-                size="lg"
-              >
-                <Sparkles className="w-5 h-5 mr-2" />
-                Start Final Generation
-              </Button>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                This will generate your final card based on the selected design.
+              </p>
+              {showConfirmation && !isGeneratingFinalCard && (
+                <div className="space-y-3">
+                  <Button 
+                    onClick={() => {
+                      setShowConfirmation(false);
+                      onGenerateFinalCard(selectedDraftIndex);
+                    }}
+                    className="bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700"
+                    size="lg"
+                  >
+                    <Sparkles className="w-5 h-5 mr-2" />
+                    Generate Final Card
+                  </Button>
+                  <div>
+                    <Button 
+                      variant="outline"
+                      onClick={() => setShowConfirmation(false)}
+                      size="sm"
+                    >
+                      Not ready yet
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
