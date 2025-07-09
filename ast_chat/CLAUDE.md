@@ -73,7 +73,7 @@ VibeCarding is a modern Next.js application that generates personalized greeting
 
 ### 1. Card Generation Process
 ```
-Template Selection (Optional) → User Input → AI Prompt Generation → Image Generation → QR Code Overlay → Email Delivery
+Template Selection (Optional) → User Input → AI Prompt Generation → Image Generation → Automatic Backend QR Overlay → Card Storage → Email Delivery
 ```
 
 ### 2. Template Flow
@@ -124,9 +124,10 @@ interface GeneratedCard {
 ## Backend Integration
 
 ### API Endpoints
-- `/api/generate-card-async` - Main card generation
-- `/api/cards/store` - Card storage and sharing
+- `/api/generate-card-async` - Main card generation with automatic QR overlay
+- `/api/cards/store` - Card storage and sharing URL generation
 - `/api/cards/list` - Template gallery with template_mode support
+- `/api/generate-qr-with-logo` - QR code generation with optional logos
 - `/internal/call_mcp_tool` - AI model interactions
 - `${BACKEND_API_BASE_URL}/upload` - File upload handling
 
@@ -219,6 +220,9 @@ interface GeneratedCard {
 4. Test with different models and settings
 5. Check form persistence in localStorage
 6. Verify wizard step completion states
+7. **QR Code Issues**: Check backend logs for QR overlay errors
+8. **Email Issues**: Verify card storage and share URL generation
+9. **URL Consistency**: Ensure all systems use same `{domain}/card/{card_id}` pattern
 
 ## Migration Notes
 - **Main interface**: `/app/page.tsx` now uses CardWizard as primary experience
@@ -227,7 +231,8 @@ interface GeneratedCard {
 - **Shared components**: Both modes use same underlying components
 - **State management**: `useCardStudio` hook works with both interfaces
 - **Form persistence**: New wizard includes automatic form data persistence
-- **Template system**: Available in main interface, legacy mode enhanced with QR codes
+- **QR Code System**: Unified backend QR generation for both legacy and wizard interfaces
+- **Email System**: Consistent URL generation and Gmail API integration across all interfaces
 
 ## Environment Configuration
 - `NEXT_PUBLIC_BACKEND_API_URL` - Backend API base URL
@@ -284,7 +289,7 @@ interface TemplateCard {
 ### Template Integration
 - **Smart Card Type Detection**: Automatic card type extraction from prompts
 - **Style Preservation**: Template artistic styles carried forward
-- **QR Code Generation**: Automatic QR code overlay for shared templates
+- **QR Code Generation**: Automatic QR code overlay for all final cards (backend-handled)
 - **Form Pre-population**: Seamless integration with wizard form data
 
 ## Form Persistence System
@@ -332,6 +337,54 @@ interface CardFormData {
 - **Navigation State**: Current step and completed steps
 - **Validation Cache**: Step validation results
 - **Auto-Recovery**: Restore state after page refresh
+
+## QR Code System
+
+### Automatic QR Generation
+- **Backend Integration**: QR codes automatically added during final card generation
+- **Positioning**: Bottom-right corner of back cover with smart sizing (15% of image, max 160px)
+- **Timing**: Occurs after images are generated but before job completion
+- **Scope**: Only for final cards (not drafts)
+
+### QR Code Features
+- **Share URL Integration**: QR codes link to `{domain}/card/{card_id}` URLs
+- **Visual Design**: White rounded background with "Scan me :)" text
+- **Logo Support**: Framework ready for logo integration via `/api/generate-qr-with-logo`
+- **Error Handling**: Graceful fallback if QR generation fails (continues without QR)
+
+### URL Consistency
+- **Email Links**: Use same card URLs as QR codes
+- **Share Button**: Reuses stored card URLs when available
+- **Template Gallery**: QR codes added to shared templates automatically
+
+### Backend Process Flow
+```
+Card Generation Complete → Store Card (get card_id) → Generate QR with Share URL → Overlay QR on Back Cover → Update Card Data → Email with Actual Card URL
+```
+
+### WebSocket Progress Updates
+- **Real-time Updates**: "Adding QR code to your card..." progress messages
+- **Non-blocking**: Generation continues if QR overlay fails
+- **Logging**: Detailed console output for debugging QR issues
+
+## Email System
+
+### Email Integration
+- **Gmail API**: Backend sends emails using Gmail service account
+- **User Notifications**: Completion emails with actual card links (not hardcoded URLs)
+- **Admin Notifications**: Copy sent to jordan@ast.engineer for all final cards
+- **Template**: User-friendly HTML emails with card type and personalized content
+
+### Email URL Generation
+- **Automatic Storage**: Cards automatically stored during QR generation for email links
+- **URL Reuse**: Email system reuses share URLs from QR generation (no duplicate storage)
+- **Fallback Logic**: Creates new card storage if QR generation failed
+- **Consistent URLs**: All emails use `{domain}/card/{card_id}` pattern
+
+### Email Timing
+- **Final Cards Only**: No emails sent for draft cards
+- **Post-QR Generation**: Emails sent after QR codes are added and cards are stored
+- **Error Resilient**: Emails still sent even if QR generation fails
 
 ## 📋 Documentation Maintenance
 
