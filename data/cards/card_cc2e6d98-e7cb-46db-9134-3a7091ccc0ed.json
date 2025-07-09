@@ -1,0 +1,17 @@
+{
+  "id": "cc2e6d98-e7cb-46db-9134-3a7091ccc0ed",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_68ccaeca.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_8cd65e9a.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_571626d1.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_e82da260.png",
+  "createdAt": 1751996353.1059067,
+  "expiresAt": 1783532353.1059074,
+  "version": 1,
+  "generatedPrompts": {
+    "backCover": "A beautiful, minimalist watercolor painting for a greeting card back, flat 2D for printing. The design features a few small, fluffy white tufts of wool gently drifting across the top-left portion of the card, appearing as if they've floated away from the sheep on the front. The background is a serene continuation of the soft pasture, with gentle green and blue watercolor washes, visible paper texture, artistic brush strokes, and organic paint bleeds. The overall composition is simple and peaceful. The bottom-right corner area is left completely blank and unadorned for QR code placement.",
+    "frontCover": "A charming and humorous watercolor painting for a greeting card front, flat 2D for printing. The scene features a very fluffy, slightly frazzled-looking cartoon sheep attempting to gracefully leap over a small wooden fence, but it's hilariously stuck halfway, with its fluffy wool comically snagged on the top rail. Its front legs are dangling on one side and back legs on the other, with a look of mild panic and surprise on its face. The background is a soft, minimalist pasture with gentle green and blue watercolor washes, artistic brush strokes, and organic paint bleeds on a visible paper texture. Centered in the middle of the card, written in a beautiful, readable, elegant handwritten cursive script, is the text: \"hope your birthday is over the top\".",
+    "leftInterior": "A decorative watercolor painting for the left interior of a greeting card, flat 2D for printing. The full-bleed design features a close-up, artistic detail of the rustic wooden fence from the front cover, running diagonally from the bottom-left to the upper-right. A few delicate blades of grass and tiny wildflowers sprout near the base of the fence. The style is consistent with the front, using soft green and blue watercolor washes, visible paper texture, artistic brush strokes, and organic paint bleeds to create a harmonious and serene atmosphere. No characters or text.",
+    "rightInterior": "An elegant watercolor painting for the right interior of a greeting card, flat 2D for printing. The full-bleed background is a soft, minimalist pasture scene with gentle green and blue watercolor washes, visible paper texture, and artistic brush strokes. A small, charming watercolor illustration of a single fluffy white wool tuft rests near the bottom-left corner. Centered on the page, written in a beautiful, readable, elegant handwritten cursive script that matches the front cover, is the text: \"\". The text is positioned with ample space around it, ensuring it is a clear focal point."
+  }
+}

@@ -5776,8 +5776,8 @@ Return only the numeric score (1-100) for each image.`;
                   </CollapsibleContent>
                 </Collapsible>
 
-                {/* Clean Progress Indicator - Hide when draft cards are available for selection */}
-                {(isGenerating || isGeneratingMessage) && !isGeneratingFinalCard && !(isDraftMode && draftCards.length > 0) && (
+                {/* Clean Progress Indicator - Show for all generation types */}
+                {(isGenerating || isGeneratingMessage || isGeneratingFinalCard) && !(isDraftMode && draftCards.length > 0 && !isGeneratingFinalCard) && (
                   <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/30 dark:to-cyan-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
                     <div className="space-y-3">
                       {/* Progress Message */}
@@ -5808,7 +5808,7 @@ Return only the numeric score (1-100) for each image.`;
                             </span>
                           )}
                           <span className="text-gray-500">
-                            {isDraftMode && !isGeneratingFinalCard ? '~30-60 sec expected' : '~1:30-2:00 min expected'}
+                            {isGeneratingFinalCard ? '~1:30-2:00 min expected' : isDraftMode && !isGeneratingFinalCard ? '~30-60 sec expected' : '~1:30-2:00 min expected'}
                           </span>
                         </div>
                       </div>
@@ -5887,44 +5887,6 @@ Return only the numeric score (1-100) for each image.`;
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
                       <span>Creating high-quality version...</span>
                     </Button>
-                    
-                    {/* Progress Indicator for Final Card Generation */}
-                    <div className="p-4 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/30 dark:to-cyan-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
-                      <div className="space-y-3">
-                        {/* Progress Message */}
-                        <div className="flex items-center gap-2">
-                          <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                          <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
-                            {generationProgress || "Generating high-quality version of your selected design..."}
-                          </span>
-                        </div>
-
-                        {/* Clean Progress Bar */}
-                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
-                          <div 
-                            className="bg-gradient-to-r from-blue-500 to-cyan-500 h-3 rounded-full transition-all duration-1000 ease-out"
-                            style={{ width: `${Math.min(progressPercentage, 100)}%` }}
-                          />
-                        </div>
-
-                        {/* Progress Text and Time Display */}
-                        <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
-                          <span className="font-medium">
-                            {Math.round(progressPercentage)}% Complete
-                          </span>
-                          <div className="flex items-center gap-3">
-                            {currentElapsedTime > 0 && (
-                              <span className="text-blue-600 dark:text-blue-400">
-                                ⏱️ {formatGenerationTime(currentElapsedTime)}
-                              </span>
-                            )}
-                            <span className="text-gray-500">
-                              {isDraftMode && !isGeneratingFinalCard ? '~30-60 sec expected' : '~1:30-2:00 min expected'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
                   </div>
                 ) : (
                 <Button
