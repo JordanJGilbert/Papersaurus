@@ -4324,6 +4324,77 @@ Return only the rewritten prompt, no explanations.`;
     setShowPrintConfirmation(true);
   };
 
+  // Ensure template has QR code for sharing
+  const ensureTemplateHasQRCode = async (template: GeneratedCard) => {
+    try {
+      // If the template already has a QR code (back cover looks like it has one), skip
+      if (template.shareUrl && template.backCover) {
+        // Quick check if back cover might already have QR code
+        // This is a heuristic - we'll generate a new one if needed
+        console.log('🔍 Template has shareUrl:', template.shareUrl);
+      }
+      
+      // Set progress for QR generation
+      setGenerationProgress("🔗 Generating QR code for easy sharing...");
+      
+      let shareUrl = template.shareUrl;
+      
+      // If template doesn't have a share URL, create one
+      if (!shareUrl) {
+        console.log('🔄 Template missing shareUrl, storing card to generate one...');
+        
+        // Store the template card to get a share URL
+        const storeResponse = await fetch('/api/cards/store', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: template.prompt || '',
+            frontCover: template.frontCover || '',
+            backCover: template.backCover || '',
+            leftPage: template.leftPage || '',
+            rightPage: template.rightPage || '',
+            generatedPrompts: template.generatedPrompts || null
+          })
+        });
+        
+        if (storeResponse.ok) {
+          const storeData = await storeResponse.json();
+          if (storeData.status === 'success') {
+            shareUrl = storeData.url;
+            console.log('✅ Share URL generated for template:', shareUrl);
+          }
+        }
+      }
+      
+      // Generate QR code and overlay it on the back cover
+      if (shareUrl && template.backCover) {
+        console.log('🔄 Applying QR overlay to template back cover...');
+        const originalBackCover = template.backCover;
+        const backCoverWithQR = await overlayQRCodeOnImage(originalBackCover, shareUrl);
+        
+        // Update the template with QR code
+        const updatedTemplate = {
+          ...template,
+          backCover: backCoverWithQR,
+          shareUrl: shareUrl
+        };
+        
+        // Update the state with the QR-enhanced template
+        setGeneratedCard(updatedTemplate);
+        setGeneratedCards([updatedTemplate]);
+        
+        console.log('✅ QR overlay complete for template');
+      }
+      
+      setGenerationProgress("");
+      
+    } catch (error) {
+      console.error('Failed to ensure template has QR code:', error);
+      setGenerationProgress("");
+      // Continue without QR code - don't break the template loading
+    }
+  };
+
   // Handle template selection for preview
   const handleTemplateSelect = async (template: GeneratedCard) => {
     try {
@@ -4343,6 +4414,10 @@ Return only the rewritten prompt, no explanations.`;
         setGeneratedCard(template);
         setGeneratedCards([template]);
         setSelectedCardIndex(0);
+        
+        // Generate QR code for template if it doesn't have one
+        await ensureTemplateHasQRCode(template);
+        
         setIsCardCompleted(true);
         setIsGenerating(false);
         setGenerationProgress("");
@@ -4381,6 +4456,10 @@ Return only the rewritten prompt, no explanations.`;
               setGeneratedCard(completeCard);
               setGeneratedCards([completeCard]);
               setSelectedCardIndex(0);
+              
+              // Generate QR code for complete template if it doesn't have one
+              await ensureTemplateHasQRCode(completeCard);
+              
               setIsCardCompleted(true);
               setIsGenerating(false);
               setGenerationProgress("");
@@ -4409,6 +4488,10 @@ Return only the rewritten prompt, no explanations.`;
           setGeneratedCard(fallbackCard);
           setGeneratedCards([fallbackCard]);
           setSelectedCardIndex(0);
+          
+          // Generate QR code for fallback template if it doesn't have one
+          await ensureTemplateHasQRCode(fallbackCard);
+          
           setIsCardCompleted(true);
           setIsGenerating(false);
           setGenerationProgress("");

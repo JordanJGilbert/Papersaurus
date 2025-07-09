@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 export interface CardFormData {
   // Step 1: Card Basics
@@ -60,8 +60,88 @@ const defaultFormData: CardFormData = {
   isFrontBackOnly: false,
 };
 
+// Storage keys for persistence
+const FORM_DATA_KEY = 'vibecarding-wizard-form-data';
+const WIZARD_STATE_KEY = 'vibecarding-wizard-state';
+
+// Helper function to safely store data (handles quota issues)
+const safeSetItem = (key: string, value: string): boolean => {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    console.warn(`Failed to save ${key} to localStorage:`, error);
+    return false;
+  }
+};
+
+// Helper function to safely retrieve data
+const safeGetItem = (key: string): string | null => {
+  try {
+    return localStorage.getItem(key);
+  } catch (error) {
+    console.warn(`Failed to retrieve ${key} from localStorage:`, error);
+    return null;
+  }
+};
+
+// Helper function to create serializable form data (excludes File objects)
+const createSerializableFormData = (formData: CardFormData): Omit<CardFormData, 'referenceImages'> => {
+  const { referenceImages, ...serializableData } = formData;
+  return serializableData;
+};
+
+// Helper function to restore form data from storage
+const restoreFormDataFromStorage = (): CardFormData => {
+  try {
+    const savedData = safeGetItem(FORM_DATA_KEY);
+    if (!savedData) return defaultFormData;
+
+    const parsedData = JSON.parse(savedData);
+    
+    // Merge with default data to ensure all fields exist
+    return {
+      ...defaultFormData,
+      ...parsedData,
+      referenceImages: [], // Always reset File objects
+    };
+  } catch (error) {
+    console.warn('Failed to restore form data from localStorage:', error);
+    return defaultFormData;
+  }
+};
+
 export function useCardForm() {
-  const [formData, setFormData] = useState<CardFormData>(defaultFormData);
+  const [formData, setFormData] = useState<CardFormData>(() => {
+    // Initialize with restored data on first load
+    if (typeof window !== 'undefined') {
+      return restoreFormDataFromStorage();
+    }
+    return defaultFormData;
+  });
+
+  const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
+
+  // Initialize form data from storage on component mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !isInitialLoadComplete) {
+      const restoredData = restoreFormDataFromStorage();
+      setFormData(restoredData);
+      setIsInitialLoadComplete(true);
+    }
+  }, [isInitialLoadComplete]);
+
+  // Save form data to localStorage whenever it changes (debounced)
+  useEffect(() => {
+    if (!isInitialLoadComplete) return;
+
+    const timeoutId = setTimeout(() => {
+      const serializableData = createSerializableFormData(formData);
+      safeSetItem(FORM_DATA_KEY, JSON.stringify(serializableData));
+    }, 500); // Debounce by 500ms
+
+    return () => clearTimeout(timeoutId);
+  }, [formData, isInitialLoadComplete]);
 
   const updateFormData = useCallback((updates: Partial<CardFormData>) => {
     setFormData(prev => ({ ...prev, ...updates }));
@@ -69,6 +149,21 @@ export function useCardForm() {
 
   const resetForm = useCallback(() => {
     setFormData(defaultFormData);
+    // Clear stored data
+    try {
+      localStorage.removeItem(FORM_DATA_KEY);
+    } catch (error) {
+      console.warn('Failed to clear form data from localStorage:', error);
+    }
+  }, []);
+
+  const clearStoredData = useCallback(() => {
+    try {
+      localStorage.removeItem(FORM_DATA_KEY);
+      localStorage.removeItem(WIZARD_STATE_KEY);
+    } catch (error) {
+      console.warn('Failed to clear stored data:', error);
+    }
   }, []);
 
   const validateStep = useCallback((step: number): boolean => {
@@ -187,8 +282,10 @@ export function useCardForm() {
     formData,
     updateFormData,
     resetForm,
+    clearStoredData,
     validateStep,
     getStepSummary,
     getValidationErrors,
+    isInitialLoadComplete,
   };
 } 

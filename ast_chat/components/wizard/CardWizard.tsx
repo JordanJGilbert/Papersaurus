@@ -15,6 +15,8 @@ import Step6FinalGeneration from "./steps/Step6FinalGeneration";
 import WizardNavigation from "./WizardNavigation";
 
 import { useCardStudio } from "@/hooks/useCardStudio";
+import { useCardForm } from "@/hooks/useCardForm";
+import { useWizardState } from "@/hooks/useWizardState";
 
 export interface WizardStep {
   id: string;
@@ -58,8 +60,9 @@ const wizardSteps: WizardStep[] = [
 ];
 
 export default function CardWizard() {
-  const [currentStep, setCurrentStep] = useState(1);
-  const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+  // Use hooks for form data and wizard state persistence
+  const cardForm = useCardForm();
+  const wizardState = useWizardState();
   
   // Use the comprehensive useCardStudio hook
   const cardStudio = useCardStudio();
@@ -69,212 +72,125 @@ export default function CardWizard() {
     cardStudio.checkPendingJobs();
   }, []);
 
+  // Sync form data with cardStudio when form data changes
+  useEffect(() => {
+    if (!cardForm.isInitialLoadComplete) return;
+
+    const { formData } = cardForm;
+    
+    // Update cardStudio with form data
+    cardStudio.setSelectedType(formData.selectedType);
+    cardStudio.setCustomCardType(formData.customCardType);
+    cardStudio.setSelectedTone(formData.selectedTone);
+    cardStudio.setToField(formData.toField);
+    cardStudio.setFromField(formData.fromField);
+    cardStudio.setPrompt(formData.prompt);
+    cardStudio.setFinalCardMessage(formData.finalCardMessage);
+    cardStudio.setIsHandwrittenMessage(formData.isHandwrittenMessage);
+    cardStudio.setSelectedArtisticStyle(formData.selectedArtisticStyle);
+    cardStudio.setCustomStyleDescription(formData.customStyleDescription);
+    cardStudio.setReferenceImages(formData.referenceImages);
+    cardStudio.setReferenceImageUrls(formData.referenceImageUrls);
+    cardStudio.setImageTransformation(formData.imageTransformation);
+    cardStudio.setUserEmail(formData.userEmail);
+    cardStudio.setSelectedImageModel(formData.selectedImageModel);
+    cardStudio.setSelectedDraftModel(formData.selectedDraftModel);
+    cardStudio.setSelectedPaperSize(formData.selectedPaperSize);
+    cardStudio.setNumberOfCards(formData.numberOfCards);
+    cardStudio.setIsFrontBackOnly(formData.isFrontBackOnly);
+  }, [cardForm.formData, cardForm.isInitialLoadComplete, cardStudio]);
+
   // Create a simplified updateFormData function for the wizard steps
   const updateFormData = (updates: any) => {
-    // Update individual fields based on the updates object
-    Object.keys(updates).forEach(key => {
-      switch (key) {
-        case 'selectedType':
-          cardStudio.setSelectedType(updates[key]);
-          break;
-        case 'customCardType':
-          cardStudio.setCustomCardType(updates[key]);
-          break;
-        case 'selectedTone':
-          cardStudio.setSelectedTone(updates[key]);
-          break;
-        case 'toField':
-          cardStudio.setToField(updates[key]);
-          break;
-        case 'fromField':
-          cardStudio.setFromField(updates[key]);
-          break;
-        case 'prompt':
-          cardStudio.setPrompt(updates[key]);
-          break;
-        case 'finalCardMessage':
-          cardStudio.setFinalCardMessage(updates[key]);
-          break;
-        case 'isHandwrittenMessage':
-          cardStudio.setIsHandwrittenMessage(updates[key]);
-          break;
-        case 'selectedArtisticStyle':
-          cardStudio.setSelectedArtisticStyle(updates[key]);
-          break;
-        case 'customStyleDescription':
-          cardStudio.setCustomStyleDescription(updates[key]);
-          break;
-        case 'referenceImages':
-          cardStudio.setReferenceImages(updates[key]);
-          break;
-        case 'referenceImageUrls':
-          cardStudio.setReferenceImageUrls(updates[key]);
-          break;
-        case 'imageTransformation':
-          cardStudio.setImageTransformation(updates[key]);
-          break;
-        case 'userEmail':
-          cardStudio.setUserEmail(updates[key]);
-          break;
-        case 'selectedImageModel':
-          cardStudio.setSelectedImageModel(updates[key]);
-          break;
-        case 'selectedDraftModel':
-          cardStudio.setSelectedDraftModel(updates[key]);
-          break;
-        case 'selectedPaperSize':
-          cardStudio.setSelectedPaperSize(updates[key]);
-          break;
-        case 'numberOfCards':
-          cardStudio.setNumberOfCards(updates[key]);
-          break;
-        case 'isFrontBackOnly':
-          cardStudio.setIsFrontBackOnly(updates[key]);
-          break;
-      }
-    });
+    // Update form data which will trigger persistence and sync to cardStudio
+    cardForm.updateFormData(updates);
   };
 
   // Validation function for each step
   const validateStep = (stepNumber: number): boolean => {
-    switch (stepNumber) {
-      case 1: // Card Basics
-        if (cardStudio.selectedType === "custom" && !cardStudio.customCardType.trim()) {
-          return false;
-        }
-        return Boolean(cardStudio.selectedType) && Boolean(cardStudio.selectedTone);
-      
-      case 2: // Content & Message
-        // Always valid - content is optional, message can be auto-generated
-        return true;
-      
-      case 3: // Personalization
-        // Always valid - this step is optional
-        if (cardStudio.selectedArtisticStyle === "custom" && !cardStudio.customStyleDescription.trim()) {
-          return false;
-        }
-        return true;
-      
-      case 4: // Details & Settings
-        // Require valid email
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        return Boolean(cardStudio.userEmail.trim()) && emailRegex.test(cardStudio.userEmail);
-      
-      case 5: // Draft Selection
-        // All previous steps must be valid
-        return validateStep(1) && validateStep(2) && validateStep(3) && validateStep(4);
-      
-      case 6: // Final Generation
-        // Draft must be selected and final generation started
-        return validateStep(5) && cardStudio.selectedDraftIndex >= 0;
-      
-      default:
-        return false;
-    }
+    return cardForm.validateStep(stepNumber);
   };
 
   // Handle step navigation
   const handleNext = (): boolean => {
-    if (!validateStep(currentStep)) {
+    if (!validateStep(wizardState.currentStep)) {
       return false;
     }
     
     // Mark current step as completed
-    if (!completedSteps.includes(currentStep)) {
-      setCompletedSteps(prev => [...prev, currentStep]);
-    }
+    wizardState.markStepCompleted(wizardState.currentStep);
     
-    if (currentStep < wizardSteps.length) {
-      setCurrentStep(currentStep + 1);
+    if (wizardState.currentStep < wizardSteps.length) {
+      wizardState.goToNextStep();
     }
     
     return true;
   };
 
   const handlePrevious = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
+    if (wizardState.currentStep > 1) {
+      wizardState.goToPreviousStep();
     }
   };
 
   const handleStepClick = (stepNumber: number) => {
     // Allow navigation to completed steps or the next step if current is valid
-    if (completedSteps.includes(stepNumber) || 
-        (stepNumber === currentStep + 1 && validateStep(currentStep)) ||
-        stepNumber < currentStep) {
+    if (wizardState.completedSteps.includes(stepNumber) || 
+        (stepNumber === wizardState.currentStep + 1 && validateStep(wizardState.currentStep)) ||
+        stepNumber < wizardState.currentStep) {
       
       // Mark current step as completed if valid
-      if (validateStep(currentStep) && !completedSteps.includes(currentStep)) {
-        setCompletedSteps(prev => [...prev, currentStep]);
+      if (validateStep(wizardState.currentStep) && !wizardState.completedSteps.includes(wizardState.currentStep)) {
+        wizardState.markStepCompleted(wizardState.currentStep);
       }
       
-      setCurrentStep(stepNumber);
+      wizardState.goToStep(stepNumber);
     }
   };
 
   // Check if we can proceed from current step
-  const canProceed = validateStep(currentStep);
+  const canProceed = validateStep(wizardState.currentStep);
 
   // Auto-complete step 1 once user makes selections
   useEffect(() => {
-    if (validateStep(1) && !completedSteps.includes(1)) {
-      setCompletedSteps(prev => [...prev, 1]);
+    if (validateStep(1) && !wizardState.completedSteps.includes(1)) {
+      wizardState.markStepCompleted(1);
     }
-  }, [cardStudio.selectedType, cardStudio.selectedTone, cardStudio.customCardType]);
+  }, [cardForm.formData.selectedType, cardForm.formData.selectedTone, cardForm.formData.customCardType, wizardState]);
 
   // Auto-complete step 4 once email is valid
   useEffect(() => {
-    if (validateStep(4) && !completedSteps.includes(4)) {
-      setCompletedSteps(prev => [...prev, 4]);
+    if (validateStep(4) && !wizardState.completedSteps.includes(4)) {
+      wizardState.markStepCompleted(4);
     }
-  }, [cardStudio.userEmail]);
+  }, [cardForm.formData.userEmail, wizardState]);
 
   // Auto-advance to Step 6 when final card generation starts
   useEffect(() => {
-    if (cardStudio.isGeneratingFinalCard && currentStep < 6) {
+    if (cardStudio.isGeneratingFinalCard && wizardState.currentStep < 6) {
       console.log('🚀 Auto-advancing to Step 6: Final Generation');
-      if (!completedSteps.includes(5)) {
-        setCompletedSteps(prev => [...prev, 5]);
+      if (!wizardState.completedSteps.includes(5)) {
+        wizardState.markStepCompleted(5);
       }
-      setCurrentStep(6);
+      wizardState.goToStep(6);
     }
-  }, [cardStudio.isGeneratingFinalCard, currentStep]);
+  }, [cardStudio.isGeneratingFinalCard, wizardState]);
 
   // Create complete CardFormData object
-  const getCompleteFormData = () => ({
-    selectedType: cardStudio.selectedType,
-    customCardType: cardStudio.customCardType,
-    selectedTone: cardStudio.selectedTone,
-    toField: cardStudio.toField,
-    fromField: cardStudio.fromField,
-    prompt: cardStudio.prompt,
-    finalCardMessage: cardStudio.finalCardMessage,
-    isHandwrittenMessage: cardStudio.isHandwrittenMessage,
-    selectedArtisticStyle: cardStudio.selectedArtisticStyle,
-    customStyleDescription: cardStudio.customStyleDescription,
-    referenceImages: cardStudio.referenceImages,
-    referenceImageUrls: cardStudio.referenceImageUrls,
-    imageTransformation: cardStudio.imageTransformation,
-    userEmail: cardStudio.userEmail,
-    selectedImageModel: cardStudio.selectedImageModel,
-    selectedDraftModel: cardStudio.selectedDraftModel,
-    selectedPaperSize: cardStudio.selectedPaperSize,
-    numberOfCards: cardStudio.numberOfCards,
-    isFrontBackOnly: cardStudio.isFrontBackOnly
-  });
+  const getCompleteFormData = () => cardForm.formData;
 
   const renderCurrentStep = () => {
     const completeFormData = getCompleteFormData();
     
-    switch (currentStep) {
+    switch (wizardState.currentStep) {
       case 1:
         return (
           <Step1CardBasics
             formData={completeFormData}
             updateFormData={updateFormData}
             onStepComplete={() => {
-              if (!completedSteps.includes(1)) {
-                setCompletedSteps(prev => [...prev, 1]);
+              if (!wizardState.completedSteps.includes(1)) {
+                wizardState.markStepCompleted(1);
               }
             }}
           />
@@ -286,8 +202,8 @@ export default function CardWizard() {
             formData={completeFormData}
             updateFormData={updateFormData}
             onStepComplete={() => {
-              if (!completedSteps.includes(2)) {
-                setCompletedSteps(prev => [...prev, 2]);
+              if (!wizardState.completedSteps.includes(2)) {
+                wizardState.markStepCompleted(2);
               }
             }}
             handleGetMessageHelp={cardStudio.handleGetMessageHelp}
@@ -301,8 +217,8 @@ export default function CardWizard() {
             formData={completeFormData}
             updateFormData={updateFormData}
             onStepComplete={() => {
-              if (!completedSteps.includes(3)) {
-                setCompletedSteps(prev => [...prev, 3]);
+              if (!wizardState.completedSteps.includes(3)) {
+                wizardState.markStepCompleted(3);
               }
             }}
             handleFileUpload={cardStudio.handleFileUpload}
@@ -317,8 +233,8 @@ export default function CardWizard() {
             formData={completeFormData}
             updateFormData={updateFormData}
             onStepComplete={() => {
-              if (!completedSteps.includes(4)) {
-                setCompletedSteps(prev => [...prev, 4]);
+              if (!wizardState.completedSteps.includes(4)) {
+                wizardState.markStepCompleted(4);
               }
             }}
           />
@@ -330,8 +246,8 @@ export default function CardWizard() {
             formData={completeFormData}
             updateFormData={updateFormData}
             onStepComplete={() => {
-              if (!completedSteps.includes(5)) {
-                setCompletedSteps(prev => [...prev, 5]);
+              if (!wizardState.completedSteps.includes(5)) {
+                wizardState.markStepCompleted(5);
               }
             }}
             isGenerating={cardStudio.isGenerating}
@@ -348,10 +264,10 @@ export default function CardWizard() {
             onSelectDraft={(index) => {
               cardStudio.setSelectedDraftIndex(index);
               // Auto-advance to final generation step when draft is selected
-              if (!completedSteps.includes(5)) {
-                setCompletedSteps(prev => [...prev, 5]);
+              if (!wizardState.completedSteps.includes(5)) {
+                wizardState.markStepCompleted(5);
               }
-              setCurrentStep(6);
+              wizardState.goToStep(6);
             }}
           />
         );
@@ -383,8 +299,8 @@ export default function CardWizard() {
       {/* Step Indicator */}
       <StepIndicator
         steps={wizardSteps}
-        currentStep={currentStep}
-        completedSteps={completedSteps}
+        currentStep={wizardState.currentStep}
+        completedSteps={wizardState.completedSteps}
         onStepClick={handleStepClick}
       />
 
@@ -394,23 +310,23 @@ export default function CardWizard() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-lg flex items-center justify-center shadow-lg">
-                {completedSteps.includes(currentStep) ? (
+                {wizardState.completedSteps.includes(wizardState.currentStep) ? (
                   <CheckCircle className="w-6 h-6 text-white" />
                 ) : (
-                  <span className="text-white font-bold">{currentStep}</span>
+                  <span className="text-white font-bold">{wizardState.currentStep}</span>
                 )}
               </div>
               <div>
                 <CardTitle className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                  {wizardSteps[currentStep - 1]?.title}
+                  {wizardSteps[wizardState.currentStep - 1]?.title}
                 </CardTitle>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {wizardSteps[currentStep - 1]?.description}
+                  {wizardSteps[wizardState.currentStep - 1]?.description}
                 </p>
               </div>
             </div>
             
-            {wizardSteps[currentStep - 1]?.isOptional && (
+            {wizardSteps[wizardState.currentStep - 1]?.isOptional && (
               <div className="text-xs text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded-full">
                 Optional
               </div>
@@ -427,7 +343,7 @@ export default function CardWizard() {
 
       {/* Navigation */}
       <WizardNavigation
-        currentStep={currentStep}
+        currentStep={wizardState.currentStep}
         totalSteps={wizardSteps.length}
         onPrevious={handlePrevious}
         onNext={handleNext}
