@@ -1,0 +1,13 @@
+{
+  "browserName": "firefox",
+  "headless": true,
+  "launchOptions": {
+    "ignoreHTTPSErrors": true
+  },
+  "contextOptions": {
+    "ignoreHTTPSErrors": true
+  },
+  "isolated": true,
+  "browserArgs": ["--no-sandbox"],
+  "capabilities": ["navigation", "screenshot", "download", "upload", "cookies", "storage", "network", "performance", "console", "debugger", "dom", "emulation", "input", "media", "metrics", "runtime", "security", "service_worker", "storage", "system_info", "tracing", "web_vitals"]
+} 

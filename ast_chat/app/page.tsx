@@ -21,13 +21,8 @@ export default function HomePage() {
       <header className="border-b bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <Link href="/legacy">
-                <Button variant="ghost" size="sm" className="gap-2">
-                  <Wrench className="w-4 h-4" />
-                  Legacy Mode
-                </Button>
-              </Link>
+            {/* Mobile Header Layout */}
+            <div className="flex items-center justify-between w-full sm:hidden">
               <div className="flex items-center space-x-2">
                 <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
                   <Sparkles className="w-5 h-5 text-white" />
@@ -39,14 +34,50 @@ export default function HomePage() {
                   <p className="text-xs text-gray-600 dark:text-gray-400">AI-powered greeting cards</p>
                 </div>
               </div>
-              <Link href="/gallery">
-                <Button variant="ghost" size="sm" className="gap-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">
-                  <Eye className="w-4 h-4" />
-                  <span className="hidden sm:inline">Gallery</span>
-                </Button>
-              </Link>
+              <div className="flex items-center space-x-2">
+                <Link href="/legacy">
+                  <Button variant="ghost" size="sm" className="p-2">
+                    <Wrench className="w-4 h-4" />
+                  </Button>
+                </Link>
+                <Link href="/gallery">
+                  <Button variant="ghost" size="sm" className="p-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">
+                    <Eye className="w-4 h-4" />
+                  </Button>
+                </Link>
+                <ModeToggle />
+              </div>
             </div>
-            <ModeToggle />
+
+            {/* Desktop Header Layout */}
+            <div className="hidden sm:flex items-center justify-between w-full">
+              <div className="flex items-center space-x-3">
+                <Link href="/legacy">
+                  <Button variant="ghost" size="sm" className="gap-2">
+                    <Wrench className="w-4 h-4" />
+                    Legacy Mode
+                  </Button>
+                </Link>
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
+                    <Sparkles className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h1 className="text-lg font-bold text-gray-900 dark:text-white">
+                      VibeCarding
+                    </h1>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">AI-powered greeting cards</p>
+                  </div>
+                </div>
+                <Link href="/gallery">
+                  <Button variant="ghost" size="sm" className="gap-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">
+                    <Eye className="w-4 h-4" />
+                    Gallery
+                  </Button>
+                </Link>
+              </div>
+              <ModeToggle />
+            </div>
           </div>
         </div>
       </header>

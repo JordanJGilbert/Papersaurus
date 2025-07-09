@@ -99,7 +99,7 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Template Gallery Option */}
       <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-xl p-4 sm:p-6 border border-purple-200 dark:border-purple-800">
         <div className="flex flex-col gap-4">
@@ -136,8 +136,60 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
               </button>
             </div>
             
-            <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 touch-pan-x">
-              {/* Placeholder template cards */}
+            {/* Mobile Template Grid - 2 rows with more templates */}
+            <div className="sm:hidden">
+              <div className="grid grid-cols-4 gap-2 mb-3">
+                {[
+                  { type: 'Birthday', color: 'from-pink-400 to-rose-400', emoji: '🎂', id: 'birthday' },
+                  { type: 'Thank You', color: 'from-green-400 to-emerald-400', emoji: '🙏', id: 'thank-you' },
+                  { type: 'Love', color: 'from-red-400 to-pink-400', emoji: '💕', id: 'love' },
+                  { type: 'Holiday', color: 'from-blue-400 to-cyan-400', emoji: '🎄', id: 'holiday' }
+                ].map((template, index) => (
+                  <div
+                    key={index}
+                    className="cursor-pointer group touch-manipulation"
+                    onClick={() => {
+                      updateFormData({ selectedType: template.id });
+                      setShowTemplateGallery(true);
+                    }}
+                  >
+                    <div className={`aspect-[3/4] bg-gradient-to-br ${template.color} rounded-lg flex items-center justify-center mb-1 group-hover:scale-105 transition-transform shadow-sm border border-white/20`}>
+                      <span className="text-xl">{template.emoji}</span>
+                    </div>
+                    <p className="text-xs text-center text-purple-700 dark:text-purple-300 font-medium leading-tight">
+                      {template.type}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { type: 'Congratulations', color: 'from-yellow-400 to-orange-400', emoji: '🎉', id: 'congratulations' },
+                  { type: 'Wedding', color: 'from-purple-400 to-pink-400', emoji: '💒', id: 'wedding' },
+                  { type: 'Graduation', color: 'from-indigo-400 to-purple-400', emoji: '🎓', id: 'graduation' },
+                  { type: 'Get Well', color: 'from-teal-400 to-green-400', emoji: '🌟', id: 'get-well' }
+                ].map((template, index) => (
+                  <div
+                    key={index}
+                    className="cursor-pointer group touch-manipulation"
+                    onClick={() => {
+                      updateFormData({ selectedType: template.id });
+                      setShowTemplateGallery(true);
+                    }}
+                  >
+                    <div className={`aspect-[3/4] bg-gradient-to-br ${template.color} rounded-lg flex items-center justify-center mb-1 group-hover:scale-105 transition-transform shadow-sm border border-white/20`}>
+                      <span className="text-xl">{template.emoji}</span>
+                    </div>
+                    <p className="text-xs text-center text-purple-700 dark:text-purple-300 font-medium leading-tight">
+                      {template.type}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Desktop Template Horizontal Scroll */}
+            <div className="hidden sm:flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 touch-pan-x">
               {[
                 { type: 'Birthday', color: 'from-pink-400 to-rose-400', emoji: '🎂', id: 'birthday' },
                 { type: 'Thank You', color: 'from-green-400 to-emerald-400', emoji: '🙏', id: 'thank-you' },
@@ -147,15 +199,14 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
               ].map((template, index) => (
                 <div
                   key={index}
-                  className="flex-shrink-0 w-20 sm:w-24 cursor-pointer group touch-manipulation"
+                  className="flex-shrink-0 w-24 cursor-pointer group touch-manipulation"
                   onClick={() => {
-                    // Quick select card type and open template gallery
                     updateFormData({ selectedType: template.id });
                     setShowTemplateGallery(true);
                   }}
                 >
                   <div className={`aspect-[3/4] bg-gradient-to-br ${template.color} rounded-lg flex items-center justify-center mb-2 group-hover:scale-105 transition-transform shadow-sm border border-white/20`}>
-                    <span className="text-2xl sm:text-3xl">{template.emoji}</span>
+                    <span className="text-3xl">{template.emoji}</span>
                   </div>
                   <p className="text-xs text-center text-purple-700 dark:text-purple-300 font-medium leading-tight">
                     {template.type}
@@ -177,7 +228,7 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
       </div>
 
       {/* Card Type Selection */}
-      <div className="space-y-3">
+      <div className="space-y-3 sm:space-y-4">
         <div className="flex items-center gap-2">
           <div className="w-1.5 h-8 bg-gradient-to-b from-blue-500 to-cyan-500 rounded-full" />
           <label className="text-base font-semibold text-gray-800 dark:text-gray-200">
@@ -188,7 +239,7 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
           value={formData.selectedType} 
           onValueChange={(value) => updateFormData({ selectedType: value })}
         >
-          <SelectTrigger className="h-12 border-2 hover:border-blue-300 dark:hover:border-blue-700 transition-colors">
+          <SelectTrigger className="h-12 sm:h-14 border-2 hover:border-blue-300 dark:hover:border-blue-700 transition-colors touch-manipulation text-base">
             <SelectValue>
               {(() => {
                 const selected = cardTypes.find((type) => type.id === formData.selectedType);
@@ -247,15 +298,18 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
       </div>
 
       {/* Card Tone */}
-      <div>
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-          Card Tone & Style
-        </label>
+      <div className="space-y-3 sm:space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-8 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full" />
+          <label className="text-base font-semibold text-gray-800 dark:text-gray-200">
+            Card Tone & Style
+          </label>
+        </div>
         <Select 
           value={formData.selectedTone} 
           onValueChange={(value) => updateFormData({ selectedTone: value })}
         >
-          <SelectTrigger className="h-12 touch-manipulation">
+          <SelectTrigger className="h-12 sm:h-14 border-2 hover:border-purple-300 dark:hover:border-purple-700 transition-colors touch-manipulation text-base">
             <SelectValue>
               {(() => {
                 const selected = cardTones.find((tone) => tone.id === formData.selectedTone);
@@ -282,30 +336,38 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
       </div>
 
       {/* To/From Fields */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3">
-        <div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-            To (Optional)
+      <div className="space-y-3 sm:space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-8 bg-gradient-to-b from-green-500 to-teal-500 rounded-full" />
+          <label className="text-base font-semibold text-gray-800 dark:text-gray-200">
+            Personalization (Optional)
           </label>
-          <Input
-            placeholder="🎯 To"
-            value={formData.toField}
-            onChange={(e) => updateFormData({ toField: e.target.value })}
-            className="h-12 touch-manipulation"
-            style={{ fontSize: '16px' }}
-          />
         </div>
-        <div>
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-            From (Optional)
-          </label>
-          <Input
-            placeholder="📝 From"
-            value={formData.fromField}
-            onChange={(e) => updateFormData({ fromField: e.target.value })}
-            className="h-12 touch-manipulation"
-            style={{ fontSize: '16px' }}
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+              To (Optional)
+            </label>
+            <Input
+              placeholder="🎯 To"
+              value={formData.toField}
+              onChange={(e) => updateFormData({ toField: e.target.value })}
+              className="h-12 sm:h-14 touch-manipulation border-2 hover:border-green-300 dark:hover:border-green-700 transition-colors text-base"
+              style={{ fontSize: '16px' }}
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+              From (Optional)
+            </label>
+            <Input
+              placeholder="📝 From"
+              value={formData.fromField}
+              onChange={(e) => updateFormData({ fromField: e.target.value })}
+              className="h-12 sm:h-14 touch-manipulation border-2 hover:border-green-300 dark:hover:border-green-700 transition-colors text-base"
+              style={{ fontSize: '16px' }}
+            />
+          </div>
         </div>
       </div>
 

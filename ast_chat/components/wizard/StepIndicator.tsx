@@ -199,9 +199,7 @@ export default function StepIndicator({
                           : 'text-gray-500 dark:text-gray-400'
                         }
                       `}>
-                        {step.title.split(' ').map((word, i) => (
-                          <div key={i} className="leading-4">{word}</div>
-                        ))}
+                        {step.mobileTitle || step.title}
                       </div>
                     </div>
                   </div>

@@ -21,6 +21,7 @@ import { useWizardState } from "@/hooks/useWizardState";
 export interface WizardStep {
   id: string;
   title: string;
+  mobileTitle?: string; // Shorter title for mobile
   description: string;
   isOptional?: boolean;
 }
@@ -29,32 +30,38 @@ const wizardSteps: WizardStep[] = [
   {
     id: "basics",
     title: "Card Basics",
+    mobileTitle: "Basics",
     description: "Choose your card type and tone"
   },
   {
     id: "content",
     title: "Content & Message", 
+    mobileTitle: "Content",
     description: "Describe your card and write your message"
   },
   {
     id: "personalization",
     title: "Personalization",
+    mobileTitle: "Style",
     description: "Choose artistic style and add photos",
     isOptional: true
   },
   {
     id: "details",
     title: "Details & Settings",
+    mobileTitle: "Details",
     description: "Email and advanced options"
   },
   {
     id: "drafts",
     title: "Draft Selection",
+    mobileTitle: "Drafts",
     description: "Choose from 5 design variations"
   },
   {
     id: "generate",
     title: "Final Generation",
+    mobileTitle: "Generate",
     description: "Creating your complete card"
   }
 ];
