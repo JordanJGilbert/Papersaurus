@@ -235,6 +235,12 @@ interface GeneratedCard {
 - SSL/TLS termination handled by platform
 - CDN for static assets
 
+## Development Server
+- **Local Development**: User typically runs `npm run dev` in a separate terminal (no need to run this command)
+- **Production Analysis**: Use MCP tools with `vibecarding.com` domain for testing and analysis
+- **Backend Integration**: Local development connects to production backend for full functionality
+- **Backend Restart**: To restart the Flask backend service, use `sudo systemctl restart flask_app.service`
+
 ## Performance Optimizations
 - **Component lazy loading** for large forms
 - **Image optimization** with Next.js

@@ -5752,6 +5752,80 @@ def generate_card_images_background(job_id, prompts, config):
             "generationTimeSeconds": generation_duration
         }
         
+        # Add QR code to back cover for final cards (not drafts)
+        if not is_draft_mode and generated_images.get("backCover"):
+            try:
+                print("🔲 Adding QR code to back cover...")
+                
+                # Update progress for WebSocket
+                if job_id in job_storage:
+                    job_storage[job_id].update({
+                        "progress": "Adding QR code to your card..."
+                    })
+                    socketio.emit('job_update', {
+                        'job_id': job_id,
+                        'status': 'processing',
+                        'progress': 'Adding QR code to your card...'
+                    }, room=f"job_{job_id}")
+                
+                # First, store the card to get a share URL
+                card_id = generate_friendly_card_id()
+                
+                # Prepare card data for storage
+                store_card_data = {
+                    'id': card_id,
+                    'prompt': config.get('prompt', ''),
+                    'frontCover': generated_images.get('frontCover', ''),
+                    'backCover': generated_images.get('backCover', ''),
+                    'leftPage': generated_images.get('leftInterior', ''),
+                    'rightPage': generated_images.get('rightInterior', ''),
+                    'generatedPrompts': prompts
+                }
+                
+                # Store in dedicated cards directory
+                card_filename = f"card_{card_id}.json"
+                card_path = os.path.join(CARDS_DIR, card_filename)
+                
+                with open(card_path, 'w') as f:
+                    json.dump({
+                        **store_card_data,
+                        'createdAt': time.time(),
+                        'expiresAt': time.time() + (365 * 24 * 60 * 60),  # 1 year expiry
+                        'version': 1
+                    }, f, indent=2)
+                
+                # Generate share URL for QR code
+                domain = DOMAIN_FROM_ENV or 'https://vibecarding.com'
+                if domain.startswith('https://'):
+                    share_url = f"{domain}/card/{card_id}"
+                else:
+                    share_url = f"https://{domain}/card/{card_id}"
+                
+                print(f"📦 Card stored with ID: {card_id}, Share URL: {share_url}")
+                
+                # Generate QR code overlay on back cover
+                back_cover_with_qr = overlay_qr_code_on_image(
+                    image_url=generated_images.get("backCover"),
+                    qr_url=share_url,
+                    logo_url=None  # Could add logo support later
+                )
+                
+                if back_cover_with_qr:
+                    # Update the back cover with QR code version
+                    card_data["backCover"] = back_cover_with_qr
+                    generated_images["backCover"] = back_cover_with_qr
+                    print("✅ QR code successfully added to back cover")
+                    
+                    # Store the card data with QR code
+                    card_data["shareUrl"] = share_url
+                    card_data["cardId"] = card_id
+                else:
+                    print("⚠️ QR code overlay failed, continuing without QR code")
+                    
+            except Exception as qr_error:
+                print(f"⚠️ QR code generation failed: {qr_error}")
+                # Continue without QR code - don't fail the entire job
+        
         # In draft mode, log what sections were actually generated
         if is_draft_mode:
             generated_section_names = list(generated_images.keys())
@@ -5781,11 +5855,60 @@ def generate_card_images_background(job_id, prompts, config):
             try:
                 print(f"Sending completion email to {user_email}")
                 
+                # Use share URL from QR generation if available, otherwise create new one
+                if card_data.get("shareUrl"):
+                    share_url = card_data.get("shareUrl")
+                    print(f"📧 Using existing share URL from QR generation: {share_url}")
+                else:
+                    # Fallback: store the card to get a share URL if QR generation failed
+                    try:
+                        print("📧 QR generation failed, creating new card storage for email...")
+                        # Generate card ID and store the card
+                        card_id = generate_friendly_card_id()
+                        
+                        # Prepare card data for storage
+                        store_card_data = {
+                            'id': card_id,
+                            'prompt': config.get('prompt', ''),
+                            'frontCover': generated_images.get('frontCover', ''),
+                            'backCover': generated_images.get('backCover', ''),
+                            'leftPage': generated_images.get('leftInterior', ''),
+                            'rightPage': generated_images.get('rightInterior', ''),
+                            'generatedPrompts': prompts
+                        }
+                        
+                        # Store in dedicated cards directory
+                        card_filename = f"card_{card_id}.json"
+                        card_path = os.path.join(CARDS_DIR, card_filename)
+                        
+                        with open(card_path, 'w') as f:
+                            json.dump({
+                                **store_card_data,
+                                'createdAt': time.time(),
+                                'expiresAt': time.time() + (365 * 24 * 60 * 60),  # 1 year expiry
+                                'version': 1
+                            }, f, indent=2)
+                        
+                        # Generate share URL
+                        domain = DOMAIN_FROM_ENV or 'https://vibecarding.com'
+                        if domain.startswith('https://'):
+                            share_url = f"{domain}/card/{card_id}"
+                        else:
+                            share_url = f"https://{domain}/card/{card_id}"
+                            
+                        print(f"📦 Fallback card stored with ID: {card_id}, Share URL: {share_url}")
+                        
+                    except Exception as e:
+                        print(f"Error storing card for email: {e}")
+                        # Final fallback to app home if card storage fails
+                        domain = DOMAIN_FROM_ENV or 'https://vibecarding.com'
+                        share_url = f"{domain}/wizard"
+                
                 # Get card type from config for better subject
                 card_type = config.get("cardType", "custom")
                 subject = f"🎉 Your {card_type} card is ready!"
                 
-                # Create user-friendly HTML email body
+                # Create user-friendly HTML email body with actual card URL
                 body = f"""
                 <html>
                 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
@@ -5805,7 +5928,7 @@ def generate_card_images_background(job_id, prompts, config):
                         </p>
                         
                         <div style="text-align: center; margin: 30px 0;">
-                            <a href="https://vibecarding.com/chat/" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                            <a href="{share_url}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
                                 View Your Card
                             </a>
                         </div>
@@ -6086,6 +6209,126 @@ def generate_qr_with_logo(url: str, logo_path: str = None, size: int = 160, seam
         
     except Exception as e:
         print(f"❌ Error generating QR code: {e}")
+        return None
+
+def overlay_qr_code_on_image(image_url: str, qr_url: str, logo_url: str = None) -> str:
+    """
+    Overlay a QR code on an image (typically the back cover) and return the composite image as a data URL.
+    
+    Args:
+        image_url: URL or data URL of the base image
+        qr_url: URL to encode in the QR code
+        logo_url: Optional logo URL to include in QR code
+    
+    Returns:
+        Data URL of the composite image with QR code overlaid, or None if failed
+    """
+    try:
+        import requests
+        from PIL import Image, ImageDraw
+        import io
+        import base64
+        
+        print(f"🔲 Starting QR overlay: image_url={image_url[:100]}..., qr_url={qr_url}")
+        
+        # Load the base image
+        if image_url.startswith('data:image/'):
+            # Handle data URL
+            header, data = image_url.split(',', 1)
+            image_data = base64.b64decode(data)
+            base_image = Image.open(io.BytesIO(image_data))
+        else:
+            # Handle regular URL
+            response = requests.get(image_url, timeout=30)
+            response.raise_for_status()
+            base_image = Image.open(io.BytesIO(response.content))
+        
+        # Convert to RGBA for transparency support
+        if base_image.mode != 'RGBA':
+            base_image = base_image.convert('RGBA')
+        
+        # Get image dimensions
+        img_width, img_height = base_image.size
+        print(f"📐 Base image dimensions: {img_width}x{img_height}")
+        
+        # Calculate QR code size and position (bottom-right corner)
+        qr_size = min(160, int(min(img_width, img_height) * 0.15))  # 15% of smaller dimension, max 160px
+        padding = max(40, int(min(img_width, img_height) * 0.05))   # 5% padding, min 40px
+        
+        qr_x = img_width - qr_size - padding
+        qr_y = img_height - qr_size - padding - 30  # Extra space for "Scan me :)" text
+        
+        print(f"🎯 QR position: ({qr_x}, {qr_y}), size: {qr_size}px, padding: {padding}px")
+        
+        # Generate QR code
+        qr_data_url = generate_qr_with_logo(qr_url, logo_url, qr_size)
+        if not qr_data_url:
+            print("❌ Failed to generate QR code")
+            return None
+        
+        # Load QR code image
+        qr_header, qr_data = qr_data_url.split(',', 1)
+        qr_image_data = base64.b64decode(qr_data)
+        qr_image = Image.open(io.BytesIO(qr_image_data))
+        
+        # Ensure QR code is the right size
+        if qr_image.size != (qr_size, qr_size):
+            qr_image = qr_image.resize((qr_size, qr_size), Image.Resampling.LANCZOS)
+        
+        # Create white rounded background for QR code
+        background = Image.new('RGBA', (qr_size + 20, qr_size + 40), (255, 255, 255, 240))
+        background_draw = ImageDraw.Draw(background)
+        
+        # Draw rounded rectangle background
+        corner_radius = 10
+        background_draw.rounded_rectangle(
+            [0, 0, qr_size + 20, qr_size + 40],
+            radius=corner_radius,
+            fill=(255, 255, 255, 240),
+            outline=(200, 200, 200, 180),
+            width=2
+        )
+        
+        # Paste QR code onto background
+        background.paste(qr_image, (10, 10), qr_image if qr_image.mode == 'RGBA' else None)
+        
+        # Add "Scan me :)" text
+        try:
+            from PIL import ImageFont
+            # Try to use a nice font, fall back to default
+            try:
+                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 12)
+            except:
+                font = ImageFont.load_default()
+            
+            text = "Scan me :)"
+            text_bbox = background_draw.textbbox((0, 0), text, font=font)
+            text_width = text_bbox[2] - text_bbox[0]
+            text_x = (qr_size + 20 - text_width) // 2
+            text_y = qr_size + 15
+            
+            background_draw.text((text_x, text_y), text, fill=(80, 80, 80, 255), font=font)
+        except Exception as text_error:
+            print(f"⚠️ Could not add text to QR code: {text_error}")
+        
+        # Paste the QR code with background onto the base image
+        base_image.paste(background, (qr_x - 10, qr_y - 10), background)
+        
+        # Convert composite image back to data URL
+        output_buffer = io.BytesIO()
+        base_image.save(output_buffer, format='PNG', optimize=True)
+        output_data = output_buffer.getvalue()
+        output_base64 = base64.b64encode(output_data).decode()
+        
+        result_data_url = f"data:image/png;base64,{output_base64}"
+        
+        print(f"✅ QR overlay complete. Result size: {len(result_data_url)} characters")
+        return result_data_url
+        
+    except Exception as e:
+        print(f"❌ QR overlay error: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 # Removed static JSON endpoint - using dynamic list endpoint for always-current data

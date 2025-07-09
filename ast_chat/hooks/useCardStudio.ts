@@ -790,46 +790,9 @@ export function useCardStudio() {
     
     console.log('🔄 Final card data prepared:', cardWithQR);
     
-    try {
-      setGenerationProgress("✨ Adding interactive QR code to your card...");
-      console.log('🔄 Starting QR overlay process for final card');
-      
-      // Store card data first to get a shareable URL
-      if (cardWithQR.frontCover) {
-        try {
-          const cardStoreResponse = await fetch('/api/cards/store', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              prompt: cardWithQR.prompt || '',
-              frontCover: cardWithQR.frontCover || '',
-              backCover: cardWithQR.backCover || '',
-              leftPage: cardWithQR.leftPage || '',
-              rightPage: cardWithQR.rightPage || '',
-              generatedPrompts: cardWithQR.generatedPrompts || null
-            })
-          });
-          
-          if (cardStoreResponse.ok) {
-            const cardStoreData = await cardStoreResponse.json();
-            const actualShareUrl = cardStoreData.share_url;
-            console.log('Using actual share URL for QR code:', actualShareUrl);
-            cardWithQR.shareUrl = actualShareUrl;
-            console.log('✅ QR overlay complete for final card');
-          } else {
-            console.warn('Failed to store card for sharing, continuing without QR code');
-          }
-        } catch (error) {
-          console.error('❌ Failed to store card or overlay QR code:', error);
-          // Continue without QR code if there's an error
-        }
-      } else {
-        console.warn('No front cover found, skipping QR code process');
-      }
-    } catch (error) {
-      console.error('❌ Error in QR code process:', error);
-      // Continue without QR code if there's an error
-    }
+    // Note: QR code overlay is now handled automatically by the backend during card generation
+    // The backend will store the card and add QR codes to the back cover for final cards
+    console.log('✅ Card completion processing finished - QR codes handled by backend');
     
     console.log('🎯 Setting final card state:', cardWithQR);
     
