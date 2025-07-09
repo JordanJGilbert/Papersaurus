@@ -138,12 +138,12 @@ export default function StepIndicator({
                     if (isClickable) onStepClick(stepNumber);
                   }}
                   className={`
-                    transition-all duration-200 rounded-full
+                    transition-all duration-200 rounded-full touch-manipulation
                     ${isCompleted 
-                      ? 'w-2 h-2 bg-green-500' 
+                      ? 'w-3 h-3 bg-green-500' 
                       : isCurrent 
-                      ? 'w-3 h-3 bg-blue-500' 
-                      : 'w-2 h-2 bg-gray-300 dark:bg-gray-600'
+                      ? 'w-4 h-4 bg-blue-500' 
+                      : 'w-3 h-3 bg-gray-300 dark:bg-gray-600'
                     }
                   `}
                 />
@@ -168,8 +168,8 @@ export default function StepIndicator({
                       onClick={() => isClickable && onStepClick(stepNumber)}
                       disabled={!isClickable}
                       className={`
-                        relative w-8 h-8 rounded-full flex items-center justify-center 
-                        transition-all duration-200 mb-1
+                        relative w-11 h-11 rounded-full flex items-center justify-center 
+                        transition-all duration-200 mb-1 touch-manipulation
                         ${isCompleted 
                           ? 'bg-green-500 text-white shadow-sm' 
                           : isCurrent 
@@ -182,14 +182,14 @@ export default function StepIndicator({
                       `}
                     >
                       {isCompleted ? (
-                        <Check className="w-3 h-3" />
+                        <Check className="w-4 h-4" />
                       ) : (
-                        <span className="text-xs font-medium">{stepNumber}</span>
+                        <span className="text-sm font-medium">{stepNumber}</span>
                       )}
                     </button>
                     
                     {/* Compact Step Label */}
-                    <div className="text-center max-w-[60px]">
+                    <div className="text-center max-w-[80px]">
                       <div className={`
                         text-xs font-medium leading-tight
                         ${isCurrent 
@@ -200,7 +200,7 @@ export default function StepIndicator({
                         }
                       `}>
                         {step.title.split(' ').map((word, i) => (
-                          <div key={i} className="leading-3">{word}</div>
+                          <div key={i} className="leading-4">{word}</div>
                         ))}
                       </div>
                     </div>

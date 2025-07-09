@@ -33,34 +33,34 @@ export default function WizardNavigation({
 
 
       {/* Regular Navigation */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <Button
           variant="outline"
           onClick={onPrevious}
           disabled={currentStep === 1 || isGenerating}
-          className="gap-2"
+          className="gap-2 h-11 px-6 touch-manipulation"
         >
           <ArrowLeft className="w-4 h-4" />
-          Previous
+          <span className="hidden sm:inline">Previous</span>
         </Button>
 
-        <div className="text-sm text-gray-500 dark:text-gray-400">
+        <div className="text-sm text-gray-500 dark:text-gray-400 text-center">
           Step {currentStep} of {totalSteps}
         </div>
 
         <Button
           onClick={handleNext}
           disabled={!canProceed || isGenerating}
-          className="gap-2 bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700"
+          className="gap-2 h-11 px-6 touch-manipulation bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700"
         >
-          Next
+          <span className="hidden sm:inline">Next</span>
           <ArrowRight className="w-4 h-4" />
         </Button>
       </div>
 
       {/* Validation Message */}
       {!canProceed && !isGenerating && (
-        <div className="text-center">
+        <div className="text-center px-4">
           <p className="text-sm text-amber-600 dark:text-amber-400">
             Please complete the required fields to continue
           </p>

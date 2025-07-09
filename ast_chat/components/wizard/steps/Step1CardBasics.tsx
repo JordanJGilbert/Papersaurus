@@ -1,18 +1,44 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { CardFormData } from "@/hooks/useCardForm";
 import { 
   Wrench, Cake, ThumbsUp, Heart, Trophy, TreePine, Stethoscope, 
-  CloudRain, GraduationCap, Baby, Church, Gift, Home, MessageCircle, Eye 
+  CloudRain, GraduationCap, Baby, Church, Gift, Home, MessageCircle, Eye,
+  Image, Sparkles
 } from "lucide-react";
+import TemplateGallery from "../TemplateGallery";
+import { useCardCache } from "@/hooks/useCardCache";
+
+interface GeneratedCard {
+  id: string;
+  prompt: string;
+  frontCover: string;
+  backCover?: string;
+  leftPage?: string;
+  rightPage?: string;
+  createdAt: Date;
+  shareUrl?: string;
+  generatedPrompts?: {
+    frontCover?: string;
+    backCover?: string;
+    leftInterior?: string;
+    rightInterior?: string;
+  };
+  styleInfo?: {
+    styleName?: string;
+    styleLabel?: string;
+  };
+}
 
 interface Step1Props {
   formData: CardFormData;
   updateFormData: (updates: Partial<CardFormData>) => void;
   onStepComplete?: () => void;
+  onTemplateSelect?: (template: GeneratedCard) => void;
 }
 
 // Card types with icons
@@ -50,7 +76,15 @@ const cardTones = [
   { id: "traditional", label: "🎭 Traditional", description: "Classic and timeless" },
 ];
 
-export default function Step1CardBasics({ formData, updateFormData, onStepComplete }: Step1Props) {
+export default function Step1CardBasics({ formData, updateFormData, onStepComplete, onTemplateSelect }: Step1Props) {
+  const [showTemplateGallery, setShowTemplateGallery] = useState(false);
+  const { preloadAllCards } = useCardCache();
+  
+  // Preload template cache when component mounts
+  useEffect(() => {
+    preloadAllCards();
+  }, []);
+
   React.useEffect(() => {
     // Auto-complete step when all required fields are filled
     if (formData.selectedType && formData.selectedTone && 
@@ -59,8 +93,89 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
     }
   }, [formData.selectedType, formData.selectedTone, formData.customCardType, onStepComplete]);
 
+  const handleTemplateSelect = (template: GeneratedCard) => {
+    onTemplateSelect?.(template);
+    setShowTemplateGallery(false);
+  };
+
   return (
     <div className="space-y-6">
+      {/* Template Gallery Option */}
+      <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-xl p-4 sm:p-6 border border-purple-200 dark:border-purple-800">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex-1">
+              <h3 className="text-lg sm:text-xl font-semibold text-purple-900 dark:text-purple-100 mb-2 flex items-center gap-2">
+                <Image className="w-5 h-5" />
+                Start with a Template
+              </h3>
+              <p className="text-sm text-purple-700 dark:text-purple-300">
+                Browse our collection of pre-made cards and customize them to your needs
+              </p>
+            </div>
+            <Button
+              onClick={() => setShowTemplateGallery(true)}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white h-12 px-6 text-base font-medium touch-manipulation w-full sm:w-auto"
+            >
+              <Sparkles className="w-5 h-5 mr-2" />
+              Browse Templates
+            </Button>
+          </div>
+          
+          {/* Template Preview Cards */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-purple-600 dark:text-purple-400 font-medium">
+                Popular Templates
+              </p>
+              <button
+                onClick={() => setShowTemplateGallery(true)}
+                className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium"
+              >
+                View All →
+              </button>
+            </div>
+            
+            <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 touch-pan-x">
+              {/* Placeholder template cards */}
+              {[
+                { type: 'Birthday', color: 'from-pink-400 to-rose-400', emoji: '🎂', id: 'birthday' },
+                { type: 'Thank You', color: 'from-green-400 to-emerald-400', emoji: '🙏', id: 'thank-you' },
+                { type: 'Love', color: 'from-red-400 to-pink-400', emoji: '💕', id: 'love' },
+                { type: 'Holiday', color: 'from-blue-400 to-cyan-400', emoji: '🎄', id: 'holiday' },
+                { type: 'Congratulations', color: 'from-yellow-400 to-orange-400', emoji: '🎉', id: 'congratulations' }
+              ].map((template, index) => (
+                <div
+                  key={index}
+                  className="flex-shrink-0 w-20 sm:w-24 cursor-pointer group touch-manipulation"
+                  onClick={() => {
+                    // Quick select card type and open template gallery
+                    updateFormData({ selectedType: template.id });
+                    setShowTemplateGallery(true);
+                  }}
+                >
+                  <div className={`aspect-[3/4] bg-gradient-to-br ${template.color} rounded-lg flex items-center justify-center mb-2 group-hover:scale-105 transition-transform shadow-sm border border-white/20`}>
+                    <span className="text-2xl sm:text-3xl">{template.emoji}</span>
+                  </div>
+                  <p className="text-xs text-center text-purple-700 dark:text-purple-300 font-medium leading-tight">
+                    {template.type}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Divider */}
+      <div className="flex items-center gap-3 sm:gap-4">
+        <div className="flex-1 h-px bg-gray-300 dark:bg-gray-600"></div>
+        <span className="text-sm text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-full border whitespace-nowrap">
+          or create from scratch
+        </span>
+        <div className="flex-1 h-px bg-gray-300 dark:bg-gray-600"></div>
+      </div>
+
       {/* Card Type Selection */}
       <div className="space-y-3">
         <div className="flex items-center gap-2">
@@ -121,7 +236,7 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
               placeholder="✨ E.g., 'Promotion at work', 'Moving away', 'First day of school'"
               value={formData.customCardType}
               onChange={(e) => updateFormData({ customCardType: e.target.value })}
-              className="h-12 border-2 border-purple-300 dark:border-purple-700 focus:border-purple-500 dark:focus:border-purple-500"
+              className="h-12 border-2 border-purple-300 dark:border-purple-700 focus:border-purple-500 dark:focus:border-purple-500 touch-manipulation"
               style={{ fontSize: '16px' }}
             />
             <p className="text-xs text-purple-700 dark:text-purple-300 mt-2">
@@ -140,7 +255,7 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
           value={formData.selectedTone} 
           onValueChange={(value) => updateFormData({ selectedTone: value })}
         >
-          <SelectTrigger>
+          <SelectTrigger className="h-12 touch-manipulation">
             <SelectValue>
               {(() => {
                 const selected = cardTones.find((tone) => tone.id === formData.selectedTone);
@@ -167,7 +282,7 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
       </div>
 
       {/* To/From Fields */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3">
         <div>
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
             To (Optional)
@@ -176,6 +291,7 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
             placeholder="🎯 To"
             value={formData.toField}
             onChange={(e) => updateFormData({ toField: e.target.value })}
+            className="h-12 touch-manipulation"
             style={{ fontSize: '16px' }}
           />
         </div>
@@ -187,6 +303,7 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
             placeholder="📝 From"
             value={formData.fromField}
             onChange={(e) => updateFormData({ fromField: e.target.value })}
+            className="h-12 touch-manipulation"
             style={{ fontSize: '16px' }}
           />
         </div>
@@ -199,8 +316,18 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
           <li>• Choose the card type that best matches your occasion</li>
           <li>• The tone affects the visual style and message generation</li>
           <li>• To/From fields are optional but help personalize your card</li>
+          <li>• Use templates for faster creation or start from scratch</li>
         </ul>
       </div>
+
+      {/* Template Gallery Modal */}
+      <TemplateGallery
+        formData={formData}
+        updateFormData={updateFormData}
+        onTemplateSelect={handleTemplateSelect}
+        isOpen={showTemplateGallery}
+        onClose={() => setShowTemplateGallery(false)}
+      />
     </div>
   );
 } 

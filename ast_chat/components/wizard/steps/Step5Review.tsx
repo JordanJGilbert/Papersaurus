@@ -245,7 +245,7 @@ export default function Step5Review({
 
           {/* Draft cards display */}
           <div className="w-full">
-            <div className="flex overflow-x-auto gap-3 pb-4 -mx-4 px-4 snap-x snap-mandatory">
+            <div className="flex overflow-x-auto gap-3 pb-4 -mx-4 px-4 snap-x snap-mandatory touch-pan-x">
               {Array.from({ length: 5 }, (_, displayIndex) => {
                 const card = draftCards[displayIndex];
                 const isLoading = displayIndex >= draftCards.length;
@@ -253,7 +253,7 @@ export default function Step5Review({
                 return (
                   <div
                     key={displayIndex}
-                    className={`flex-shrink-0 w-48 sm:w-56 snap-center rounded-lg border-2 p-2 sm:p-3 transition-all cursor-pointer ${
+                    className={`flex-shrink-0 w-52 sm:w-56 snap-center rounded-lg border-2 p-3 sm:p-3 transition-all cursor-pointer touch-manipulation ${
                       selectedDraftIndex === displayIndex
                         ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 shadow-lg'
                         : card
@@ -265,7 +265,7 @@ export default function Step5Review({
                     {card ? (
                       <>
                         {/* Single front cover preview */}
-                        <div className="aspect-[2/3] relative overflow-hidden rounded border mb-2 sm:mb-3">
+                        <div className="aspect-[2/3] relative overflow-hidden rounded border mb-3">
                           <img
                             src={card.frontCover}
                             alt={`Design ${displayIndex + 1}`}
@@ -274,23 +274,23 @@ export default function Step5Review({
                           {selectedDraftIndex === displayIndex && (
                             <div className="absolute inset-0 bg-purple-600/20 flex items-center justify-center">
                               <div className="bg-white rounded-full p-2">
-                                <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600" />
+                                <CheckCircle className="w-8 h-8 text-purple-600" />
                               </div>
                             </div>
                           )}
                         </div>
                         
                         {/* Card info */}
-                        <div className="text-center space-y-1 sm:space-y-2">
+                        <div className="text-center space-y-2">
                           <h4 className="font-medium text-sm">Design {displayIndex + 1}</h4>
                           {formData.selectedArtisticStyle === "ai-smart-style" && card.styleInfo && (
                             <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
                               {card.styleInfo.styleLabel}
                             </p>
                           )}
-                          <div className="space-y-1">
+                          <div className="space-y-2">
                             {selectedDraftIndex === displayIndex && (
-                              <div className="bg-purple-600 text-white text-xs px-2 py-1 rounded-full mb-1">
+                              <div className="bg-purple-600 text-white text-xs px-3 py-1 rounded-full">
                                 ✓ Selected
                               </div>
                             )}
@@ -301,7 +301,7 @@ export default function Step5Review({
                                 e.stopPropagation();
                                 // Add preview functionality if needed
                               }}
-                              className="w-full text-xs h-7 sm:h-8"
+                              className="w-full text-xs h-9 touch-manipulation"
                             >
                               <span className="hidden sm:inline">Preview Design</span>
                               <span className="sm:hidden">Preview</span>
@@ -310,8 +310,8 @@ export default function Step5Review({
                         </div>
                       </>
                     ) : (
-                      <div className="flex flex-col items-center justify-center py-6 sm:py-8">
-                        <div className="w-6 h-6 sm:w-8 sm:h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2 sm:mb-3" />
+                      <div className="flex flex-col items-center justify-center py-8">
+                        <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
                         <h4 className="font-medium text-sm mb-1">Creating...</h4>
                         <p className="text-xs text-gray-500">Generating front cover...</p>
                       </div>

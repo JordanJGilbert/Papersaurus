@@ -106,6 +106,36 @@ export default function CardWizard() {
     cardForm.updateFormData(updates);
   };
 
+  // Handle template selection
+  const handleTemplateSelect = (template: any) => {
+    // Update form data with template information
+    updateFormData({
+      prompt: template.prompt || '',
+      selectedType: extractCardTypeFromPrompt(template.prompt) || cardForm.formData.selectedType,
+      selectedArtisticStyle: template.styleInfo?.styleName || cardForm.formData.selectedArtisticStyle
+    });
+    
+    // Store template info in cardStudio for later use
+    cardStudio.setSelectedTemplate(template);
+  };
+
+  // Extract card type from prompt (basic implementation)
+  const extractCardTypeFromPrompt = (prompt: string): string | null => {
+    if (!prompt) return null;
+    const lowerPrompt = prompt.toLowerCase();
+    if (lowerPrompt.includes('birthday')) return 'birthday';
+    if (lowerPrompt.includes('thank') || lowerPrompt.includes('grateful')) return 'thank-you';
+    if (lowerPrompt.includes('anniversary')) return 'anniversary';
+    if (lowerPrompt.includes('congratulat')) return 'congratulations';
+    if (lowerPrompt.includes('holiday') || lowerPrompt.includes('christmas') || lowerPrompt.includes('new year')) return 'holiday';
+    if (lowerPrompt.includes('love') || lowerPrompt.includes('romantic')) return 'love';
+    if (lowerPrompt.includes('wedding')) return 'wedding';
+    if (lowerPrompt.includes('graduat')) return 'graduation';
+    if (lowerPrompt.includes('baby')) return 'new-baby';
+    if (lowerPrompt.includes('sorry') || lowerPrompt.includes('apolog')) return 'apology';
+    return null;
+  };
+
   // Validation function for each step
   const validateStep = (stepNumber: number): boolean => {
     return cardForm.validateStep(stepNumber);
@@ -193,6 +223,7 @@ export default function CardWizard() {
                 wizardState.markStepCompleted(1);
               }
             }}
+            onTemplateSelect={handleTemplateSelect}
           />
         );
       
@@ -295,7 +326,7 @@ export default function CardWizard() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6 px-4 sm:px-6 lg:px-8 safe-area-padding">
       {/* Step Indicator */}
       <StepIndicator
         steps={wizardSteps}
@@ -316,8 +347,8 @@ export default function CardWizard() {
                   <span className="text-white font-bold">{wizardState.currentStep}</span>
                 )}
               </div>
-              <div>
-                <CardTitle className="text-xl font-bold text-gray-900 dark:text-gray-100">
+              <div className="min-w-0 flex-1">
+                <CardTitle className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100">
                   {wizardSteps[wizardState.currentStep - 1]?.title}
                 </CardTitle>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -327,14 +358,14 @@ export default function CardWizard() {
             </div>
             
             {wizardSteps[wizardState.currentStep - 1]?.isOptional && (
-              <div className="text-xs text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded-full">
+              <div className="text-xs text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 px-2 py-1 rounded-full flex-shrink-0">
                 Optional
               </div>
             )}
           </div>
         </CardHeader>
         
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 pb-4">
           {renderCurrentStep()}
         </CardContent>
       </Card>

@@ -50,6 +50,7 @@
     "uuid": "^11.1.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.53.2",
     "@tailwindcss/typography": "^0.5.16",
     "@types/diff-match-patch": "^1.0.36",
     "@types/dompurify": "^3.2.0",
