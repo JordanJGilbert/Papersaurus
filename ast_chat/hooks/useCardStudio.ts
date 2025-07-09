@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from 'uuid';
 import * as QRCode from 'qrcode';
+import io, { Socket } from 'socket.io-client';
 
 // Configuration for the backend API endpoint
 const BACKEND_API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'https://vibecarding.com';
@@ -357,6 +358,11 @@ const paperSizes = [
 ];
 
 export function useCardStudio() {
+  // WebSocket connection management
+  const socketRef = useRef<Socket | null>(null);
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
+  const currentJobRef = useRef<string | null>(null);
+
   // All your existing state from page.tsx
   const [prompt, setPrompt] = useState("");
   const [finalCardMessage, setFinalCardMessage] = useState("");
@@ -513,6 +519,365 @@ export function useCardStudio() {
       console.error('Failed to save job to localStorage:', error);
     }
   };
+
+  // WebSocket connection management
+  const connectWebSocket = useCallback(() => {
+    if (socketRef.current?.connected) {
+      console.log('✅ WebSocket already connected');
+      return;
+    }
+
+    try {
+      console.log('🔌 Connecting to WebSocket...');
+      const socket = io(BACKEND_API_BASE_URL, {
+        transports: ['websocket', 'polling'],
+        timeout: 10000,
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5
+      });
+
+      socket.on('connect', () => {
+        console.log('✅ WebSocket connected:', socket.id);
+        setIsSocketConnected(true);
+        toast.success('🔗 Real-time updates connected');
+        
+        // Resubscribe to current job if any
+        if (currentJobRef.current) {
+          console.log('🔄 Resubscribing to job:', currentJobRef.current);
+          socket.emit('subscribe_job', { job_id: currentJobRef.current });
+        }
+      });
+
+      socket.on('disconnect', (reason: string) => {
+        console.log('❌ WebSocket disconnected:', reason);
+        setIsSocketConnected(false);
+        
+        if (reason === 'io server disconnect') {
+          // Server disconnected, try to reconnect
+          socket.connect();
+        }
+      });
+
+      socket.on('connect_error', (error: Error) => {
+        console.error('❌ WebSocket connection error:', error);
+        setIsSocketConnected(false);
+      });
+
+      socket.on('job_update', (data: any) => {
+        console.log('📦 Job update received:', data);
+        handleJobUpdate(data);
+      });
+
+      socketRef.current = socket;
+    } catch (error) {
+      console.error('❌ Failed to connect WebSocket:', error);
+      toast.error('Failed to connect real-time updates. Using fallback mode.');
+    }
+  }, []);
+
+  const disconnectWebSocket = useCallback(() => {
+    if (socketRef.current) {
+      console.log('🔌 Disconnecting WebSocket...');
+      socketRef.current.disconnect();
+      socketRef.current = null;
+      setIsSocketConnected(false);
+    }
+  }, []);
+
+  const subscribeToJob = useCallback((jobId: string) => {
+    currentJobRef.current = jobId;
+    if (socketRef.current?.connected) {
+      console.log('📡 Subscribing to job updates:', jobId);
+      socketRef.current.emit('subscribe_job', { job_id: jobId });
+    } else {
+      console.log('⏳ WebSocket not connected, will subscribe when connected');
+    }
+  }, []);
+
+  const unsubscribeFromJob = useCallback((jobId: string) => {
+    if (currentJobRef.current === jobId) {
+      currentJobRef.current = null;
+    }
+    
+    if (socketRef.current?.connected) {
+      console.log('📡 Unsubscribing from job updates:', jobId);
+      socketRef.current.emit('unsubscribe_job', { job_id: jobId });
+    }
+  }, []);
+
+  // Handle job updates from WebSocket
+  const handleJobUpdate = useCallback((data: any) => {
+    const { job_id, status, progress, cardData, error, completedAt } = data;
+    
+    if (!job_id) return;
+    
+    // Check if this is a draft job
+    const isDraftJob = job_id.startsWith('draft-');
+    const draftIndex = isDraftJob ? parseInt(job_id.split('-')[1]) : -1;
+    
+    console.log('🔄 Processing job update:', { job_id, status, isDraftJob, draftIndex });
+    
+    // Update progress if provided
+    if (progress) {
+      setGenerationProgress(progress);
+    }
+    
+    if (status === 'completed' && cardData) {
+      console.log('🎉 Job completed! Card data:', cardData, 'isDraftJob:', isDraftJob);
+      
+      if (isDraftJob && draftIndex >= 0) {
+        // Handle draft card completion
+        console.log(`🎨 Draft variation ${draftIndex + 1} completed!`);
+        
+        // Get style info for smart style mode
+        let styleInfo: { styleName: string; styleLabel: string } | undefined = undefined;
+        if (selectedArtisticStyle === "ai-smart-style") {
+          const predefinedStyles = [
+            "watercolor", "botanical", "comic-book", "dreamy-fantasy", "minimalist"
+          ];
+          const styleLabels = [
+            "🎨 Watercolor", "🌿 Botanical", "💥 Comic Book", "🌸 Dreamy Fantasy", "✨ Minimalist"
+          ];
+          if (draftIndex >= 0 && draftIndex < predefinedStyles.length) {
+            styleInfo = {
+              styleName: predefinedStyles[draftIndex],
+              styleLabel: styleLabels[draftIndex]
+            };
+          }
+        }
+
+        const draftCard: GeneratedCard = {
+          id: `draft-${draftIndex + 1}-${Date.now()}`,
+          prompt: cardData.prompt || `Draft Variation ${draftIndex + 1}`,
+          frontCover: cardData.frontCover || "",
+          backCover: "",
+          leftPage: "",
+          rightPage: "",
+          createdAt: new Date(),
+          generatedPrompts: {
+            frontCover: cardData.generatedPrompts?.frontCover || ""
+          },
+          styleInfo: styleInfo
+        };
+        
+        // Update draft cards state
+        setDraftCards(prev => {
+          const updated = [...prev];
+          updated.push(draftCard);
+          return updated;
+        });
+        
+        setDraftIndexMapping(prev => {
+          const updatedMapping = [...prev];
+          updatedMapping.push(draftIndex);
+          return updatedMapping;
+        });
+        
+        // Update completion count
+        setDraftCompletionCount(prevCount => {
+          const newCompletedCount = prevCount + 1;
+          console.log(`📊 Draft progress: ${newCompletedCount}/5 front cover variations complete`);
+          
+          if (newCompletedCount === 1) {
+            scrollToCardPreview();
+          }
+          
+          if (newCompletedCount === 5) {
+            // Only reset generation state if we're not generating the final card
+            if (!isGeneratingFinalCard) {
+              setIsGenerating(false);
+              setGenerationProgress("");
+              setProgressPercentage(100);
+              stopElapsedTimeTracking();
+            }
+            
+            setDraftCompletionShown(prev => {
+              if (!prev && !isGeneratingFinalCard) {
+                toast.success("🎨 All 5 front cover variations ready! Choose your favorite below.");
+                return true;
+              }
+              return prev;
+            });
+          } else {
+            setGenerationProgress(`✨ ${newCompletedCount}/5 front cover variations complete... ${newCompletedCount >= 2 ? "You can select one now to proceed!" : ""}`);
+            setProgressPercentage((newCompletedCount / 5) * 100);
+          }
+          
+          return newCompletedCount;
+        });
+        
+        removeJobFromStorage(job_id);
+      } else {
+        // Handle final card completion
+        handleFinalCardCompletion(cardData);
+        removeJobFromStorage(job_id);
+        setCurrentJobId(null);
+        unsubscribeFromJob(job_id);
+      }
+    } else if (status === 'failed') {
+      console.error('❌ Job failed:', error);
+      
+      if (isDraftJob && draftIndex >= 0) {
+        toast.error(`Draft variation ${draftIndex + 1} failed. Continuing with others...`);
+      } else {
+        toast.error("❌ Card generation failed. Please try again.");
+        setIsGenerating(false);
+        setIsGeneratingFinalCard(false);
+        stopElapsedTimeTracking();
+        setGenerationProgress("");
+        setProgressPercentage(0);
+        setCurrentJobId(null);
+        unsubscribeFromJob(job_id);
+      }
+      
+      removeJobFromStorage(job_id);
+    } else if (status === 'not_found') {
+      console.warn('⚠️ Job not found on server, cleaning up stale reference:', job_id);
+      
+      // Clean up stale job reference without showing error to user
+      // (job might have expired or been cleaned up normally)
+      if (currentJobRef.current === job_id) {
+        currentJobRef.current = null;
+      }
+      
+      // Reset UI state if this was the current job
+      if (currentJobId === job_id) {
+        setCurrentJobId(null);
+        setIsGenerating(false);
+        setIsGeneratingFinalCard(false);
+        setGenerationProgress("");
+        setProgressPercentage(0);
+        stopElapsedTimeTracking();
+      }
+      
+      // Clean up storage
+      removeJobFromStorage(job_id);
+      unsubscribeFromJob(job_id);
+    }
+  }, [selectedArtisticStyle, isGeneratingFinalCard]);
+
+  // Helper function to handle final card completion
+  const handleFinalCardCompletion = useCallback(async (cardData: any) => {
+    let cardWithQR = { ...cardData };
+    
+    // Ensure the card has a valid createdAt date
+    if (!cardWithQR.createdAt) {
+      cardWithQR.createdAt = new Date();
+    } else if (typeof cardWithQR.createdAt === 'string' || typeof cardWithQR.createdAt === 'number') {
+      cardWithQR.createdAt = new Date(cardWithQR.createdAt);
+    }
+    
+    // Ensure the card has a valid ID
+    if (!cardWithQR.id) {
+      cardWithQR.id = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    }
+    
+    console.log('🔄 Final card data prepared:', cardWithQR);
+    
+    try {
+      setGenerationProgress("✨ Adding interactive QR code to your card...");
+      console.log('🔄 Starting QR overlay process for final card');
+      
+      // Store card data first to get a shareable URL
+      if (cardWithQR.frontCover) {
+        try {
+          const cardStoreResponse = await fetch('/api/cards/store', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt: cardWithQR.prompt || '',
+              frontCover: cardWithQR.frontCover || '',
+              backCover: cardWithQR.backCover || '',
+              leftPage: cardWithQR.leftPage || '',
+              rightPage: cardWithQR.rightPage || '',
+              generatedPrompts: cardWithQR.generatedPrompts || null
+            })
+          });
+          
+          if (cardStoreResponse.ok) {
+            const cardStoreData = await cardStoreResponse.json();
+            const actualShareUrl = cardStoreData.share_url;
+            console.log('Using actual share URL for QR code:', actualShareUrl);
+            cardWithQR.shareUrl = actualShareUrl;
+            console.log('✅ QR overlay complete for final card');
+          } else {
+            console.warn('Failed to store card for sharing, continuing without QR code');
+          }
+        } catch (error) {
+          console.error('❌ Failed to store card or overlay QR code:', error);
+          // Continue without QR code if there's an error
+        }
+      } else {
+        console.warn('No front cover found, skipping QR code process');
+      }
+    } catch (error) {
+      console.error('❌ Error in QR code process:', error);
+      // Continue without QR code if there's an error
+    }
+    
+    console.log('🎯 Setting final card state:', cardWithQR);
+    
+    // Set the card states
+    setGeneratedCard(cardWithQR);
+    setGeneratedCards([cardWithQR]);
+    setSelectedCardIndex(0);
+    setIsCardCompleted(true);
+    setIsGenerating(false);
+    setIsGeneratingFinalCard(false);
+    setIsDraftMode(false);
+    setDraftCompletionShown(false);
+    setDraftCompletionCount(0);
+    setGenerationProgress("");
+    
+    // Scroll to card preview
+    scrollToCardPreview();
+    
+    // Capture generation time from backend
+    if (cardData.generationTimeSeconds) {
+      setGenerationDuration(cardData.generationTimeSeconds);
+    }
+    
+    // Stop elapsed time tracking
+    stopElapsedTimeTracking();
+    
+    // Set progress to 100%
+    setProgressPercentage(100);
+    setGenerationProgress("Card generation complete!");
+    
+    toast.success("🎉 Your card is ready!");
+    
+    // Send thank you email
+    if (userEmail.trim()) {
+      const cardTypeForEmail = selectedType === "custom" ? customCardType : selectedType;
+      sendThankYouEmail(userEmail, cardTypeForEmail, cardWithQR.shareUrl || 'https://vibecarding.com');
+    }
+    
+    console.log('✅ Final card completion process finished successfully');
+  }, [userEmail, selectedType, customCardType]);
+
+  // WebSocket connection lifecycle management
+  useEffect(() => {
+    // Connect WebSocket when component mounts
+    connectWebSocket();
+    
+    // Cleanup on unmount
+    return () => {
+      disconnectWebSocket();
+    };
+  }, [connectWebSocket, disconnectWebSocket]);
+
+  // Auto-reconnect WebSocket if disconnected during active generation
+  useEffect(() => {
+    if (!isSocketConnected && (isGenerating || isGeneratingFinalCard) && currentJobRef.current) {
+      console.log('🔄 WebSocket disconnected during generation, attempting reconnect...');
+      const reconnectTimer = setTimeout(() => {
+        connectWebSocket();
+      }, 2000);
+      
+      return () => clearTimeout(reconnectTimer);
+    }
+  }, [isSocketConnected, isGenerating, isGeneratingFinalCard, connectWebSocket]);
 
   // Helper function to scroll to card preview
   const scrollToCardPreview = () => {
@@ -852,6 +1217,20 @@ Requirements:
 - Family-friendly and appropriate for greeting cards
 - Style: ${styleModifier}
 
+${!isFrontBackOnly ? `For the right interior page with the message, ensure:
+- EXACT TEXT REPRODUCTION: The message text must be reproduced EXACTLY as written: "${messageContent}" - every word, punctuation mark, and character must be perfect
+- CRYSTAL CLEAR LEGIBILITY: The handwriting must be extremely readable - prioritize clarity over artistic flourishes
+- NO SPELLING ERRORS: Every word must be spelled correctly exactly as provided in the message
+- PROPER SPACING: Use appropriate letter spacing, word spacing, and line spacing for easy reading
+- CONTRAST: Ensure high contrast between text and background for maximum readability
+- SIZE: Make text large enough to read easily - avoid cramped or tiny text that's difficult to decipher
+- COMPLETE MESSAGE: Include the ENTIRE message text - do not truncate, abbreviate, or omit any part
+- Use beautiful, clearly readable handwritten cursive script that feels elegant and personal
+- The handwriting should be legible first, elegant second - readability is the top priority
+- Position the message text in the optimal location for readability (center area, avoid top/bottom 10%)
+- Create decorative elements that complement but never interfere with text legibility
+- Ensure decorative artwork frames the message beautifully without obscuring any text` : ''}
+
 Return JSON:
 {
   "frontCover": "detailed front cover prompt",
@@ -919,7 +1298,7 @@ Return JSON:
             userNumber: "+17145986105",
             modelVersion: selectedImageModel,
             aspectRatio: paperConfig.aspectRatio,
-            quality: "high",
+            quality: "medium",
             outputFormat: "jpeg",
             outputCompression: 100,
             moderation: "low",
@@ -951,8 +1330,8 @@ Return JSON:
       setGenerationProgress("✨ Bringing your vision to life...");
       toast.success("🎉 Card generation started!");
       
-      // Start polling for completion (we'll add this function next)
-                  pollJobStatus(jobId);
+      // Subscribe to WebSocket updates for real-time progress
+      subscribeToJob(jobId);
 
     } catch (error) {
       console.error('Card generation error:', error);
@@ -1158,9 +1537,9 @@ Return ONLY the front cover prompt as plain text.`;
             frontCoverPrompt: enhancedFrontCoverPrompt
           });
 
-          // Start polling for this specific draft job
-          console.log(`🔄 Starting polling for draft job ${jobId}`);
-          pollJobStatus(jobId);
+          // Subscribe to WebSocket updates for draft job
+          console.log(`🔄 Subscribing to WebSocket updates for draft job ${jobId}`);
+          subscribeToJob(jobId);
 
         } catch (error) {
           console.error(`❌ Draft variation ${index + 1} failed:`, error);
@@ -1185,262 +1564,7 @@ Return ONLY the front cover prompt as plain text.`;
     }
   };
 
-  // Check job status
-  const checkJobStatus = async (jobId: string): Promise<any> => {
-    try {
-      const response = await fetch(`/api/job-status/${jobId}`);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('Failed to check job status:', error);
-      return null;
-    }
-  };
 
-  // Poll job status with exponential backoff
-  const pollJobStatus = async (jobId: string, attempt: number = 1) => {
-    try {
-      const statusResponse = await checkJobStatus(jobId);
-      
-      // Check if this is a draft job
-      const isDraftJob = jobId.startsWith('draft-');
-      const draftIndex = isDraftJob ? parseInt(jobId.split('-')[1]) : -1;
-      
-      if (statusResponse && statusResponse.status === 'completed') {
-        console.log('🎉 Job completed! Card data:', statusResponse.cardData, 'isDraftJob:', isDraftJob);
-        
-        if (statusResponse.cardData) {
-          if (isDraftJob && draftIndex >= 0) {
-            // Handle draft card completion - no QR code needed for drafts
-            console.log(`🎨 Draft variation ${draftIndex + 1} completed!`);
-            
-            // Get style info for smart style mode
-            let styleInfo: { styleName: string; styleLabel: string } | undefined = undefined;
-            if (selectedArtisticStyle === "ai-smart-style") {
-              const predefinedStyles = [
-                "watercolor", "botanical", "comic-book", "dreamy-fantasy", "minimalist"
-              ];
-              const styleLabels = [
-                "🎨 Watercolor", "🌿 Botanical", "💥 Comic Book", "🌸 Dreamy Fantasy", "✨ Minimalist"
-              ];
-              if (draftIndex >= 0 && draftIndex < predefinedStyles.length) {
-                styleInfo = {
-                  styleName: predefinedStyles[draftIndex],
-                  styleLabel: styleLabels[draftIndex]
-                };
-              }
-            }
-
-            const draftCard: GeneratedCard = {
-              id: `draft-${draftIndex + 1}-${Date.now()}`,
-              prompt: statusResponse.cardData.prompt || `Draft Variation ${draftIndex + 1}`,
-              frontCover: statusResponse.cardData.frontCover || "",
-              backCover: "", // Draft mode only generates front cover
-              leftPage: "", // Will be generated in final high-quality version
-              rightPage: "", // Will be generated in final high-quality version
-              createdAt: new Date(),
-              generatedPrompts: {
-                frontCover: statusResponse.cardData.generatedPrompts?.frontCover || ""
-              },
-              styleInfo: styleInfo
-            };
-            
-            // Update draft cards state - populate from left to right as they complete
-            setDraftCards(prev => {
-              const updated = [...prev];
-              updated.push(draftCard); // Add to next available position (left to right)
-              return updated;
-            });
-            
-            // Update mapping to track which display position corresponds to which original draft index
-            setDraftIndexMapping(prev => {
-              const updatedMapping = [...prev];
-              updatedMapping.push(draftIndex); // Map new display position to original draft index
-              return updatedMapping;
-            });
-            
-            // Increment completion counter and check completion
-            setDraftCompletionCount(prevCount => {
-              const newCompletedCount = prevCount + 1;
-              console.log(`📊 Draft progress: ${newCompletedCount}/5 front cover variations complete`);
-              
-              // Scroll to draft preview when first card appears
-              if (newCompletedCount === 1) {
-                scrollToCardPreview();
-              }
-              
-              if (newCompletedCount === 5) {
-                setIsGenerating(false);
-                setGenerationProgress("");
-                setProgressPercentage(100);
-                stopElapsedTimeTracking();
-                
-                // Only show completion toast once using a flag, and only if user hasn't moved to final generation
-                setDraftCompletionShown(prev => {
-                  if (!prev && !isGeneratingFinalCard) {
-                    toast.success("🎨 All 5 front cover variations ready! Choose your favorite below.");
-                    return true;
-                  }
-                  return prev;
-                });
-              } else {
-                setGenerationProgress(`✨ ${newCompletedCount}/5 front cover variations complete... ${newCompletedCount >= 2 ? "You can select one now to proceed!" : ""}`);
-                setProgressPercentage((newCompletedCount / 5) * 100);
-              }
-              
-              return newCompletedCount;
-            });
-            
-            removeJobFromStorage(jobId);
-          } else {
-            // Handle final card completion - apply QR code and full processing
-            let cardWithQR = { ...statusResponse.cardData };
-            
-            // Ensure the card has a valid createdAt date
-            if (!cardWithQR.createdAt) {
-              cardWithQR.createdAt = new Date();
-            } else if (typeof cardWithQR.createdAt === 'string' || typeof cardWithQR.createdAt === 'number') {
-              cardWithQR.createdAt = new Date(cardWithQR.createdAt);
-            }
-            
-            // Ensure the card has a valid ID
-            if (!cardWithQR.id) {
-              cardWithQR.id = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            }
-            
-            console.log('🔄 Final card data prepared:', cardWithQR);
-            
-            try {
-              setGenerationProgress("✨ Adding interactive QR code to your card...");
-              console.log('🔄 Starting QR overlay process for final card');
-              
-              // Store card data first to get a shareable URL
-              if (cardWithQR.frontCover) {
-                try {
-                  const cardStoreResponse = await fetch('/api/cards/store', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      prompt: cardWithQR.prompt || '',
-                      frontCover: cardWithQR.frontCover || '',
-                      backCover: cardWithQR.backCover || '',
-                      leftPage: cardWithQR.leftPage || '',
-                      rightPage: cardWithQR.rightPage || '',
-                      generatedPrompts: cardWithQR.generatedPrompts || null
-                    })
-                  });
-                  
-                  if (cardStoreResponse.ok) {
-                    const cardStoreData = await cardStoreResponse.json();
-                    const actualShareUrl = cardStoreData.share_url;
-                    console.log('Using actual share URL for QR code:', actualShareUrl);
-                    
-                    // Apply QR code to back cover using the API-returned URL
-                    if (cardWithQR.backCover && actualShareUrl) {
-                      console.log('🔄 Applying QR overlay to final card...');
-                      const originalBackCover = cardWithQR.backCover;
-                      // cardWithQR.backCover = await overlayQRCodeOnImage(originalBackCover, actualShareUrl);
-                      cardWithQR.shareUrl = actualShareUrl;
-                      console.log('✅ QR overlay complete for final card');
-                    }
-                  } else {
-                    console.warn('Failed to store card for sharing, continuing without QR code');
-                  }
-                } catch (error) {
-                  console.error('❌ Failed to store card or overlay QR code:', error);
-                  // Continue without QR code if there's an error
-                }
-              } else {
-                console.warn('No front cover found, skipping QR code process');
-              }
-            } catch (error) {
-              console.error('❌ Error in QR code process:', error);
-              // Continue without QR code if there's an error
-            }
-            
-            console.log('🎯 Setting final card state:', cardWithQR);
-            
-            // Set the card states - this is critical!
-            setGeneratedCard(cardWithQR);
-            setGeneratedCards([cardWithQR]);
-            setSelectedCardIndex(0);
-            setIsCardCompleted(true);
-            setIsGenerating(false);
-            setIsGeneratingFinalCard(false);
-            setIsDraftMode(false);
-            setDraftCompletionShown(false);
-            setDraftCompletionCount(0); // Reset completion counter
-            setGenerationProgress("");
-            
-            // Scroll to card preview
-            scrollToCardPreview();
-            
-            // Capture generation time from backend
-            if (statusResponse.cardData.generationTimeSeconds) {
-              setGenerationDuration(statusResponse.cardData.generationTimeSeconds);
-            }
-            
-            // Stop elapsed time tracking
-            stopElapsedTimeTracking();
-            
-            // Set progress to 100%
-            setProgressPercentage(100);
-            setGenerationProgress("Card generation complete!");
-            
-            toast.success("🎉 Your card is ready!");
-            
-            // Send thank you email
-            if (userEmail.trim()) {
-              const cardTypeForEmail = selectedType === "custom" ? customCardType : selectedType;
-              sendThankYouEmail(userEmail, cardTypeForEmail, cardWithQR.shareUrl || 'https://vibecarding.com');
-            }
-            
-            console.log('✅ Final card completion process finished successfully');
-            removeJobFromStorage(jobId);
-            setCurrentJobId(null);
-          }
-        } else {
-          console.error('❌ No card data in completed response');
-          toast.error("❌ Card generation completed but no data received. Please try again.");
-          removeJobFromStorage(jobId);
-          if (!isDraftJob) {
-            setCurrentJobId(null);
-          }
-        }
-      } else if (statusResponse && statusResponse.status === 'failed') {
-        console.error('❌ Job failed:', statusResponse);
-        
-        if (isDraftJob && draftIndex >= 0) {
-          toast.error(`Draft variation ${draftIndex + 1} failed. Continuing with others...`);
-        } else {
-          toast.error("❌ Card generation failed. Please try again.");
-          setIsGenerating(false);
-          setIsGeneratingFinalCard(false);
-          stopElapsedTimeTracking();
-          setGenerationProgress("");
-          setProgressPercentage(0);
-          setCurrentJobId(null);
-        }
-        
-        removeJobFromStorage(jobId);
-      } else if (statusResponse && statusResponse.status === 'processing') {
-        // Continue polling every 3 seconds - near real-time updates for better UX
-        console.log(`🔄 Job still processing (attempt ${attempt}), polling again...`);
-        setTimeout(() => pollJobStatus(jobId, attempt + 1), 3000);
-      } else {
-        console.warn('⚠️ Unexpected status response:', statusResponse);
-        // Continue polling in case it's a temporary issue
-        setTimeout(() => pollJobStatus(jobId, attempt + 1), 5000);
-      }
-    } catch (error) {
-      console.error('Failed to poll job status:', error);
-      // Retry after delay with exponential backoff
-      const delay = Math.min(10000, 3000 * Math.pow(1.5, Math.min(attempt - 1, 5)));
-      setTimeout(() => pollJobStatus(jobId, attempt + 1), delay);
-    }
-  };
 
   // Remove job from storage
   const removeJobFromStorage = (jobId: string) => {
@@ -1550,7 +1674,40 @@ Generate prompts for:
 
 ${!isFrontBackOnly ? `2. Left Interior: Creative decorative art that harmonizes with the front cover style. NO PEOPLE or characters, focus on artistic elements like patterns, landscapes, objects, or abstract art that matches the front cover's mood and style.
 
-3. Right Interior: ${isHandwrittenMessage ? `Design elegant writing space with decorative elements that complement the front cover style. Position decorative elements safely away from edges. NO PEOPLE or characters.` : `Include message text: "${messageContent}" in beautiful handwritten cursive script, integrated into decorative artwork that matches the front cover style. NO PEOPLE or characters.`}` : ''}
+3. Right Interior: ${isHandwrittenMessage ? `Design elegant writing space with decorative elements that complement the front cover style. Position decorative elements safely away from edges. NO PEOPLE or characters.` : `Include message text: "${messageContent}" positioned safely in center area (avoid top/bottom 10% of image) integrated into decorative artwork that matches the front cover style. 
+
+CRITICAL TEXT ACCURACY & LEGIBILITY REQUIREMENTS:
+- EXACT TEXT REPRODUCTION: The message text must be reproduced EXACTLY as written: "${messageContent}" - every word, punctuation mark, and character must be perfect
+- PUT TEXT IN QUOTES: Always enclose the message text in double quotes like "message..." to make it clear this is literal text to be rendered exactly
+- CRYSTAL CLEAR LEGIBILITY: The handwriting must be extremely readable - prioritize clarity over artistic flourishes
+- NO SPELLING ERRORS: Every word must be spelled correctly exactly as provided in the message
+- PROPER SPACING: Use appropriate letter spacing, word spacing, and line spacing for easy reading
+- CONTRAST: Ensure high contrast between text and background for maximum readability
+- SIZE: Make text large enough to read easily - avoid cramped or tiny text that's difficult to decipher
+- COMPLETE MESSAGE: Include the ENTIRE message text - do not truncate, abbreviate, or omit any part
+
+HANDWRITING STYLE SPECIFICATIONS:
+- Use beautiful, clearly readable handwritten cursive script that feels elegant and personal
+- The handwriting should be legible first, elegant second - readability is the top priority
+- Maintain consistent character formation throughout the message
+- Use natural, flowing strokes with slight variations in line weight for authenticity
+- Think of sophisticated calligraphy that's still approachable and easy to read
+- The handwriting should feel genuine and heartfelt but never sacrifice clarity
+- Use a nice pen-style appearance with natural ink flow
+
+LAYOUT & INTEGRATION:
+- Position the message text in the optimal location for readability (center area, avoid top/bottom 10%)
+- Create decorative elements that complement but never interfere with text legibility
+- Ensure decorative artwork frames the message beautifully without obscuring any text
+- Think beyond typical florals and patterns - create something unexpected and artistic
+- NO PEOPLE or characters in the decorative elements
+- The decorative elements should enhance the message's emotional impact
+
+QUALITY ASSURANCE:
+- Before finalizing, verify that every word in "${messageContent}" is clearly legible
+- Check that the text flows naturally and maintains consistent style throughout
+- Ensure the message stands out prominently against the background
+- Confirm that decorative elements enhance rather than distract from the text. NO PEOPLE or characters.`}` : ''}
 
 Return JSON:
 {
@@ -1605,7 +1762,7 @@ Return JSON:
             userNumber: "+17145986105",
             modelVersion: selectedImageModel,
             aspectRatio: paperSizes.find(size => size.id === selectedPaperSize)?.aspectRatio || "9:16",
-            quality: "high", // HIGH QUALITY for final card
+            quality: "medium", // HIGH QUALITY for final card
             outputFormat: "jpeg",
             outputCompression: 100,
             moderation: "low",
@@ -1637,8 +1794,8 @@ Return JSON:
       setCurrentJobId(jobId);
       toast.success("🎨 Generating high-quality version of your selected design!");
       
-      // Poll for completion (reuse existing pollJobStatus)
-      pollJobStatus(jobId);
+      // Subscribe to WebSocket updates for real-time progress
+      subscribeToJob(jobId);
 
     } catch (error) {
       console.error('Final card generation error:', error);
@@ -1649,7 +1806,7 @@ Return JSON:
     }
   };
 
-  // Recovery function - check for pending jobs on page load
+  // Recovery function - resume WebSocket subscriptions for pending jobs
   const checkPendingJobs = async () => {
     try {
       const pendingJobs = JSON.parse(localStorage.getItem('pendingCardJobs') || '[]');
@@ -1659,90 +1816,20 @@ Return JSON:
         if (!jobData) continue;
         
         const job = JSON.parse(jobData);
-        const statusResponse = await checkJobStatus(jobId);
         
-        if (statusResponse && statusResponse.status === 'completed') {
-          console.log('🎉 Job completed while user was away! Card data:', statusResponse.cardData);
-          
-          // Handle completed job based on type
-          if (jobId.startsWith('draft-')) {
-            // Draft job completion
-            const draftIndex = parseInt(jobId.split('-')[1]);
-            if (statusResponse.cardData && draftIndex >= 0) {
-              const draftCard: GeneratedCard = {
-                id: `draft-${draftIndex + 1}-${Date.now()}`,
-                prompt: statusResponse.cardData.prompt || `Draft Variation ${draftIndex + 1}`,
-                frontCover: statusResponse.cardData.frontCover || "",
-                backCover: "",
-                leftPage: "",
-                rightPage: "",
-                createdAt: new Date(),
-                generatedPrompts: {
-                  frontCover: statusResponse.cardData.generatedPrompts?.frontCover || ""
-                }
-              };
-              
-              setDraftCards(prev => [...prev, draftCard]);
-              setDraftIndexMapping(prev => [...prev, draftIndex]);
-              toast.success(`🎨 Draft variation ${draftIndex + 1} completed while you were away!`);
-            }
-          } else {
-            // Regular card completion
-            if (statusResponse.cardData) {
-              let cardWithQR = { ...statusResponse.cardData };
-              
-              if (!cardWithQR.createdAt) {
-                cardWithQR.createdAt = new Date();
-              } else if (typeof cardWithQR.createdAt === 'string' || typeof cardWithQR.createdAt === 'number') {
-                cardWithQR.createdAt = new Date(cardWithQR.createdAt);
-              }
-              
-              if (!cardWithQR.id) {
-                cardWithQR.id = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-              }
-              
-              setGeneratedCard(cardWithQR);
-              setGeneratedCards([cardWithQR]);
-              setSelectedCardIndex(0);
-              setIsCardCompleted(true);
-              setIsGenerating(false);
-              setGenerationProgress("");
-              
-              if (statusResponse.cardData.generationTimeSeconds) {
-                setGenerationDuration(statusResponse.cardData.generationTimeSeconds);
-              }
-              
-              stopElapsedTimeTracking();
-              setProgressPercentage(100);
-              
-              toast.success("🎉 Your card finished generating while you were away!");
-              
-              // Send thank you email using job data
-              if (job.userEmail && job.userEmail.trim()) {
-                const cardTypeForEmail = job.selectedType === "custom" ? job.customCardType : job.selectedType;
-                sendThankYouEmail(job.userEmail, cardTypeForEmail, cardWithQR.shareUrl || 'https://vibecarding.com');
-              }
-            }
-          }
-          
-          removeJobFromStorage(jobId);
-        } else if (statusResponse && statusResponse.status === 'failed') {
-          // Job failed
-          toast.error("❌ A card generation job failed. Please try again.");
-          removeJobFromStorage(jobId);
-        } else if (statusResponse && statusResponse.status === 'processing') {
-          // Still processing - restore loading states and start polling
-          setIsGenerating(true);
-          setCurrentJobId(jobId);
-          setGenerationProgress("Resuming card generation...");
-          
-          // Start elapsed time tracking from when job was originally created
-          const jobStartTime = job.createdAt ? new Date(job.createdAt).getTime() : Date.now();
-          startElapsedTimeTracking(jobStartTime);
-          
-          toast.info("🔄 Resuming card generation where you left off...");
-          pollJobStatus(jobId);
-        }
+        // Since we rely on WebSocket only, just restore the loading state and resubscribe
+        setIsGenerating(true);
+        setCurrentJobId(jobId);
+        setGenerationProgress("Resuming card generation...");
+        
+        // Start elapsed time tracking from when job was originally created
+        const jobStartTime = job.createdAt ? new Date(job.createdAt).getTime() : Date.now();
+        startElapsedTimeTracking(jobStartTime);
+        
+        toast.info("🔄 Resuming card generation where you left off...");
+        
+        // Subscribe to WebSocket for resumed job
+        subscribeToJob(jobId);
       }
     } catch (error) {
       console.error('Failed to check pending jobs:', error);
@@ -1879,8 +1966,6 @@ Return JSON:
     // Job management
     saveJobToStorage,
     removeJobFromStorage,
-    checkJobStatus,
-    pollJobStatus,
     checkPendingJobs,
     
     // Main generation functions
@@ -1963,5 +2048,14 @@ Return JSON:
     // Constants for UI
     artisticStyles,
     paperSizes,
+    
+    // WebSocket functions and state
+    isSocketConnected,
+    connectWebSocket,
+    disconnectWebSocket,
+    subscribeToJob,
+    unsubscribeFromJob,
+    handleJobUpdate,
+    handleFinalCardCompletion,
   };
 } 

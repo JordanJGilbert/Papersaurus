@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Check, Edit, Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Check, Edit, Clock, CheckCircle, Sparkles } from "lucide-react";
 import { CardFormData } from "@/hooks/useCardForm";
 import { Separator } from "@/components/ui/separator";
 
@@ -19,9 +20,10 @@ interface Step5Props {
   currentElapsedTime?: number;
   isDraftMode?: boolean;
   draftCards?: any[];
+  selectedDraftIndex?: number;
   formatGenerationTime?: (seconds: number) => string;
-  onGenerateCard?: () => void;
   onGenerateDraftCards?: () => void;
+  onSelectDraft?: (index: number) => void;
 }
 
 export default function Step5Review({ 
@@ -36,9 +38,10 @@ export default function Step5Review({
   currentElapsedTime = 0,
   isDraftMode = false,
   draftCards = [],
+  selectedDraftIndex = -1,
   formatGenerationTime,
-  onGenerateCard,
-  onGenerateDraftCards 
+  onGenerateDraftCards,
+  onSelectDraft 
 }: Step5Props) {
   const [isReady, setIsReady] = useState(false);
 
@@ -54,7 +57,8 @@ export default function Step5Review({
     setIsReady(true);
   }, []);
 
-  if (isGenerating) {
+  // Show loading state only if generating and no draft cards available yet
+  if (isGenerating && draftCards.length === 0) {
     return (
       <div className="space-y-6">
         {/* Generation Progress */}
@@ -160,41 +164,174 @@ export default function Step5Review({
         </div>
       </div>
 
-      {/* Generation Buttons */}
-      <div className="space-y-4">
-        {/* Draft Mode Button */}
-        <button
-          onClick={onGenerateDraftCards}
-          disabled={isGenerating || isGeneratingMessage || !formData.userEmail?.trim()}
-          className="w-full h-12 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isGenerating ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              <span>Creating 5 design options...</span>
-            </>
-          ) : (
-            <>
-              <span className="text-lg">🎨</span>
-              <span>Create 5 Front Cover Options</span>
-            </>
-          )}
-        </button>
-
-        <div className="text-center text-sm text-gray-500 dark:text-gray-400">
-          or
+      {/* Generation Buttons - Only show when no draft cards exist */}
+      {draftCards.length === 0 && (
+        <div className="space-y-4">
+          {/* Draft Mode Button */}
+          <button
+            onClick={onGenerateDraftCards}
+            disabled={isGenerating || isGeneratingMessage || !formData.userEmail?.trim()}
+            className="w-full h-12 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isGenerating ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Creating 5 design options...</span>
+              </>
+            ) : (
+              <>
+                <span className="text-lg">🎨</span>
+                <span>Create 5 Front Cover Options</span>
+              </>
+            )}
+          </button>
         </div>
+      )}
 
-        {/* Direct Generation Button */}
-        <button
-          onClick={onGenerateCard}
-          disabled={isGenerating || isGeneratingMessage || !formData.userEmail?.trim()}
-          className="w-full h-10 border-2 border-blue-300 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg font-medium flex items-center justify-center gap-2 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <span className="text-lg">✨</span>
-          <span>Direct Generation</span>
-        </button>
-      </div>
+      {/* Draft Cards Selection */}
+      {draftCards.length > 0 && (
+        <div className="space-y-4">
+          <div className="text-center space-y-2">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              {isGenerating ? "Preview & Select as They're Ready!" : "Choose Your Favorite Design"}
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              {isGenerating 
+                ? `${draftCards.length}/5 front cover variations complete... You can select one now to proceed!`
+                : "5 front cover variations created with low quality for fast preview. Select your favorite to generate the complete high-quality card!"
+              }
+            </p>
+          </div>
+          
+          {/* Progress Bar when still generating */}
+          {isGenerating && (
+            <div className="p-4 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/30 dark:to-cyan-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
+              <div className="space-y-3">
+                {/* Progress Message */}
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                    {generationProgress || "Generating remaining variations..."}
+                  </span>
+                </div>
+
+                {/* Clean Progress Bar */}
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                  <div 
+                    className="bg-gradient-to-r from-blue-500 to-cyan-500 h-3 rounded-full transition-all duration-1000 ease-out"
+                    style={{ width: `${Math.min(progressPercentage, 100)}%` }}
+                  />
+                </div>
+
+                {/* Progress Text and Time Display */}
+                <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
+                  <span className="font-medium">
+                    {Math.round(progressPercentage)}% Complete
+                  </span>
+                  <div className="flex items-center gap-3">
+                    {currentElapsedTime > 0 && formatGenerationTime && (
+                      <span className="text-blue-600 dark:text-blue-400">
+                        ⏱️ {formatGenerationTime(currentElapsedTime)}
+                      </span>
+                    )}
+                    <span className="text-gray-500">
+                      ~30-60 sec expected
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Draft cards display */}
+          <div className="w-full">
+            <div className="flex overflow-x-auto gap-3 pb-4 -mx-4 px-4 snap-x snap-mandatory">
+              {Array.from({ length: 5 }, (_, displayIndex) => {
+                const card = draftCards[displayIndex];
+                const isLoading = displayIndex >= draftCards.length;
+                
+                return (
+                  <div
+                    key={displayIndex}
+                    className={`flex-shrink-0 w-48 sm:w-56 snap-center rounded-lg border-2 p-2 sm:p-3 transition-all cursor-pointer ${
+                      selectedDraftIndex === displayIndex
+                        ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 shadow-lg'
+                        : card
+                        ? 'border-gray-200 dark:border-gray-700 hover:border-purple-300 hover:bg-purple-50/50 dark:hover:bg-purple-900/10'
+                        : 'border-dashed border-gray-300 dark:border-gray-600'
+                    }`}
+                    onClick={() => card && onSelectDraft && onSelectDraft(displayIndex)}
+                  >
+                    {card ? (
+                      <>
+                        {/* Single front cover preview */}
+                        <div className="aspect-[2/3] relative overflow-hidden rounded border mb-2 sm:mb-3">
+                          <img
+                            src={card.frontCover}
+                            alt={`Design ${displayIndex + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          {selectedDraftIndex === displayIndex && (
+                            <div className="absolute inset-0 bg-purple-600/20 flex items-center justify-center">
+                              <div className="bg-white rounded-full p-2">
+                                <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600" />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Card info */}
+                        <div className="text-center space-y-1 sm:space-y-2">
+                          <h4 className="font-medium text-sm">Design {displayIndex + 1}</h4>
+                          {formData.selectedArtisticStyle === "ai-smart-style" && card.styleInfo && (
+                            <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
+                              {card.styleInfo.styleLabel}
+                            </p>
+                          )}
+                          <div className="space-y-1">
+                            {selectedDraftIndex === displayIndex && (
+                              <div className="bg-purple-600 text-white text-xs px-2 py-1 rounded-full mb-1">
+                                ✓ Selected
+                              </div>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                // Add preview functionality if needed
+                              }}
+                              className="w-full text-xs h-7 sm:h-8"
+                            >
+                              <span className="hidden sm:inline">Preview Design</span>
+                              <span className="sm:hidden">Preview</span>
+                            </Button>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-6 sm:py-8">
+                        <div className="w-6 h-6 sm:w-8 sm:h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2 sm:mb-3" />
+                        <h4 className="font-medium text-sm mb-1">Creating...</h4>
+                        <p className="text-xs text-gray-500">Generating front cover...</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            
+            {/* Selection indicator */}
+            {selectedDraftIndex !== -1 && (
+              <div className="text-center bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 mt-4">
+                <p className="text-sm font-medium text-purple-900 dark:text-purple-100">
+                  ✓ Design {selectedDraftIndex + 1} selected - ready to generate complete card!
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Requirements Check */}
       {!formData.userEmail?.trim() && (

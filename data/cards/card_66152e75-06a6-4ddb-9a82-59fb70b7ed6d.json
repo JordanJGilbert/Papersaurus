@@ -1,0 +1,17 @@
+{
+  "id": "66152e75-06a6-4ddb-9a82-59fb70b7ed6d",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_05ebb6a4.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_c626b9f7.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_010e2817.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_b9692c0b.png",
+  "createdAt": 1752024392.1521285,
+  "expiresAt": 1783560392.1521292,
+  "version": 1,
+  "generatedPrompts": {
+    "frontCover": "A charming, humorous watercolor illustration of a sophisticated llama wearing a tiny, tilted party hat and stylish eyeglasses. The llama has a slightly smug, knowing expression, as if it knows all the secrets to aging gracefully (or disgracefully). Floating around the llama are a few delicate, pastel-colored soap bubbles, catching the light. The entire scene is rendered in a soft, flowing watercolor style with visible paper texture, artistic brush strokes, and organic paint bleeds at the edges of the colors. In the center, written in a beautiful, readable, and slightly playful handwritten cursive script, is the text \"Happy Birthday, you glorious old soul\". The background is a clean, minimalist wash of a single soft color. Flat 2D artwork.",
+    "backCover": "A minimalist and serene watercolor illustration continuing the style of the front cover. The background is a full-bleed wash of the same soft pastel color. In the top-left corner, a few delicate, iridescent soap bubbles float gently downwards, rendered in soft, flowing watercolors. The illustration has visible paper texture, artistic brush strokes, and organic paint bleeds at the edges, maintaining a cohesive aesthetic. The bottom-right corner area is left completely blank and unadorned for branding and QR code placement.",
+    "leftInterior": "A beautiful, full-bleed decorative watercolor pattern that harmonizes with the front cover. The design features an array of tiny, tilted party hats and stylish eyeglasses scattered whimsically across a soft pastel background wash. The elements are rendered in the same soft, flowing watercolor style, with visible paper texture, artistic brush strokes, and organic paint bleeds, creating a lighthearted and celebratory atmosphere. The pattern is sparse enough to feel elegant and not overcrowded.",
+    "rightInterior": "A full-bleed watercolor illustration that complements the card's theme. The background is a clean, minimalist wash of a single soft pastel color, consistent with the rest of the card. A single, stylish pair of eyeglasses, identical to the ones worn by the llama, rests in the lower-left corner. From the eyeglasses, a stream of delicate, iridescent soap bubbles floats upwards and towards the right, framing the central area. The entire scene is rendered in a soft, flowing watercolor style with visible paper texture and artistic brush strokes."
+  }
+}

@@ -11,6 +11,7 @@ import Step2ContentCreation from "./steps/Step2ContentCreation";
 import Step3Personalization from "./steps/Step3Personalization";
 import Step4Details from "./steps/Step4Details";
 import Step5Review from "./steps/Step5Review";
+import Step6FinalGeneration from "./steps/Step6FinalGeneration";
 import WizardNavigation from "./WizardNavigation";
 
 import { useCardStudio } from "@/hooks/useCardStudio";
@@ -44,11 +45,16 @@ const wizardSteps: WizardStep[] = [
     title: "Details & Settings",
     description: "Email and advanced options"
   },
-      {
-      id: "review",
-      title: "Generate",
-      description: "Create your personalized card"
-    }
+  {
+    id: "drafts",
+    title: "Draft Selection",
+    description: "Choose from 5 design variations"
+  },
+  {
+    id: "generate",
+    title: "Final Generation",
+    description: "Creating your complete card"
+  }
 ];
 
 export default function CardWizard() {
@@ -154,9 +160,13 @@ export default function CardWizard() {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         return Boolean(cardStudio.userEmail.trim()) && emailRegex.test(cardStudio.userEmail);
       
-      case 5: // Generate
+      case 5: // Draft Selection
         // All previous steps must be valid
         return validateStep(1) && validateStep(2) && validateStep(3) && validateStep(4);
+      
+      case 6: // Final Generation
+        // Draft must be selected and final generation started
+        return validateStep(5) && cardStudio.selectedDraftIndex >= 0;
       
       default:
         return false;
@@ -218,6 +228,17 @@ export default function CardWizard() {
       setCompletedSteps(prev => [...prev, 4]);
     }
   }, [cardStudio.userEmail]);
+
+  // Auto-advance to Step 6 when final card generation starts
+  useEffect(() => {
+    if (cardStudio.isGeneratingFinalCard && currentStep < 6) {
+      console.log('🚀 Auto-advancing to Step 6: Final Generation');
+      if (!completedSteps.includes(5)) {
+        setCompletedSteps(prev => [...prev, 5]);
+      }
+      setCurrentStep(6);
+    }
+  }, [cardStudio.isGeneratingFinalCard, currentStep]);
 
   // Create complete CardFormData object
   const getCompleteFormData = () => ({
@@ -321,9 +342,34 @@ export default function CardWizard() {
             currentElapsedTime={cardStudio.currentElapsedTime}
             isDraftMode={cardStudio.isDraftMode}
             draftCards={cardStudio.draftCards}
+            selectedDraftIndex={cardStudio.selectedDraftIndex}
             formatGenerationTime={cardStudio.formatGenerationTime}
-            onGenerateCard={cardStudio.handleGenerateCardAsync}
             onGenerateDraftCards={cardStudio.handleGenerateDraftCards}
+            onSelectDraft={(index) => {
+              cardStudio.setSelectedDraftIndex(index);
+              // Auto-advance to final generation step when draft is selected
+              if (!completedSteps.includes(5)) {
+                setCompletedSteps(prev => [...prev, 5]);
+              }
+              setCurrentStep(6);
+            }}
+          />
+        );
+      
+      case 6:
+        return (
+          <Step6FinalGeneration
+            formData={completeFormData}
+            isGeneratingFinalCard={cardStudio.isGeneratingFinalCard}
+            generationProgress={cardStudio.generationProgress}
+            progressPercentage={cardStudio.progressPercentage}
+            currentElapsedTime={cardStudio.currentElapsedTime}
+            selectedDraftIndex={cardStudio.selectedDraftIndex}
+            draftCards={cardStudio.draftCards}
+            generatedCard={cardStudio.generatedCard}
+            isCardCompleted={cardStudio.isCardCompleted}
+            onGenerateFinalCard={cardStudio.handleGenerateFinalFromDraft}
+            formatGenerationTime={cardStudio.formatGenerationTime}
           />
         );
       
@@ -377,146 +423,7 @@ export default function CardWizard() {
         </CardContent>
       </Card>
 
-      {/* Draft Cards Selection */}
-      {cardStudio.isDraftMode && cardStudio.draftCards.length > 0 && !cardStudio.isGeneratingFinalCard && !cardStudio.generatedCard && (
-        <Card className="shadow-lg" data-card-preview>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-purple-600" />
-              Choose Your Favorite Design
-            </CardTitle>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              5 front cover variations created with low quality for fast preview. Select your favorite to generate the complete high-quality card!
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Draft cards display */}
-            <div className="w-full">
-              <div className="flex overflow-x-auto gap-3 pb-4 -mx-4 px-4 snap-x snap-mandatory">
-                {Array.from({ length: 5 }, (_, displayIndex) => {
-                  const card = cardStudio.draftCards[displayIndex];
-                  const originalIndex = cardStudio.draftIndexMapping[displayIndex];
-                  const isLoading = displayIndex >= cardStudio.draftCards.length;
-                  
-                  return (
-                    <div
-                      key={displayIndex}
-                      className={`flex-shrink-0 w-48 sm:w-56 snap-center rounded-lg border-2 p-2 sm:p-3 transition-all ${
-                        cardStudio.selectedDraftIndex === displayIndex
-                          ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 shadow-lg'
-                          : card
-                          ? 'border-gray-200 dark:border-gray-700 hover:border-purple-300 hover:bg-purple-50/50 dark:hover:bg-purple-900/10'
-                          : 'border-dashed border-gray-300 dark:border-gray-600'
-                      }`}
-                      onClick={() => card && cardStudio.setSelectedDraftIndex(displayIndex)}
-                    >
-                      {card ? (
-                        <>
-                          {/* Single front cover preview */}
-                          <div className="aspect-[2/3] relative overflow-hidden rounded border mb-2 sm:mb-3">
-                            <img
-                              src={card.frontCover}
-                              alt={`Design ${originalIndex + 1}`}
-                              className="w-full h-full object-cover"
-                            />
-                            {cardStudio.selectedDraftIndex === displayIndex && (
-                              <div className="absolute inset-0 bg-purple-600/20 flex items-center justify-center">
-                                <div className="bg-white rounded-full p-2">
-                                  <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 text-purple-600" />
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                          
-                          {/* Card info */}
-                          <div className="text-center space-y-1 sm:space-y-2">
-                            <h4 className="font-medium text-sm">Design {originalIndex + 1}</h4>
-                            {cardStudio.selectedArtisticStyle === "ai-smart-style" && card.styleInfo && (
-                              <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
-                                {card.styleInfo.styleLabel}
-                              </p>
-                            )}
-                            <div className="space-y-1">
-                              {cardStudio.selectedDraftIndex === displayIndex && (
-                                <div className="bg-purple-600 text-white text-xs px-2 py-1 rounded-full mb-1">
-                                  ✓ Selected
-                                </div>
-                              )}
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  cardStudio.setPreviewingDraftIndex(displayIndex);
-                                }}
-                                className="w-full text-xs h-7 sm:h-8"
-                              >
-                                <span className="hidden sm:inline">Preview Design</span>
-                                <span className="sm:hidden">Preview</span>
-                              </Button>
-                            </div>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center py-6 sm:py-8">
-                          <div className="w-6 h-6 sm:w-8 sm:h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2 sm:mb-3" />
-                          <h4 className="font-medium text-sm mb-1">Creating...</h4>
-                          <p className="text-xs text-gray-500">Generating front cover...</p>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              
-              {/* Selection indicator */}
-              {cardStudio.selectedDraftIndex !== -1 && cardStudio.draftIndexMapping[cardStudio.selectedDraftIndex] !== undefined && (
-                <div className="text-center bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3">
-                  <p className="text-sm font-medium text-purple-900 dark:text-purple-100">
-                    ✓ Design {cardStudio.draftIndexMapping[cardStudio.selectedDraftIndex] + 1} selected
-                  </p>
-                </div>
-              )}
-            </div>
-            
-            {/* Generate button */}
-            {cardStudio.draftCards.length > 0 && (
-              <div className="mt-6 text-center space-y-3">
-                <Button
-                  onClick={() => {
-                    if (cardStudio.selectedDraftIndex !== -1) {
-                      cardStudio.handleGenerateFinalFromDraft(cardStudio.selectedDraftIndex);
-                    }
-                  }}
-                  disabled={cardStudio.selectedDraftIndex === -1}
-                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white w-full md:w-auto"
-                  size="lg"
-                >
-                  <Sparkles className="w-5 h-5 mr-2" />
-                  Generate Complete High-Quality Card
-                </Button>
-                
-                {cardStudio.selectedDraftIndex === -1 ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Please select a design variation above to proceed
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="text-sm text-green-600 dark:text-green-400 font-medium">
-                      ✓ Design {cardStudio.draftIndexMapping[cardStudio.selectedDraftIndex] + 1} selected - ready to generate!
-                    </p>
-                    {cardStudio.draftCards.length < 5 && cardStudio.isGenerating && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Remaining variations will be cancelled to focus on your selected design
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+
 
       {/* Navigation */}
       <WizardNavigation
@@ -526,9 +433,6 @@ export default function CardWizard() {
         onNext={handleNext}
         canProceed={canProceed}
         isGenerating={cardStudio.isGenerating}
-        showGenerate={currentStep === wizardSteps.length}
-        onGenerateCard={cardStudio.handleGenerateCardAsync}
-        onGenerateDraftCards={cardStudio.handleGenerateDraftCards}
       />
     </div>
   );

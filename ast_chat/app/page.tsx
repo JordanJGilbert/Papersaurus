@@ -2710,7 +2710,40 @@ Generate prompts for:
 
 ${!isFrontBackOnly ? `2. Left Interior: Creative decorative art that harmonizes with the front cover style. NO PEOPLE or characters, focus on artistic elements like patterns, landscapes, objects, or abstract art that matches the front cover's mood and style.
 
-3. Right Interior: ${isHandwrittenMessage ? `Design elegant writing space with decorative elements that complement the front cover style. Position decorative elements safely away from edges. NO PEOPLE or characters.` : `Include message text: "${messageContent}" in beautiful handwritten cursive script, integrated into decorative artwork that matches the front cover style. NO PEOPLE or characters.`}` : ''}
+3. Right Interior: ${isHandwrittenMessage ? `Design elegant writing space with decorative elements that complement the front cover style. Position decorative elements safely away from edges. NO PEOPLE or characters.` : `Include message text: "${messageContent}" positioned safely in center area (avoid top/bottom 10% of image) integrated into decorative artwork that matches the front cover style. 
+
+CRITICAL TEXT ACCURACY & LEGIBILITY REQUIREMENTS:
+- EXACT TEXT REPRODUCTION: The message text must be reproduced EXACTLY as written: "${messageContent}" - every word, punctuation mark, and character must be perfect
+- PUT TEXT IN QUOTES: Always enclose the message text in double quotes like "messsage..." to make it clear this is literal text to be rendered exactly
+- CRYSTAL CLEAR LEGIBILITY: The handwriting must be extremely readable - prioritize clarity over artistic flourishes
+- NO SPELLING ERRORS: Every word must be spelled correctly exactly as provided in the message
+- PROPER SPACING: Use appropriate letter spacing, word spacing, and line spacing for easy reading
+- CONTRAST: Ensure high contrast between text and background for maximum readability
+- SIZE: Make text large enough to read easily - avoid cramped or tiny text that's difficult to decipher
+- COMPLETE MESSAGE: Include the ENTIRE message text - do not truncate, abbreviate, or omit any part
+
+HANDWRITING STYLE SPECIFICATIONS:
+- Use beautiful, clearly readable handwritten cursive script that feels elegant and personal
+- The handwriting should be legible first, elegant second - readability is the top priority
+- Maintain consistent character formation throughout the message
+- Use natural, flowing strokes with slight variations in line weight for authenticity
+- Think of sophisticated calligraphy that's still approachable and easy to read
+- The handwriting should feel genuine and heartfelt but never sacrifice clarity
+- Use a nice pen-style appearance with natural ink flow
+
+LAYOUT & INTEGRATION:
+- Position the message text in the optimal location for readability (center area, avoid top/bottom 10%)
+- Create decorative elements that complement but never interfere with text legibility
+- Ensure decorative artwork frames the message beautifully without obscuring any text
+- Think beyond typical florals and patterns - create something unexpected and artistic
+- NO PEOPLE or characters in the decorative elements
+- The decorative elements should enhance the message's emotional impact
+
+QUALITY ASSURANCE:
+- Before finalizing, verify that every word in "${messageContent}" is clearly legible
+- Check that the text flows naturally and maintains consistent style throughout
+- Ensure the message stands out prominently against the background
+- Confirm that decorative elements enhance rather than distract from the text. NO PEOPLE or characters.`}` : ''}
 
 Return JSON:
 {
@@ -3004,7 +3037,39 @@ Create prompts that flow chronologically:
 
 2. ${!isFrontBackOnly ? `Left Interior (Story Development): UNLEASH YOUR CREATIVITY! You have complete creative freedom to design whatever you want for this left interior page! This is your artistic playground - create something genuinely innovative and unexpected that feels right for a ${cardTypeForPrompt} card with ${toneDescription} tone. You can include: scenes, landscapes, objects, patterns, quotes, text, illustrations, realistic art, abstract art, or anything else that inspires you - but NO PEOPLE or characters unless the user specifically mentioned wanting people in their card description. Position any text safely in center area (avoid top/bottom 10%). Think of something no one has done before! Surprise us with bold, imaginative, and memorable artistic choices while maintaining visual harmony with the overall card style and tone. Style: ${styleModifier}
 
-3. Right Interior (Story Climax): BE CREATIVE WITH MESSAGE DESIGN! ${isHandwrittenMessage ? `Design with elegant writing space that complements the visual story from left interior. Position decorative elements safely away from top/bottom edges. Create innovative and artistic decorative elements, borders, or flourishes that are unique and memorable - NO PEOPLE or characters.` : `Include message text: "${messageContent}" positioned safely in center area (avoid top/bottom 10% of image) integrated into beautiful, innovative decorative artwork. HANDWRITING STYLE: Write the message in beautiful, clearly readable handwritten cursive script that feels elegant and personal. The handwriting should be legible, flowing, and have natural character - not overly perfect but graceful and warm. Use a nice pen-style appearance with natural ink flow and slight variations in line weight. Think of sophisticated calligraphy that's still approachable and easy to read. Make the handwriting feel genuine and heartfelt. Think beyond typical florals and patterns - create something unexpected and artistic that perfectly frames the handwritten message - NO PEOPLE or characters.`} This should feel like the emotional peak of the card experience, harmonizing with the left interior as a cohesive spread. Avoid cliché designs and create something genuinely special!${handwritingSampleUrl ? ' Match the provided handwriting style sample exactly.' : ' Use the elegant cursive handwriting style described above.'} Style: ${styleModifier}
+3. Right Interior (Story Climax): BE CREATIVE WITH MESSAGE DESIGN! ${isHandwrittenMessage ? `Design with elegant writing space that complements the visual story from left interior. Position decorative elements safely away from top/bottom edges. Create innovative and artistic decorative elements, borders, or flourishes that are unique and memorable - NO PEOPLE or characters.` : `Include message text: "${messageContent}" positioned safely in center area (avoid top/bottom 10% of image) integrated into beautiful, innovative decorative artwork. 
+
+CRITICAL TEXT ACCURACY & LEGIBILITY REQUIREMENTS:
+- EXACT TEXT REPRODUCTION: The message text must be reproduced EXACTLY as written: "${messageContent}" - every word, punctuation mark, and character must be perfect
+- CRYSTAL CLEAR LEGIBILITY: The handwriting must be extremely readable - prioritize clarity over artistic flourishes
+- NO SPELLING ERRORS: Every word must be spelled correctly exactly as provided in the message
+- PROPER SPACING: Use appropriate letter spacing, word spacing, and line spacing for easy reading
+- CONTRAST: Ensure high contrast between text and background for maximum readability
+- SIZE: Make text large enough to read easily - avoid cramped or tiny text that's difficult to decipher
+- COMPLETE MESSAGE: Include the ENTIRE message text - do not truncate, abbreviate, or omit any part
+
+HANDWRITING STYLE SPECIFICATIONS:
+- Use beautiful, clearly readable handwritten cursive script that feels elegant and personal
+- The handwriting should be legible first, elegant second - readability is the top priority
+- Maintain consistent character formation throughout the message
+- Use natural, flowing strokes with slight variations in line weight for authenticity
+- Think of sophisticated calligraphy that's still approachable and easy to read
+- The handwriting should feel genuine and heartfelt but never sacrifice clarity
+- Use a nice pen-style appearance with natural ink flow
+
+LAYOUT & INTEGRATION:
+- Position the message text in the optimal location for readability (center area, avoid top/bottom 10%)
+- Create decorative elements that complement but never interfere with text legibility
+- Ensure decorative artwork frames the message beautifully without obscuring any text
+- Think beyond typical florals and patterns - create something unexpected and artistic
+- NO PEOPLE or characters in the decorative elements
+- The decorative elements should enhance the message's emotional impact
+
+QUALITY ASSURANCE:
+- Before finalizing, verify that every word in "${messageContent}" is clearly legible
+- Check that the text flows naturally and maintains consistent style throughout
+- Ensure the message stands out prominently against the background
+- Confirm that decorative elements enhance rather than distract from the text`} This should feel like the emotional peak of the card experience, harmonizing with the left interior as a cohesive spread. Avoid cliché designs and create something genuinely special!${handwritingSampleUrl ? ' Match the provided handwriting style sample exactly.' : ' Use the elegant cursive handwriting style described above.'} Style: ${styleModifier}
 
 4. ` : ''}Back Cover (Story Resolution): BE SUBTLY CREATIVE! Create a simple yet innovative decorative design that brings peaceful closure to the visual story. Reference subtle elements from the front cover but keep it minimal and serene - NO PEOPLE, just beautiful, unexpected artistic elements that go beyond typical patterns or florals. IMPORTANT: Leave the bottom-right corner area (approximately 1 inch square) completely clear and undecorated - this space should remain empty. Focus decorative elements toward the center and left side of the design. Think of something quietly beautiful and memorable that complements the overall design while being genuinely unique. This should feel like a peaceful, artistic ending that surprises with its subtle creativity. Style: ${styleModifier}
 
@@ -3527,7 +3592,39 @@ Create prompts that flow chronologically:
 
 2. ${!isFrontBackOnly ? `Left Interior (Story Development): UNLEASH YOUR CREATIVITY! You have complete creative freedom to design whatever you want for this left interior page! This is your artistic playground - create something genuinely innovative and unexpected that feels right for a ${cardTypeForPrompt} card with ${toneDescription} tone. You can include: scenes, landscapes, objects, patterns, quotes, text, illustrations, realistic art, abstract art, or anything else that inspires you - but NO PEOPLE or characters unless the user specifically mentioned wanting people in their card description. Position any text safely in center area (avoid top/bottom 10%). Think of something no one has done before! Surprise us with bold, imaginative, and memorable artistic choices while maintaining visual harmony with the overall card style and tone. Style: ${styleModifier}
 
-3. Right Interior (Story Climax): BE CREATIVE WITH MESSAGE DESIGN! ${isHandwrittenMessage ? `Design with elegant writing space that complements the visual story from left interior. Position decorative elements safely away from top/bottom edges. Create innovative and artistic decorative elements, borders, or flourishes that are unique and memorable - NO PEOPLE or characters.` : `Include message text: "${messageContent}" positioned safely in center area (avoid top/bottom 10% of image) integrated into beautiful, innovative decorative artwork. HANDWRITING STYLE: Write the message in beautiful, clearly readable handwritten cursive script that feels elegant and personal. The handwriting should be legible, flowing, and have natural character - not overly perfect but graceful and warm. Use a nice pen-style appearance with natural ink flow and slight variations in line weight. Think of sophisticated calligraphy that's still approachable and easy to read. Make the handwriting feel genuine and heartfelt. Think beyond typical florals and patterns - create something unexpected and artistic that perfectly frames the handwritten message - NO PEOPLE or characters.`} This should feel like the emotional peak of the card experience, harmonizing with the left interior as a cohesive spread. Avoid cliché designs and create something genuinely special!${handwritingSampleUrl ? ' Match the provided handwriting style sample exactly.' : ' Use the elegant cursive handwriting style described above.'} Style: ${styleModifier}
+3. Right Interior (Story Climax): BE CREATIVE WITH MESSAGE DESIGN! ${isHandwrittenMessage ? `Design with elegant writing space that complements the visual story from left interior. Position decorative elements safely away from top/bottom edges. Create innovative and artistic decorative elements, borders, or flourishes that are unique and memorable - NO PEOPLE or characters.` : `Include message text: "${messageContent}" positioned safely in center area (avoid top/bottom 10% of image) integrated into beautiful, innovative decorative artwork. 
+
+CRITICAL TEXT ACCURACY & LEGIBILITY REQUIREMENTS:
+- EXACT TEXT REPRODUCTION: The message text must be reproduced EXACTLY as written: "${messageContent}" - every word, punctuation mark, and character must be perfect
+- CRYSTAL CLEAR LEGIBILITY: The handwriting must be extremely readable - prioritize clarity over artistic flourishes
+- NO SPELLING ERRORS: Every word must be spelled correctly exactly as provided in the message
+- PROPER SPACING: Use appropriate letter spacing, word spacing, and line spacing for easy reading
+- CONTRAST: Ensure high contrast between text and background for maximum readability
+- SIZE: Make text large enough to read easily - avoid cramped or tiny text that's difficult to decipher
+- COMPLETE MESSAGE: Include the ENTIRE message text - do not truncate, abbreviate, or omit any part
+
+HANDWRITING STYLE SPECIFICATIONS:
+- Use beautiful, clearly readable handwritten cursive script that feels elegant and personal
+- The handwriting should be legible first, elegant second - readability is the top priority
+- Maintain consistent character formation throughout the message
+- Use natural, flowing strokes with slight variations in line weight for authenticity
+- Think of sophisticated calligraphy that's still approachable and easy to read
+- The handwriting should feel genuine and heartfelt but never sacrifice clarity
+- Use a nice pen-style appearance with natural ink flow
+
+LAYOUT & INTEGRATION:
+- Position the message text in the optimal location for readability (center area, avoid top/bottom 10%)
+- Create decorative elements that complement but never interfere with text legibility
+- Ensure decorative artwork frames the message beautifully without obscuring any text
+- Think beyond typical florals and patterns - create something unexpected and artistic
+- NO PEOPLE or characters in the decorative elements
+- The decorative elements should enhance the message's emotional impact
+
+QUALITY ASSURANCE:
+- Before finalizing, verify that every word in "${messageContent}" is clearly legible
+- Check that the text flows naturally and maintains consistent style throughout
+- Ensure the message stands out prominently against the background
+- Confirm that decorative elements enhance rather than distract from the text`} This should feel like the emotional peak of the card experience, harmonizing with the left interior as a cohesive spread. Avoid cliché designs and create something genuinely special!${handwritingSampleUrl ? ' Match the provided handwriting style sample exactly.' : ' Use the elegant cursive handwriting style described above.'} Style: ${styleModifier}
 
 4. ` : ''}Back Cover (Story Resolution): BE SUBTLY CREATIVE! Create a simple yet innovative decorative design that brings peaceful closure to the visual story. Reference subtle elements from the front cover but keep it minimal and serene - NO PEOPLE, just beautiful, unexpected artistic elements that go beyond typical patterns or florals. IMPORTANT: Leave the bottom-right corner area (approximately 1 inch square) completely clear and undecorated - this space should remain empty. Focus decorative elements toward the center and left side of the design. Think of something quietly beautiful and memorable that complements the overall design while being genuinely unique. This should feel like a peaceful, artistic ending that surprises with its subtle creativity. Style: ${styleModifier}
 
@@ -3563,6 +3660,16 @@ Create a completely unique visual interpretation that's distinctly different fro
 - Background elements and settings
 - Typography styles and text placement
 - Overall creative theme while keeping same core message
+
+${!isFrontBackOnly ? `For the right interior page with the message, ensure:
+- PUT TEXT IN QUOTES: Always enclose the message text in double quotes like "${messageContent}" to make it clear this is literal text to be rendered exactly
+- EXACT TEXT REPRODUCTION: The message text must be reproduced EXACTLY as written: "message..." - every word, punctuation mark, and character must be perfect
+- CRYSTAL CLEAR LEGIBILITY: The handwriting must be extremely readable - prioritize clarity over artistic flourishes
+- NO SPELLING ERRORS: Every word must be spelled correctly exactly as provided in the message
+- PROPER SPACING: Use appropriate letter spacing, word spacing, and line spacing for easy reading
+- CONTRAST: Ensure high contrast between text and background for maximum readability
+- SIZE: Make text large enough to read easily - avoid cramped or tiny text that's difficult to decipher
+- COMPLETE MESSAGE: Include the ENTIRE message text - do not truncate, abbreviate, or omit any part` : ''}
 
 Make this card variant stand out as its own unique artistic vision!
 

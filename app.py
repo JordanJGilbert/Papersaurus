@@ -34,6 +34,10 @@ from reportlab.lib.utils import ImageReader
 from PIL import Image
 # Image processing imports for HEIC support
 from PIL import Image
+
+# WebSocket support
+from flask_socketio import SocketIO, emit, join_room, leave_room
+
 try:
     import pillow_heif
     # Enable HEIF support in Pillow
@@ -82,6 +86,9 @@ except ImportError as e: # Added "as e" and fixed the print statement
 
 app = Flask(__name__)
 
+# Initialize SocketIO for real-time communication
+socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True)
+
 # Context processor to inject DOMAIN into templates
 @app.context_processor
 def inject_domain():
@@ -92,6 +99,82 @@ app.register_blueprint(signal_bp, url_prefix='/signal')
 
 # Initialize signal bot when app starts
 init_signal_bot()
+
+# WebSocket event handlers for real-time card generation updates
+@socketio.on('connect')
+def handle_connect():
+    print(f"Client connected: {request.sid}")
+    emit('connected', {'status': 'connected', 'message': 'WebSocket connection established'})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print(f"Client disconnected: {request.sid}")
+
+@socketio.on('subscribe_job')
+def handle_subscribe_job(data):
+    """Subscribe to updates for a specific job"""
+    job_id = data.get('job_id')
+    if not job_id:
+        emit('error', {'message': 'job_id is required'})
+        return
+    
+    # Join the job room
+    join_room(f"job_{job_id}")
+    print(f"Client {request.sid} subscribed to job {job_id}")
+    
+    # Send current job status if available
+    if job_id in job_storage:
+        job_data = job_storage[job_id]
+        emit('job_update', {
+            'job_id': job_id,
+            'status': job_data.get('status'),
+            'progress': job_data.get('progress'),
+            'cardData': job_data.get('cardData'),
+            'error': job_data.get('error'),
+            'completedAt': job_data.get('completedAt'),
+            'createdAt': job_data.get('createdAt')
+        })
+    else:
+        emit('job_update', {
+            'job_id': job_id,
+            'status': 'not_found',
+            'message': 'Job not found'
+        })
+
+@socketio.on('unsubscribe_job')
+def handle_unsubscribe_job(data):
+    """Unsubscribe from job updates"""
+    job_id = data.get('job_id')
+    if job_id:
+        leave_room(f"job_{job_id}")
+        print(f"Client {request.sid} unsubscribed from job {job_id}")
+        emit('unsubscribed', {'job_id': job_id})
+
+@socketio.on('get_job_status')
+def handle_get_job_status(data):
+    """Get current status of a job"""
+    job_id = data.get('job_id')
+    if not job_id:
+        emit('error', {'message': 'job_id is required'})
+        return
+    
+    if job_id in job_storage:
+        job_data = job_storage[job_id]
+        emit('job_status', {
+            'job_id': job_id,
+            'status': job_data.get('status'),
+            'progress': job_data.get('progress'),
+            'cardData': job_data.get('cardData'),
+            'error': job_data.get('error'),
+            'completedAt': job_data.get('completedAt'),
+            'createdAt': job_data.get('createdAt')
+        })
+    else:
+        emit('job_status', {
+            'job_id': job_id,
+            'status': 'not_found',
+            'message': 'Job not found'
+        })
 
 # No need for MCP client initialization in the Flask app anymore
 # since we're using a separate service
@@ -5506,9 +5589,14 @@ def generate_card_images_background(job_id, prompts, config):
     try:
         print(f"Starting background generation for job {job_id}")
         
-        # Update job status
+        # Update job status and emit to WebSocket
         if job_id in job_storage:
             job_storage[job_id]["progress"] = "Generating images..."
+            socketio.emit('job_update', {
+                'job_id': job_id,
+                'status': 'processing',
+                'progress': 'Generating images...'
+            }, room=f"job_{job_id}")
         
         # Prepare sections to generate
         sections_to_generate = ["frontCover", "backCover"]
@@ -5521,9 +5609,14 @@ def generate_card_images_background(job_id, prompts, config):
         # Generate all images in parallel by preparing all prompts
         print(f"Generating all sections in parallel for job {job_id}: {sections_to_generate}")
         
-        # Update progress
+        # Update progress and emit to WebSocket
         if job_id in job_storage:
             job_storage[job_id]["progress"] = "Generating all card images in parallel..."
+            socketio.emit('job_update', {
+                'job_id': job_id,
+                'status': 'processing',
+                'progress': 'Generating all card images in parallel...'
+            }, room=f"job_{job_id}")
         
         # Prepare all prompts for parallel generation
         prompts_list = []
@@ -5691,13 +5784,20 @@ def generate_card_images_background(job_id, prompts, config):
         missing_sections = [s for s in required_sections if s not in generated_images]
         
         if missing_sections:
-            # Mark as failed
+            # Mark as failed and emit to WebSocket
+            error_message = f"Failed to generate sections: {', '.join(missing_sections)}"
             if job_id in job_storage:
                 job_storage[job_id].update({
                     "status": "failed",
-                    "error": f"Failed to generate sections: {', '.join(missing_sections)}",
+                    "error": error_message,
                     "completedAt": time.time()
                 })
+                socketio.emit('job_update', {
+                    'job_id': job_id,
+                    'status': 'failed',
+                    'error': error_message,
+                    'completedAt': time.time()
+                }, room=f"job_{job_id}")
             print(f"Job {job_id} failed - missing sections: {missing_sections}")
             return
         
@@ -5725,7 +5825,7 @@ def generate_card_images_background(job_id, prompts, config):
             generated_section_names = list(generated_images.keys())
             print(f"🎨 Draft mode completed with sections: {generated_section_names}")
         
-        # Mark job as completed
+        # Mark job as completed and emit to WebSocket
         if job_id in job_storage:
             job_storage[job_id].update({
                 "status": "completed",
@@ -5733,6 +5833,13 @@ def generate_card_images_background(job_id, prompts, config):
                 "completedAt": time.time(),
                 "progress": "Generation complete!"
             })
+            socketio.emit('job_update', {
+                'job_id': job_id,
+                'status': 'completed',
+                'progress': 'Generation complete!',
+                'cardData': card_data,
+                'completedAt': time.time()
+            }, room=f"job_{job_id}")
         
         print(f"Job {job_id} completed successfully")
         
@@ -5809,13 +5916,19 @@ def generate_card_images_background(job_id, prompts, config):
         
     except Exception as e:
         print(f"Error in background generation for job {job_id}: {e}")
-        # Mark job as failed
+        # Mark job as failed and emit to WebSocket
         if job_id in job_storage:
             job_storage[job_id].update({
                 "status": "failed",
                 "error": str(e),
                 "completedAt": time.time()
             })
+            socketio.emit('job_update', {
+                'job_id': job_id,
+                'status': 'failed',
+                'error': str(e),
+                'completedAt': time.time()
+            }, room=f"job_{job_id}")
         
 def call_mcp_service(tool_name, arguments):
     """Helper function to call MCP service."""
