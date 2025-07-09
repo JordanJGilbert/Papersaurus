@@ -1,0 +1,17 @@
+{
+  "id": "0a99c01c-04f8-487c-a4ea-cdc86d13b46b",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_660eee9b.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_5638d26a.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_1526f398.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_d4c0c2c5.png",
+  "createdAt": 1752021185.6247501,
+  "expiresAt": 1783557185.6247509,
+  "version": 1,
+  "generatedPrompts": {
+    "backCover": "A minimalist and serene watercolor painting continuing the style of the front cover. The background is a full-bleed, soft wash of light blue and green with visible paper texture and subtle organic paint bleeds. In the top-left corner, a single, beautifully wrapped small gift box, identical to the one falling on the front cover, is depicted as if it has just landed gently on the ground, sitting amidst a few delicate green leaves. The overall composition is simple, clean, and peaceful, with soft, flowing colors and artistic brush strokes. The bottom-right one-inch square area is intentionally left blank and undecorated.",
+    "frontCover": "A charming watercolor illustration of a slightly frazzled, but happy, cartoon sloth wearing a tiny party hat, precariously balancing a teetering stack of presents while hanging upside down from a tree branch. One small gift is comically falling mid-air. The background is a soft wash of light blue and green, with subtle organic paint bleeds and visible paper texture. In the center, in a beautiful, flowing, dark brown handwritten cursive script, is the text: \"Happy Birthday... eventually\". The overall style is flat 2D, with artistic brush strokes and soft, flowing colors, capturing a lighthearted and humorous moment.",
+    "leftInterior": "A beautiful full-bleed watercolor background in the same style as the front cover. The design features a soft wash of light blue and green with visible paper texture and organic paint bleeds. A delicate, dark brown tree branch, matching the one on the front cover, extends gracefully from the top-left corner down towards the bottom-right, adorned with a few simple, elegantly painted green leaves. The composition is artistic, minimalist, and creates a harmonious visual continuation from the exterior.",
+    "rightInterior": "A decorative watercolor illustration that frames the interior message, maintaining the card's artistic style. The background is a gentle wash of light blue and green with visible paper texture. A delicate tree branch enters from the top-right corner, and a few small, festive confetti shapes in soft colors are scattered subtly around the upper area. In the center, positioned for safe printing, is the message written in a beautiful, flowing, dark brown handwritten cursive script: \"Hope it was worth the wait!\" The overall feel is lighthearted, celebratory, and visually cohesive with the rest of the card."
+  }
+}

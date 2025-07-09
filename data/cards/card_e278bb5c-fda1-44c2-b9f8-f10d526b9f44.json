@@ -1,0 +1,17 @@
+{
+  "id": "e278bb5c-fda1-44c2-b9f8-f10d526b9f44",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_68ee6c65.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_3278d3aa.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_bbd778e0.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_21e30a32.png",
+  "createdAt": 1752021364.6836922,
+  "expiresAt": 1783557364.6836927,
+  "version": 1,
+  "generatedPrompts": {
+    "backCover": "A minimalist and serene full-bleed background featuring the very top of the leafy green tree branch from the front cover, extending down from the top edge. A few scattered, colorful confetti pieces drift gently downwards against a soft, off-white background. The entire design is rendered in a soft, flowing watercolor style with visible artistic brushstrokes, organic paint bleeds, and a subtle paper texture, creating a flat 2D artwork. The bottom-right corner is left intentionally blank and undecorated for logo or QR code placement. --style raw",
+    "frontCover": "A charming and humorous watercolor illustration of a cartoon sloth wearing a tiny, crooked party hat, hanging upside down from a tree branch. The sloth is holding a single, lit birthday candle with a determined but very slow expression. Below the sloth, a patient tortoise, also wearing a party hat, looks up with a speech bubble that says, \"We'll get there!\" In the center, in a beautiful, readable, handwritten cursive script, the text reads: \"Happy Birthday, Craig... eventually.\" The entire scene is rendered in a soft, flowing watercolor style with visible artistic brushstrokes, organic paint bleeds, and a subtle paper texture, creating a flat 2D artwork perfect for printing. --style raw",
+    "leftInterior": "A full-bleed decorative watercolor wash background. Soft, abstract splashes of the same greens, blues, and warm yellows from the front cover blend harmoniously across the page. A gentle cascade of colorful, painted confetti pieces drifts from the top-left corner towards the bottom-right, echoing the party theme. The design is rendered in a soft, flowing watercolor style with visible artistic brushstrokes, organic paint bleeds, and a subtle paper texture, creating a flat 2D artwork. --style raw",
+    "rightInterior": "A simple and elegant full-bleed background with a soft, off-white watercolor paper texture. A small, charming watercolor illustration of a single party hat, identical to the ones on the front cover, rests in the bottom-left corner. From the top-right corner, a delicate vine with green leaves hangs down slightly. The message from Jordan is not included in the artwork itself. The entire scene is rendered in a soft, flowing watercolor style with visible artistic brushstrokes and organic paint bleeds, creating a flat 2D artwork. --style raw"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "id": "05d5cbb0-f5ec-41f5-9c69-442f8956bc26",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_e2b7583b.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_6d858151.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_9273c874.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_33345abb.png",
+  "createdAt": 1752020957.2600853,
+  "expiresAt": 1783556957.2600863,
+  "version": 1,
+  "generatedPrompts": {
+    "backCover": "A minimalist and serene watercolor illustration on a textured paper background. In the upper-left corner, a single, tiny, colorful party hat, identical to the one from the front cover, rests beside a delicate, translucent bubble. The background is a soft, flowing watercolor wash of gentle blues and warm browns with visible organic paint bleeds and artistic brush strokes. The bottom-right corner, approximately 1 inch square, is left completely blank and white. The entire design is full-bleed, extending to all edges except the designated blank corner. Flat 2D artwork.",
+    "frontCover": "A charming watercolor illustration of a sophisticated capybara wearing a tiny, tilted party hat and a monocle. The capybara is lounging majestically in a teacup that is slightly too small for it, causing a comical overflow of tea. Floating around the teacup are a few delicate, translucent bubbles and a single, wayward piece of confetti. In the center, in a beautiful, flowing, and readable handwritten cursive script, the text reads: \"happy birthday, you magnificent creature\". The entire scene is rendered in a lighthearted, cartoonish style with soft, flowing watercolor washes of warm browns, gentle blues, and a pop of festive color for the hat, set against a textured paper background with visible organic paint bleeds and artistic brush strokes. Flat 2D artwork.",
+    "leftInterior": "A beautiful, decorative watercolor pattern that is full-bleed, extending to all edges. The design features a scattered, repeating pattern of tiny, colorful party hats, delicate translucent bubbles, and small pieces of confetti. The elements are rendered in a lighthearted, cartoonish style with soft, flowing watercolor washes of warm browns, gentle blues, and pops of festive color, set against a textured paper background with visible organic paint bleeds and artistic brush strokes. The pattern is sparse and elegant, creating a sense of playful celebration. Flat 2D artwork.",
+    "rightInterior": "A decorative watercolor illustration that is full-bleed, extending to all edges. A delicate teacup, matching the one from the front cover, is placed in the bottom-left corner, with gentle steam wafting upwards in soft blue watercolor wisps. A few pieces of colorful confetti are scattered near the top-right. In the center, elegantly integrated into the scene, is the message \"To Jordan,\n\n[Message Here]\n\nFrom, Carl\" written in a beautiful, flowing, and readable handwritten cursive script. The artwork uses a palette of warm browns and gentle blues on a textured paper background with organic paint bleeds and artistic brush strokes. Flat 2D artwork."
+  }
+}

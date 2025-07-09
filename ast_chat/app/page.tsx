@@ -2592,17 +2592,29 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
 
   // Generate final high-quality card from selected draft
   const handleGenerateFinalFromDraft = async (displayIndex: number) => {
+    console.log("🔥 handleGenerateFinalFromDraft called with:", { 
+      displayIndex, 
+      draftCardsLength: draftCards.length, 
+      selectedDraftIndex,
+      draftIndexMapping 
+    });
+
     if (displayIndex < 0 || displayIndex >= draftCards.length || !draftCards[displayIndex]) {
-      toast.error("Invalid draft selection");
+      console.error("❌ Invalid draft selection:", { displayIndex, draftCardsLength: draftCards.length, draftCards });
+      toast.error("Invalid draft selection. Please select a design first.");
       return;
     }
 
     // Get the original draft index from the mapping
     const originalDraftIndex = draftIndexMapping[displayIndex];
     if (originalDraftIndex === undefined) {
+      console.error("❌ Could not find original draft data:", { displayIndex, draftIndexMapping });
       toast.error("Could not find original draft data");
       return;
     }
+
+    console.log("✅ Validation passed, starting final card generation...");
+    toast.info("🚀 Starting final card generation...");
 
     // Stop remaining draft generations to focus on the selected design
     const remainingDrafts = 5 - draftCards.length;
@@ -2611,10 +2623,23 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
       toast.info(`🎯 Focusing on your selected design! Skipping ${remainingDrafts} remaining variations.`);
     }
 
+    // Clear any existing progress state and set final card generation
+    setIsGenerating(false); // Make sure this is false for final generation
     setIsGeneratingFinalCard(true);
     setSelectedDraftIndex(displayIndex); // Store display index for UI
     startElapsedTimeTracking(undefined, 120); // 120 seconds for final card generation
     setGenerationProgress("🎨 Creating high-quality version of your selected design...");
+    setProgressPercentage(0);
+
+    console.log("🔥 Final card generation state set:", {
+      isGeneratingFinalCard: true,
+      isGenerating: false,
+      isDraftMode,
+      draftCardsLength: draftCards.length
+    });
+
+    // CRITICAL: Do NOT clear draft mode states during final generation
+    // Keep isDraftMode and draftCards so UI doesn't revert
 
     try {
       const selectedDraft = draftCards[displayIndex];
@@ -5777,7 +5802,27 @@ Return only the numeric score (1-100) for each image.`;
                 </Collapsible>
 
                 {/* Clean Progress Indicator - Show for all generation types */}
-                {(isGenerating || isGeneratingMessage || isGeneratingFinalCard) && !(isDraftMode && draftCards.length > 0 && !isGeneratingFinalCard) && (
+                {(() => {
+                  // Show progress bar when:
+                  // 1. Generating final card from draft (highest priority)
+                  // 2. Generating regular card (not in draft mode with completed drafts)
+                  // 3. Generating message
+                  const showForFinalCard = isGeneratingFinalCard;
+                  const showForRegularGeneration = (isGenerating || isGeneratingMessage) && !(isDraftMode && draftCards.length > 0);
+                  const shouldShow = showForFinalCard || showForRegularGeneration;
+                  
+                  console.log("🔥 Progress bar condition check:", {
+                    isGenerating,
+                    isGeneratingMessage, 
+                    isGeneratingFinalCard,
+                    isDraftMode,
+                    draftCardsLength: draftCards.length,
+                    showForFinalCard,
+                    showForRegularGeneration,
+                    shouldShow
+                  });
+                  return shouldShow;
+                })() && (
                   <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/30 dark:to-cyan-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
                     <div className="space-y-3">
                       {/* Progress Message */}
@@ -5816,8 +5861,19 @@ Return only the numeric score (1-100) for each image.`;
                   </div>
                 )}
 
-                {/* Generate Buttons */}
-                {!isDraftMode && draftCards.length === 0 && !isGeneratingFinalCard && !isGenerating ? (
+                        {/* Generate Buttons */}
+        {(() => {
+          const showGenerateButtons = !isDraftMode && draftCards.length === 0 && !isGeneratingFinalCard && !isGenerating;
+          console.log("🔥 Generate buttons condition:", {
+            isDraftMode,
+            draftCardsLength: draftCards.length,
+            isGeneratingFinalCard,
+            isGenerating,
+            showGenerateButtons,
+            generatedCard: !!generatedCard
+          });
+          return showGenerateButtons;
+        })() ? (
                   <div className="space-y-3">
                     {/* Draft Mode Description */}
                     <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800">
@@ -5947,7 +6003,17 @@ Return only the numeric score (1-100) for each image.`;
             </Card>
 
         {/* Draft Cards Selection */}
-        {isDraftMode && draftCards.length > 0 && !isGeneratingFinalCard && !generatedCard && (
+        {(() => {
+          const showDraftSelection = isDraftMode && draftCards.length > 0 && !isGeneratingFinalCard && !generatedCard;
+          console.log("🔥 Draft selection condition:", {
+            isDraftMode,
+            draftCardsLength: draftCards.length,
+            isGeneratingFinalCard,
+            generatedCard: !!generatedCard,
+            showDraftSelection
+          });
+          return showDraftSelection;
+        })() && (
           <Card className="shadow-lg" data-card-preview>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -5977,7 +6043,13 @@ Return only the numeric score (1-100) for each image.`;
                             ? 'border-gray-200 dark:border-gray-700 hover:border-purple-300 hover:bg-purple-50/50 dark:hover:bg-purple-900/10'
                             : 'border-dashed border-gray-300 dark:border-gray-600'
                         }`}
-                        onClick={() => card && setSelectedDraftIndex(displayIndex)}
+                        onClick={() => {
+                          if (card) {
+                            console.log("🔥 Draft card clicked:", { displayIndex, originalIndex, cardId: card.id });
+                            setSelectedDraftIndex(displayIndex);
+                            console.log("🔥 selectedDraftIndex set to:", displayIndex);
+                          }
+                        }}
                       >
                         {card ? (
                                                   <>
@@ -6053,7 +6125,16 @@ Return only the numeric score (1-100) for each image.`;
               {draftCards.length > 0 && (
                 <div className="mt-6 text-center space-y-3">
                   <Button
-                    onClick={() => handleGenerateFinalFromDraft(selectedDraftIndex)}
+                    onClick={() => {
+                      console.log("🔥 Generate button clicked! selectedDraftIndex:", selectedDraftIndex);
+                      console.log("🔥 Button state:", { 
+                        selectedDraftIndex, 
+                        isDisabled: selectedDraftIndex === -1,
+                        draftCardsLength: draftCards.length,
+                        draftIndexMapping 
+                      });
+                      handleGenerateFinalFromDraft(selectedDraftIndex);
+                    }}
                     disabled={selectedDraftIndex === -1}
                     className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white w-full md:w-auto"
                     size="lg"
@@ -6086,7 +6167,8 @@ Return only the numeric score (1-100) for each image.`;
 
         {/* Card Preview - Hide when in draft mode or when generating final from draft */}
         {(() => {
-          console.log('🔍 Card Preview Render Check:', {
+          const showCardPreview = generatedCard && !isGeneratingFinalCard;
+          console.log('🔥 Card Preview condition:', {
             hasGeneratedCard: !!generatedCard,
             cardId: generatedCard?.id,
             isCardCompleted,
@@ -6095,11 +6177,11 @@ Return only the numeric score (1-100) for each image.`;
             frontCover: generatedCard?.frontCover ? 'present' : 'missing',
             isDraftMode,
             isGeneratingFinalCard,
-            draftCardsLength: draftCards.length
+            draftCardsLength: draftCards.length,
+            showCardPreview
           });
-          return null;
-        })()}
-        {generatedCard && !isGeneratingFinalCard && (
+          return showCardPreview;
+        })() && (
                   <Card className="shadow-lg" data-card-preview>
                     <CardHeader>
                       <div className="flex items-center justify-between">
@@ -6130,7 +6212,7 @@ Return only the numeric score (1-100) for each image.`;
                               </div>
                             ) : (
                               <>
-                                Created {new Date(generatedCard.createdAt).toLocaleDateString()}
+                                Created {generatedCard ? new Date(generatedCard.createdAt).toLocaleDateString() : 'Unknown'}
                                 {numberOfCards > 1 && ` • Viewing Card ${selectedCardIndex + 1} of ${generatedCards.length}`}
                               </>
                             )}
@@ -6186,7 +6268,7 @@ Return only the numeric score (1-100) for each image.`;
                     </CardHeader>
                     <CardContent>
                       <CardPreview 
-                        card={generatedCard} 
+                        card={generatedCard!} 
                         onCardUpdate={(updatedCard) => {
                           setGeneratedCard(updatedCard);
                           // Also update the card in the cards array
