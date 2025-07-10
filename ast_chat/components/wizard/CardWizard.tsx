@@ -212,6 +212,29 @@ export default function CardWizard() {
     }
   };
 
+  // Create wrappers for undo/redo that update both form and cardStudio
+  const undoMessageWrapper = () => {
+    cardStudio.undoMessage();
+    // Update form data with the new message from history
+    if (cardStudio.currentMessageIndex > 0) {
+      const newMessage = cardStudio.messageHistory[cardStudio.currentMessageIndex - 1];
+      updateFormData({
+        finalCardMessage: newMessage
+      });
+    }
+  };
+
+  const redoMessageWrapper = () => {
+    cardStudio.redoMessage();
+    // Update form data with the new message from history
+    if (cardStudio.currentMessageIndex < cardStudio.messageHistory.length - 1) {
+      const newMessage = cardStudio.messageHistory[cardStudio.currentMessageIndex + 1];
+      updateFormData({
+        finalCardMessage: newMessage
+      });
+    }
+  };
+
   // Handle template selection
   const handleTemplateSelect = (template: any) => {
     // Update form data with template information
@@ -382,8 +405,8 @@ export default function CardWizard() {
             isGeneratingMessage={cardStudio.isGeneratingMessage}
             messageHistory={cardStudio.messageHistory}
             currentMessageIndex={cardStudio.currentMessageIndex}
-            undoMessage={cardStudio.undoMessage}
-            redoMessage={cardStudio.redoMessage}
+            undoMessage={undoMessageWrapper}
+            redoMessage={redoMessageWrapper}
           />
         );
       
