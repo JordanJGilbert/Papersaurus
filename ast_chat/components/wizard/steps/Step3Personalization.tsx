@@ -131,49 +131,14 @@ export default function Step3Personalization({
   }, [formData.selectedArtisticStyle, formData.customStyleDescription, formData.referenceImageUrls, formData.selectedImageModel, onStepComplete]);
 
   const handleFileUploadLocal = async (file: File) => {
-    // Use external handler if available, otherwise use local implementation
+    // Always use external handler if available
     if (externalHandleFileUpload) {
       await externalHandleFileUpload(file, 'reference');
       return;
     }
 
-    // Local implementation for when external handler isn't available
-    if (!file.type.startsWith('image/')) {
-      toast.error("Please upload an image file");
-      return;
-    }
-
-    console.log('Uploading file:', file.name);
-    
-    try {
-      const uploadFormData = new FormData();
-      uploadFormData.append('file', file);
-      
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL || 'https://vibecarding.com'}/upload`, {
-        method: 'POST',
-        body: uploadFormData,
-      });
-      
-      if (!response.ok) throw new Error(`Upload failed: ${response.status}`);
-      
-      const result = await response.json();
-      
-      updateFormData({ 
-        referenceImages: [...formData.referenceImages, file],
-        referenceImageUrls: [...formData.referenceImageUrls, result.url]
-      });
-      
-      console.log("🔍 DEBUG: Reference image uploaded successfully:", {
-        fileName: file.name,
-        url: result.url,
-        totalImages: formData.referenceImages.length + 1
-      });
-      
-      toast.success(`Reference image uploaded! ${formData.referenceImages.length + 1} photo${formData.referenceImages.length + 1 > 1 ? 's' : ''} ready for character creation.`);
-    } catch (error) {
-      console.error('Upload failed:', error);
-      toast.error("Upload failed. Please try again.");
-    }
+    // Fallback error if no handler is provided
+    toast.error("File upload handler not available");
   };
 
   const handleRemoveImage = (index: number) => {

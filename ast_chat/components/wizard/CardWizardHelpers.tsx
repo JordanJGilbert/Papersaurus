@@ -28,60 +28,27 @@ export const createFileUploadWrapper = (
   updateFormData: (updates: any) => void
 ) => {
   return async (file: File, type: 'handwriting' | 'reference') => {
-    if (!file.type.startsWith('image/')) {
-      toast.error("Please upload an image file");
-      return;
-    }
-
-    cardStudio.setIsUploading(true);
+    // Store the current state before upload
+    const prevImages = cardForm.formData.referenceImages || [];
+    const prevUrls = cardForm.formData.referenceImageUrls || [];
     
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL || 'https://vibecarding.com'}/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-      
-      if (!response.ok) throw new Error(`Upload failed: ${response.status}`);
-      
-      const result = await response.json();
-      
-      if (type === 'handwriting') {
-        // Update cardStudio state
-        cardStudio.setHandwritingSample(file);
-        cardStudio.setHandwritingSampleUrl(result.url);
-        toast.success("Handwriting sample uploaded!");
-      } else {
-        // Update both cardStudio and form data for reference images
-        const newImages = [...cardForm.formData.referenceImages, file];
-        const newUrls = [...cardForm.formData.referenceImageUrls, result.url];
-        
-        // Update cardStudio state
-        cardStudio.setReferenceImages(newImages);
-        cardStudio.setReferenceImageUrls(newUrls);
-        
-        // Update form data
-        updateFormData({
-          referenceImages: newImages,
-          referenceImageUrls: newUrls
-        });
-        
-        console.log("🔍 DEBUG: Reference image uploaded successfully:", {
-          fileName: file.name,
-          url: result.url,
-          totalImages: newImages.length
-        });
-        
-        toast.success(`Reference image uploaded! ${newImages.length} photo${newImages.length > 1 ? 's' : ''} ready for character creation.`);
+    // Use the handleFileUpload method from cardStudio (useFileHandling hook)
+    // This will properly trigger the photo analysis modal
+    await cardStudio.handleFileUpload(file, type);
+    
+    // After successful upload, sync the form data with cardStudio state
+    // We need to wait a bit for the state to update in cardStudio
+    setTimeout(() => {
+      if (type === 'reference') {
+        // Check if the upload was successful by comparing arrays
+        if (cardStudio.referenceImages.length > prevImages.length) {
+          updateFormData({
+            referenceImages: cardStudio.referenceImages,
+            referenceImageUrls: cardStudio.referenceImageUrls
+          });
+        }
       }
-    } catch (error) {
-      console.error('Upload failed:', error);
-      toast.error("Upload failed. Please try again.");
-    } finally {
-      cardStudio.setIsUploading(false);
-    }
+    }, 100);
   };
 };
 
