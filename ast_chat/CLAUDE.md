@@ -6,7 +6,10 @@ VibeCarding is a modern Next.js application that generates personalized greeting
 ## Development Patterns
 
 ### Development Notes
-- When using Playwright MCP tools, always use domain vibecarding.com instead of localhost
+- **IMPORTANT**: When using Playwright MCP tools, always use domain `vibecarding.com` instead of `localhost`
+  - Example: `https://vibecarding.com` NOT `http://localhost:3000`
+  - This ensures proper testing of the production environment
+  - The site is accessible at vibecarding.com with SSL configured
 
 ### Wizard Architecture
 The app uses a step-based wizard with:
