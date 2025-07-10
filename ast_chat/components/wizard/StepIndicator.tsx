@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Check, Circle } from "lucide-react";
-import { WizardStep } from "./CardWizard";
+import { WizardStep } from "./CardWizardRefactored";
 
 interface StepIndicatorProps {
   steps: WizardStep[];
