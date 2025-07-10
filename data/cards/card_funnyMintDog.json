@@ -1,0 +1,17 @@
+{
+  "id": "funnyMintDog",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_01f6cb75.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_9ea7bd01.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_6df09052.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_37b21e81.png",
+  "generatedPrompts": {
+    "frontCover": "A romantic anniversary greeting card front cover, flat 2D illustration. A charming cartoon-style couple, a man and a woman, are slow dancing together at an outdoor music festival, they are looking at each other with loving smiles. The scene is bathed in the warm, golden glow of a sunset, casting long, soft shadows. The background features distant festival tents and a Ferris wheel silhouette against a vibrant sky of orange, pink, and soft purple. Floating around the couple are ethereal, translucent watercolor hearts and delicate, blooming red and pink roses with green leaves, seamlessly blended into the scene. In the center, the words \"Happy Anniversary\" are written in a beautiful, readable, elegant handwritten cursive script. The entire design is in a watercolor painting style, with soft flowing colors, visible artistic brush strokes, a subtle paper texture, and organic paint bleeds at the edges. --style raw --ar 5:7",
+    "backCover": "A minimal and elegant greeting card back cover. A single, stylized red rose with a green stem and leaves, positioned in the top-left corner. The background is a soft, warm gradient blending from pink to a very light orange, creating a serene and cohesive feel. The entire design is a flat 2D illustration in a watercolor painting style, with soft flowing colors, visible artistic brush strokes, a subtle paper texture, and organic paint bleeds at the edges, leaving the bottom-right area clear. --ar 5:7",
+    "leftInterior": "A beautiful greeting card interior panel. A full-bleed background featuring a gorgeous abstract watercolor wash blending the sunset colors of orange, pink, and soft purple, evoking a sense of warmth and romance. A delicate spray of small, blooming pink and red roses with green leaves gracefully adorns the bottom-left corner, extending slightly upwards. The composition is artistic and subtle, with no text. The entire design is a flat 2D illustration in a watercolor painting style, with soft flowing colors, visible artistic brush strokes, a subtle paper texture, and organic paint bleeds at the edges. --ar 5:7",
+    "rightInterior": "A message-focused greeting card interior panel. A minimalist design featuring a solid, light cream-colored background with a very subtle watercolor paper texture. A single, delicate pink rose bud with a short green stem is placed tastefully in the top-right corner as a small accent. The overall look is clean and elegant, ensuring maximum readability for a personal message. The entire design is a flat 2D illustration in a watercolor painting style, with soft flowing colors, artistic brush strokes, and organic paint bleeds at the edges. --ar 5:7"
+  },
+  "createdAt": 1752189010.2349887,
+  "expiresAt": 1783725010.2349896,
+  "version": 1
+}

@@ -424,46 +424,52 @@ export function useCardStudio() {
         webSocket.currentJobRef.current) {
       const checkInterval = setInterval(async () => {
         const timeSinceLastUpdate = Date.now() - webSocket.lastJobUpdateRef.current;
+        const jobId = webSocket.currentJobRef.current;
+        
+        // More aggressive checking when at high progress
+        if (jobManagement.progressPercentage >= 90 && timeSinceLastUpdate > 15000) {
+          console.warn(`⚠️ No updates for ${Math.round(timeSinceLastUpdate/1000)}s at ${jobManagement.progressPercentage}% progress`);
+          
+          if (jobId) {
+            try {
+              const response = await fetch(`/api/job-status/${jobId}`);
+              if (response.ok) {
+                const jobStatus = await response.json();
+                console.log('📊 Direct job status check:', jobStatus.status);
+                
+                if (jobStatus.status === 'completed' && jobStatus.data) {
+                  console.log('✅ Job is actually completed! Processing result...');
+                  handleJobUpdate({
+                    job_id: jobId,
+                    status: 'completed',
+                    progress: 'Card generation complete!',
+                    cardData: jobStatus.data
+                  });
+                  return; // Exit early on completion
+                }
+              }
+            } catch (error) {
+              console.error('Failed to check job status:', error);
+            }
+          }
+        }
+        
+        // Standard stale update check
         if (timeSinceLastUpdate > 30000) { // 30 seconds without update
           console.warn('⚠️ No job updates for 30 seconds, checking connection...');
           
           if (!webSocket.isSocketConnected) {
             console.log('🔄 WebSocket disconnected, reconnecting...');
             webSocket.connectWebSocket();
-          } else {
-            const jobId = webSocket.currentJobRef.current;
-            if (jobId) {
-              console.log('📡 Re-subscribing to job due to stale updates:', jobId);
-              webSocket.subscribeToJob(jobId);
-              
-              // If stuck at 95% for too long, try to check job status directly
-              if (jobManagement.progressPercentage >= 95) {
-                console.log('🔍 Checking job status directly due to progress stuck at 95%');
-                try {
-                  const response = await fetch(`/api/job-status/${jobId}`);
-                  if (response.ok) {
-                    const jobStatus = await response.json();
-                    if (jobStatus.status === 'completed' && jobStatus.data) {
-                      console.log('✅ Job is actually completed! Processing result...');
-                      handleJobUpdate({
-                        job_id: jobId,
-                        status: 'completed',
-                        progress: 'Card generation complete!',
-                        cardData: jobStatus.data
-                      });
-                    }
-                  }
-                } catch (error) {
-                  console.error('Failed to check job status:', error);
-                }
-              }
-            }
+          } else if (jobId) {
+            console.log('📡 Re-subscribing to job due to stale updates:', jobId);
+            webSocket.subscribeToJob(jobId);
           }
           
           // Reset the timer
           webSocket.lastJobUpdateRef.current = Date.now();
         }
-      }, 10000); // Check every 10 seconds
+      }, 5000); // Check every 5 seconds for faster detection
       
       return () => clearInterval(checkInterval);
     }

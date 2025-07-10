@@ -67,9 +67,23 @@ export function useJobManagement() {
       const elapsed = (Date.now() - start) / 1000;
       setCurrentElapsedTime(elapsed);
       
+      // Only use time-based estimation if we don't have real progress
+      // Don't update percentage here - let WebSocket updates handle it
       const estimatedTotal = estimatedTotalSeconds || 150;
-      const percentage = Math.min((elapsed / estimatedTotal) * 100, 95);
-      setProgressPercentage(percentage);
+      const timeBasedPercentage = Math.min((elapsed / estimatedTotal) * 100, 90);
+      
+      // Only set time-based progress if we haven't received WebSocket updates
+      setProgressPercentage(prev => {
+        // If we have WebSocket progress (> 0), don't override with time estimation
+        if (prev > 0 && prev < timeBasedPercentage) {
+          // WebSocket might be lagging, use time estimation as minimum
+          return Math.max(prev, timeBasedPercentage);
+        } else if (prev === 0) {
+          // No WebSocket updates yet, use time estimation
+          return timeBasedPercentage;
+        }
+        return prev;
+      });
     }, 1000);
     
     setElapsedTimeInterval(interval);

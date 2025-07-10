@@ -48,11 +48,14 @@ export function useWebSocket() {
       console.log('🔌 Connecting to WebSocket...');
       const socket = io(BACKEND_API_BASE_URL, {
         transports: ['websocket', 'polling'],
-        timeout: 60000, // Increased to 60 seconds for image generation
+        timeout: 120000, // Increased to 120 seconds for long-running operations
         reconnection: true,
         reconnectionDelay: 1000,
-        reconnectionAttempts: 10, // Increased retry attempts
-        reconnectionDelayMax: 5000 // Max delay between reconnection attempts
+        reconnectionAttempts: 20, // Increased retry attempts for better resilience
+        reconnectionDelayMax: 5000, // Max delay between reconnection attempts
+        forceNew: true, // Force new connection to avoid stale connections
+        pingTimeout: 60000, // Match server ping timeout
+        pingInterval: 25000 // Match server ping interval
       });
 
       socket.on('connect', () => {
