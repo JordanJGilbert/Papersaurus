@@ -198,6 +198,12 @@ export function useCardStudio() {
         cardGeneration.setProgressPercentage(percent);
         draftGeneration.setProgressPercentage(percent);
         console.log(`📊 Progress update: ${percent}% - ${progress}`);
+      } else if (progress.toLowerCase().includes('complete')) {
+        // If progress indicates completion but no percentage, set to 100%
+        jobManagement.setProgressPercentage(100);
+        cardGeneration.setProgressPercentage(100);
+        draftGeneration.setProgressPercentage(100);
+        console.log(`📊 Progress update: 100% - ${progress}`);
       }
     }
     
@@ -426,8 +432,35 @@ export function useCardStudio() {
         const timeSinceLastUpdate = Date.now() - webSocket.lastJobUpdateRef.current;
         const jobId = webSocket.currentJobRef.current;
         
+        // Very aggressive checking when at 95%+ progress
+        if (jobManagement.progressPercentage >= 95 && timeSinceLastUpdate > 5000) {
+          console.warn(`⚠️ No updates for ${Math.round(timeSinceLastUpdate/1000)}s at ${jobManagement.progressPercentage}% progress - checking job status...`);
+          
+          if (jobId) {
+            try {
+              const response = await fetch(`/api/job-status/${jobId}`);
+              if (response.ok) {
+                const jobStatus = await response.json();
+                console.log('📊 Direct job status check:', jobStatus);
+                
+                if (jobStatus.status === 'completed' && jobStatus.cardData) {
+                  console.log('✅ Job is actually completed! Processing result...');
+                  handleJobUpdate({
+                    job_id: jobId,
+                    status: 'completed',
+                    progress: 'Card generation complete!',
+                    cardData: jobStatus.cardData
+                  });
+                  return; // Exit early on completion
+                }
+              }
+            } catch (error) {
+              console.error('Failed to check job status:', error);
+            }
+          }
+        }
         // More aggressive checking when at high progress
-        if (jobManagement.progressPercentage >= 90 && timeSinceLastUpdate > 15000) {
+        else if (jobManagement.progressPercentage >= 90 && timeSinceLastUpdate > 10000) {
           console.warn(`⚠️ No updates for ${Math.round(timeSinceLastUpdate/1000)}s at ${jobManagement.progressPercentage}% progress`);
           
           if (jobId) {
@@ -435,15 +468,15 @@ export function useCardStudio() {
               const response = await fetch(`/api/job-status/${jobId}`);
               if (response.ok) {
                 const jobStatus = await response.json();
-                console.log('📊 Direct job status check:', jobStatus.status);
+                console.log('📊 Direct job status check:', jobStatus);
                 
-                if (jobStatus.status === 'completed' && jobStatus.data) {
+                if (jobStatus.status === 'completed' && jobStatus.cardData) {
                   console.log('✅ Job is actually completed! Processing result...');
                   handleJobUpdate({
                     job_id: jobId,
                     status: 'completed',
                     progress: 'Card generation complete!',
-                    cardData: jobStatus.data
+                    cardData: jobStatus.cardData
                   });
                   return; // Exit early on completion
                 }
@@ -469,7 +502,7 @@ export function useCardStudio() {
           // Reset the timer
           webSocket.lastJobUpdateRef.current = Date.now();
         }
-      }, 5000); // Check every 5 seconds for faster detection
+      }, 3000); // Check every 3 seconds for faster detection at high progress
       
       return () => clearInterval(checkInterval);
     }

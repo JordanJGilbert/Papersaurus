@@ -53,9 +53,7 @@ export function useWebSocket() {
         reconnectionDelay: 1000,
         reconnectionAttempts: 20, // Increased retry attempts for better resilience
         reconnectionDelayMax: 5000, // Max delay between reconnection attempts
-        forceNew: true, // Force new connection to avoid stale connections
-        pingTimeout: 60000, // Match server ping timeout
-        pingInterval: 25000 // Match server ping interval
+        forceNew: true // Force new connection to avoid stale connections
       });
 
       socket.on('connect', () => {
@@ -145,6 +143,12 @@ export function useWebSocket() {
       socketRef.current.on('job_update', (data: any) => {
         console.log('📦 Job update received:', data);
         lastJobUpdateRef.current = Date.now();
+        
+        // Update connection start time to track how long we've been connected
+        if (!connectionStartTimeRef.current) {
+          connectionStartTimeRef.current = Date.now();
+        }
+        
         handler(data);
       });
     }
