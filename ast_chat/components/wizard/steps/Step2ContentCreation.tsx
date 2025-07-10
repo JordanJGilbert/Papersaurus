@@ -75,7 +75,7 @@ export default function Step2ContentCreation({
   const canUndo = currentMessageIndex > 0;
   const canRedo = currentMessageIndex < messageHistory.length - 1;
   const characterCount = formData.finalCardMessage?.length || 0;
-  const isIdealLength = characterCount >= 50 && characterCount <= 150;
+  const isIdealLength = characterCount >= 50 && characterCount <= 250;
 
   return (
     <div className="space-y-6">
@@ -267,7 +267,7 @@ export default function Step2ContentCreation({
               {characterCount} characters
             </div>
             <div className={`text-xs ${isIdealLength ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
-              {isIdealLength ? '✓ ' : ''}Ideal: 50-150 characters
+              {isIdealLength ? '✓ ' : ''}Ideal: 50-250 characters
             </div>
           </div>
         )}

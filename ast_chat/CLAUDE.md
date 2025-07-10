@@ -3,429 +3,141 @@
 ## Project Overview
 VibeCarding is a modern Next.js application that generates personalized greeting cards using AI. The app recently transitioned from a single-page form to a **step-based wizard interface** for better user experience.
 
-## Architecture Overview
-
-### Frontend Stack
-- **Next.js 14** with App Router
-- **React 18** with TypeScript
-- **Tailwind CSS** for styling
-- **shadcn/ui** components library
-- **Real-time WebSocket** updates via Socket.IO
-- **Framer Motion** for animations
-
-### Key Features
-- **Step-based card creation wizard** (new approach)
-- **Template gallery system** - browse and customize pre-made cards
-- **AI-powered content generation** (prompts, messages, images)
-- **Multiple artistic styles** (watercolor, botanical, comic book, etc.)
-- **Reference photo integration** for character creation
-- **Draft mode** - generates 5 preview variations
-- **Real-time progress tracking** via WebSocket
-- **Email delivery** of completed cards
-- **Form persistence** - automatic save/restore across sessions
-- **Responsive design** with dark/light mode
-
-## New Wizard Architecture
-
-### Navigation Structure
-```
-/app/page.tsx        - Main interface using CardWizard
-/app/wizard/page.tsx - Alternative wizard route
-```
-
-### Wizard Flow (6 Steps)
-1. **Card Basics** - Template gallery, type and tone selection
-2. **Content & Message** - Description and message creation
-3. **Personalization** - Style and reference photos (optional)
-4. **Details & Settings** - Email and advanced options
-5. **Draft Selection** - Choose from 5 AI-generated variations
-6. **Final Generation** - High-quality card creation
-
-### Key Components
-
-#### Core Wizard Components
-- `CardWizard.tsx` - Main wizard container and orchestrator
-- `StepIndicator.tsx` - Progress indicator with mobile-responsive navigation
-- `WizardNavigation.tsx` - Next/Previous buttons
-- `Step1CardBasics.tsx` - Template gallery, card type and tone selection
-- `Step2ContentCreation.tsx` - Content description and message
-- `Step3Personalization.tsx` - Style selection and photo uploads
-- `Step4Details.tsx` - Email and advanced settings
-- `Step5Review.tsx` - Draft generation and selection
-- `Step6FinalGeneration.tsx` - Final high-quality generation
-
-#### Template System Components
-- `TemplateGallery.tsx` - Template browsing and selection dialog
-- Template search and filtering functionality
-- Grid/list view options with pagination
-- Template preview and selection flow
-
-#### State Management
-- `useCardStudio.ts` - Comprehensive hook managing all card generation state
-- `useCardForm.tsx` - Form data persistence with localStorage (500ms debouncing)
-- `useWizardState.tsx` - Wizard step progress and completion tracking
-- **WebSocket integration** for real-time updates
-- **LocalStorage persistence** for job recovery and form data
-- **Form validation** across all steps
-
-## Core Data Flow
-
-### 1. Card Generation Process
-```
-Template Selection (Optional) → User Input → AI Prompt Generation → Image Generation → Automatic Backend QR Overlay → Card Storage → Email Delivery
-```
-
-### 2. Template Flow
-```
-Browse Templates → Select Template → Auto-populate Form → Customize → Generate Card
-```
-
-### 3. Draft Mode Flow
-```
-User Selections → 5 Parallel Image Jobs → User Picks Favorite → Final High-Quality Generation
-```
-
-### 4. WebSocket Updates
-```
-Backend Job Updates → WebSocket Messages → UI State Updates → Progress Display
-```
-
-### 5. Form Persistence Flow
-```
-User Input → 500ms Debounce → LocalStorage Save → Page Refresh → Auto-restore Data
-```
-
-## Key Interfaces
-
-### GeneratedCard
-```typescript
-interface GeneratedCard {
-  id: string;
-  prompt: string;
-  frontCover: string;      // Portrait image - main card face
-  backCover: string;       // Portrait image - back of card
-  leftPage: string;        // Portrait image - left interior
-  rightPage: string;       // Portrait image - right interior
-  createdAt: Date;
-  shareUrl?: string;
-  generatedPrompts?: {...};
-  thumbnails?: {...};
-  styleInfo?: {...};
-}
-```
-
-### Card Configuration
-- **Paper sizes**: Standard 5�7, Compact 4�6, A6
-- **Artistic styles**: Watercolor, Botanical, Comic Book, Minimalist, etc.
-- **Tone options**: Funny, GenZ Humor, Romantic, Professional, etc.
-- **Image models**: GPT-1, GPT-2, Claude, Gemini
-
-## Backend Integration
-
-### API Endpoints
-- `/api/generate-card-async` - Main card generation with automatic QR overlay
-- `/api/cards/store` - Card storage and sharing URL generation
-- `/api/cards/list` - Template gallery with template_mode support
-- `/api/generate-qr-with-logo` - QR code generation with optional logos
-- `/internal/call_mcp_tool` - AI model interactions
-- `${BACKEND_API_BASE_URL}/upload` - File upload handling
-
-### WebSocket Events
-- `job_update` - Real-time generation progress
-- `subscribe_job` / `unsubscribe_job` - Job management
-- Connection handling and reconnection logic
-
-## File Upload & Reference Photos
-- **HEIC conversion** support
-- **Image optimization** and compression
-- **Reference photo integration** for character creation
-- **Handwriting sample** upload for custom messages
-
-## State Persistence
-- **Job recovery** via localStorage
-- **Form data persistence** with 500ms debouncing
-- **Wizard step progress** tracking and restoration
-- **Session continuity** across page refreshes
-- **Draft selection** persistence
-- **User preferences** storage
-- **Template selections** cached for faster loading
-
-## UI/UX Patterns
-
-### Form Validation
-- **Step-by-step validation** before progression
-- **Real-time feedback** and error handling
-- **Custom card type** validation
-- **Email format** validation
-
-### Progress Indicators
-- **Step completion** tracking with visual indicators
-- **Mobile-responsive progress bars** with horizontal scrolling
-- **Generation progress** with time estimates
-- **WebSocket status** indicators
-- **Draft completion** counters
-
-### Mobile-First Design Philosophy
-- **Primary focus on mobile experience** - optimized for 375px viewport
-- **Desktop compatibility maintained** without separate mobile/desktop code paths
-- **Single codebase approach** - mobile optimizations work well on desktop
-- **Touch-first interactions** with appropriate sizing and spacing
-- **Concise text and messaging** to reduce cognitive load on small screens
-
-### Mobile UX Optimizations
-- **Shortened text and tips** - concise messaging throughout all wizard steps
-- **Reduced textarea heights** - 3 rows default, 6 expanded vs previous 5/8
-- **Simplified placeholders** - removed verbose examples and instructions
-- **Condensed tip sections** - 3 bullets max instead of 4+ for better mobile readability
-- **Touch-friendly form elements** - 16px font size to prevent iOS zoom
-- **Optimized button sizing** - adequate touch targets for mobile interaction
-- **Simplified language** - "Tips" instead of "Quick Tips", shorter descriptions
-- **Collapsible sections** for smaller screens
-- **Accessible** navigation
-
 ## Development Patterns
 
-### Component Structure
-- **Compound components** for complex UI
-- **Custom hooks** for state management
-- **TypeScript** for type safety
-- **Error boundaries** for graceful failures
+### Development Notes
+- When using Playwright MCP tools, always use domain vibecarding.com instead of localhost
 
-### Code Organization
-- **Feature-based** folder structure
-- **Reusable utility** functions
-- **Constants** for configuration
-- **Type definitions** for interfaces
+### Wizard Architecture
+The app uses a step-based wizard with:
+- **CardWizard.tsx**: Main wrapper component that manages wizard state and step navigation
+- **useWizardState**: Hook for managing step progression and validation
+- **useCardForm**: Hook for form data persistence across sessions
+- **useCardStudio**: Main hook containing all card generation logic (migrated from page.tsx)
 
-## Testing & Quality
-- **ESLint** configuration
-- **TypeScript** strict mode
-- **Error handling** throughout
-- **Performance optimization** for large files
+### State Management
+- Form data persists in localStorage via `useCardForm` hook
+- Each step validates and marks completion independently
+- Navigation between steps is allowed only after validation
 
-## Common Workflows
+## Recent Updates
 
-### Adding New Card Types
-1. Update `cardTypes` array in Step1CardBasics.tsx
-2. Add appropriate icon from Lucide React
-3. Update prompt generation logic
-4. Test with different tones and styles
-5. Update template card type extraction logic
+### Message Generation UX Enhancements (Latest)
+Added comprehensive UX improvements to the message creation interface:
 
-### Adding New Artistic Styles
-1. Add to `artisticStyles` array with prompt modifier
-2. Update style selection UI
-3. Test with different card types
-4. Ensure compatibility with reference photos
+#### New Features:
+- **Message History Dropdown**: Easy access to all previously generated messages
+- **Undo/Redo Functionality**: Navigate through message versions with dedicated buttons
+- **"Try Another" Button**: Generate message variations while keeping context
+- **Dynamic Placeholders**: Context-aware hints based on card type and tone:
+  - Birthday + Funny: "💝 Add a joke about their age or a funny memory..."
+  - Anniversary + Romantic: "💝 Express your love and cherished memories..."
+  - Thank You + Professional: "💝 Express gratitude professionally..."
+- **Character Count Indicator**: Shows current count with ideal range (50-250 characters)
+- **Enhanced Loading States**: Skeleton loader with "Creating personalized message..." text
+- **Mobile-Optimized UI**: Buttons show/hide text based on screen size
 
-### Adding Template Gallery Features
-1. Update TemplateGallery.tsx for new UI elements
-2. Extend template search and filtering logic
-3. Add new template metadata fields
-4. Test with different template types and sizes
+#### Technical Implementation:
+- Fixed state synchronization bug by returning generated message from `handleGetMessageHelp`
+- Added `messageHistory`, `currentMessageIndex`, `undoMessage`, `redoMessage` props to Step2
+- Used `useMemo` for dynamic placeholder computation
+- Improved responsive design with conditional button text
 
-### Debugging Generation Issues
-1. Check WebSocket connection status
-2. Verify job storage in localStorage
-3. Monitor console for error messages
-4. Test with different models and settings
-5. Check form persistence in localStorage
-6. Verify wizard step completion states
-7. **QR Code Issues**: Check backend logs for QR overlay errors
-8. **Email Issues**: Verify card storage and share URL generation
-9. **URL Consistency**: Ensure all systems use same `{domain}/card/{card_id}` pattern
+### Card History Feature
+- Added `useCardHistory` hook to track the last 10 generated cards
+- Integrated with Step1 of wizard to show recent cards
+- Cards display with metadata (date, type, tone, recipient)
+- One-click template selection from history
 
-## Migration Notes
-- **Main interface**: `/app/page.tsx` uses CardWizard as primary experience
-- **Wizard mode**: Alternative wizard route at `/app/wizard/page.tsx`
-- **State management**: `useCardStudio` hook for card generation
-- **Form persistence**: Automatic form data persistence with localStorage
-- **QR Code System**: Unified backend QR generation
-- **Email System**: Consistent URL generation and Gmail API integration
+### Email & QR Code System
 
-## Environment Configuration
-- `NEXT_PUBLIC_BACKEND_API_URL` - Backend API base URL
-- Production deployment on Vercel
-- SSL/TLS termination handled by platform
-- CDN for static assets
+#### Email Configuration
+The system uses **SendGrid** for transactional emails:
+- Sender: `cards@vibecarding.com`
+- Template: Professional HTML email with card preview
+- Includes download links for print-ready PDFs
 
-## Development Server
-- **Local Development**: User typically runs `npm run dev` in a separate terminal (no need to run this command)
-- **Production Analysis**: Use MCP tools with `vibecarding.com` domain for testing and analysis
-- **Backend Integration**: Local development connects to production backend for full functionality
-- **Backend Restart**: To restart the Flask backend service, use `sudo systemctl restart flask_app.service`
+#### QR Code Generation
+QR codes are automatically generated for each card:
+- Created during the generation process
+- Points to: `https://vibecarding.com/cards/{uniqueId}`
+- Stored as PNG in the card data structure
+- Displayed on back cover (bottom-right) with "Scan to view online" text
 
-## Performance Optimizations
-- **Component lazy loading** for large forms
-- **Image optimization** with Next.js
-- **WebSocket connection** pooling
-- **LocalStorage** for client-side caching
-- **Progressive loading** for draft previews
+#### Backend API Endpoints
+- `POST /send-thank-you-email` - Sends card via email with attachments
+- `POST /save-public-card` - Saves card data with generated QR code
+- `GET /view-card/{uniqueId}` - Retrieves and displays saved cards
 
-## Template Gallery System
+### Wizard Step Structure
 
-### Template Architecture
-- **Backend Integration**: `/api/cards/list` with `template_mode=true`
-- **Template Caching**: 10-minute cache with localStorage persistence
-- **Search Functionality**: Text-based search with debouncing
-- **Pagination**: Infinite scroll with load-more functionality
-- **View Modes**: Grid and list layouts with responsive design
+1. **Step 1 - Card Basics**
+   - Card type selection (Birthday, Anniversary, Thank You, etc.)
+   - Tone selection (Funny, Heartfelt, Professional, etc.)
+   - To/From fields (optional personalization)
+   - Recent cards history display
 
-### Template Selection Flow
-1. **Browse Templates**: User clicks "Browse Templates" in Step 1
-2. **Load Templates**: API call with template_mode for optimized payloads
-3. **Search & Filter**: Real-time search with 300ms debounce
-4. **Template Preview**: High-quality preview images with metadata
-5. **Selection**: Auto-populate form with template data
-6. **Customization**: User can modify template-based content
+2. **Step 2 - Content & Message**
+   - Card description (optional prompt)
+   - Message composition with AI assistance
+   - Handwritten message option
+   - Message history and variations
+   - Character count guidance
 
-### Template Data Structure
-```typescript
-interface TemplateCard {
-  id: string;
-  prompt: string;
-  frontCover: string;
-  shareUrl?: string;
-  generatedPrompts?: object;
-  styleInfo?: {
-    styleName: string;
-    styleLabel: string;
-  };
-  createdAt: Date;
-}
+3. **Step 3 - Personalization (Optional)**
+   - Artistic style selection
+   - Reference photo upload for cartoonification
+   - Smart style recommendations
+
+4. **Step 4 - Email Address**
+   - Required for card delivery
+   - Validation before proceeding
+
+5. **Step 5 - Draft Selection**
+   - AI generates 4 draft variations
+   - Interactive 3D card preview
+   - Selection determines final generation
+
+6. **Step 6 - Final Generation**
+   - High-quality 4-panel card generation
+   - Progress tracking
+   - Email delivery with PDF attachment
+
+## Testing & Deployment
+
+### Local Testing
+```bash
+npm run dev
+# Access at http://localhost:3000
 ```
 
-### Template Integration
-- **Smart Card Type Detection**: Automatic card type extraction from prompts
-- **Style Preservation**: Template artistic styles carried forward
-- **QR Code Generation**: Automatic QR code overlay for all final cards (backend-handled)
-- **Form Pre-population**: Seamless integration with wizard form data
+### Production Deployment
+- Frontend: Next.js app on port 3000
+- Backend: Flask app on port 5001
+- Domain: https://vibecarding.com
+- SSL: Configured via Nginx
 
-## Form Persistence System
+### Email Testing
+To test email functionality:
+1. Generate a card through the wizard
+2. Enter email in Step 4
+3. Complete generation in Step 6
+4. Check inbox for professionally formatted email
 
-### Persistence Architecture
-- **Storage Key**: `vibecarding-wizard-form-data`
-- **Debouncing**: 500ms delay to prevent excessive writes
-- **Data Serialization**: JSON with File object exclusion
-- **Expiration**: 24-hour data retention for cleanup
-- **Error Handling**: Graceful fallback on storage quota exceeded
+## AI Models Used
+- **Message Generation**: Gemini Pro 1.5
+- **Image Generation**: DALL-E 3 for drafts, DALL-E 3 or Ideogram for finals
+- **Card Descriptions**: GPT-4 for creative prompts
 
-### Persistent Data Fields
-```typescript
-interface CardFormData {
-  // Step 1: Card Basics
-  selectedType: string;
-  customCardType: string;
-  selectedTone: string;
-  toField: string;
-  fromField: string;
-  
-  // Step 2: Content Creation
-  prompt: string;
-  finalCardMessage: string;
-  isHandwrittenMessage: boolean;
-  
-  // Step 3: Personalization
-  selectedArtisticStyle: string;
-  customStyleDescription: string;
-  referenceImageUrls: string[];
-  imageTransformation: string;
-  
-  // Step 4: Details
-  userEmail: string;
-  selectedImageModel: string;
-  selectedDraftModel: string;
-  selectedPaperSize: string;
-  numberOfCards: number;
-  isFrontBackOnly: boolean;
-}
-```
+## Important Configuration
+- All generated cards are saved to `/var/www/flask_app/data/cards/`
+- QR codes point to public URLs at `vibecarding.com/cards/{id}`
+- Email templates are inline in the backend code
+- Frontend and backend must be running for full functionality
 
-### Wizard State Persistence
-- **Step Progress**: `useWizardState` hook tracks completion
-- **Navigation State**: Current step and completed steps
-- **Validation Cache**: Step validation results
-- **Auto-Recovery**: Restore state after page refresh
-
-## QR Code System
-
-### Automatic QR Generation
-- **Backend Integration**: QR codes automatically added during final card generation
-- **Positioning**: Bottom-right corner of back cover with smart sizing (15% of image, max 160px)
-- **Timing**: Occurs after images are generated but before job completion
-- **Scope**: Only for final cards (not drafts)
-
-### QR Code Features
-- **Share URL Integration**: QR codes link to `{domain}/card/{card_id}` URLs
-- **Visual Design**: White rounded background with "Scan me :)" text
-- **Logo Support**: Framework ready for logo integration via `/api/generate-qr-with-logo`
-- **Error Handling**: Graceful fallback if QR generation fails (continues without QR)
-
-### URL Consistency
-- **Email Links**: Use same card URLs as QR codes
-- **Share Button**: Reuses stored card URLs when available
-- **Template Gallery**: QR codes added to shared templates automatically
-
-### Backend Process Flow
-```
-Card Generation Complete → Store Card (get card_id) → Generate QR with Share URL → Overlay QR on Back Cover → Update Card Data → Email with Actual Card URL
-```
-
-### WebSocket Progress Updates
-- **Real-time Updates**: "Adding QR code to your card..." progress messages
-- **Non-blocking**: Generation continues if QR overlay fails
-- **Logging**: Detailed console output for debugging QR issues
-
-## Email System
-
-### Email Integration
-- **Gmail API**: Backend sends emails using Gmail service account
-- **User Notifications**: Completion emails with actual card links (not hardcoded URLs)
-- **Admin Notifications**: Copy sent to jordan@ast.engineer for all final cards
-- **Template**: User-friendly HTML emails with card type and personalized content
-
-### Email URL Generation
-- **Automatic Storage**: Cards automatically stored during QR generation for email links
-- **URL Reuse**: Email system reuses share URLs from QR generation (no duplicate storage)
-- **Fallback Logic**: Creates new card storage if QR generation failed
-- **Consistent URLs**: All emails use `{domain}/card/{card_id}` pattern
-
-### Email Timing
-- **Final Cards Only**: No emails sent for draft cards
-- **Post-QR Generation**: Emails sent after QR codes are added and cards are stored
-- **Error Resilient**: Emails still sent even if QR generation fails
-
-## 📋 Documentation Maintenance
-
-**IMPORTANT**: This CLAUDE.md file should be kept current with the codebase. Please ask Claude to update this documentation when you:
-
-### When to Update This File:
-- ✅ **Add new features** (new wizard steps, components, API endpoints)
-- ✅ **Modify existing features** (change wizard flow, update interfaces)
-- ✅ **Remove features** (deprecate components, remove functionality)
-- ✅ **Change architecture** (new state management, different data flow)
-- ✅ **Update dependencies** (major version changes, new libraries)
-- ✅ **Add new workflows** (development processes, deployment changes)
-
-### How to Request Updates:
-Simply ask Claude:
-- "Update CLAUDE.md with the new payment integration feature"
-- "Document the new template gallery we just added"
-- "Remove the old draft mode info and add the new preview system"
-- "We changed the WebSocket error handling - update the docs"
-
-### What Gets Updated:
-- **Architecture diagrams** and flow descriptions
-- **Component lists** and their purposes
-- **Interface definitions** and type signatures
-- **API endpoints** and their usage
-- **Development workflows** and common patterns
-- **Configuration options** and environment variables
-
-### Why Keep This Current:
-- Helps Claude understand your current codebase structure
-- Enables faster and more accurate assistance
-- Serves as living documentation for your team
-- Reduces onboarding time for new features
-
-**Remember**: Outdated documentation can lead to incorrect suggestions, so keep this file fresh! 🚀
+## Future Enhancements
+- Message templates library
+- Advanced message editing (formatting, emojis)
+- Social sharing features
+- Card scheduling for future delivery
+- Multi-language support
