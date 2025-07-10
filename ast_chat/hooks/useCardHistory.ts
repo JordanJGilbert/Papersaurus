@@ -163,16 +163,11 @@ export const useCardHistory = () => {
     const session = history.draftSessions.find(s => s.id === sessionId);
     if (!session) return null;
 
-    // Update last modified time
-    saveDraftSession(
-      session.formData,
-      session.draftCards,
-      session.selectedDraftIndex,
-      sessionId
-    );
-
+    // Don't update last modified time here to avoid infinite loop
+    // The session will be saved again when the draft cards are set in the UI
+    
     return session;
-  }, [history.draftSessions, saveDraftSession]);
+  }, [history.draftSessions]);
 
   // Delete draft session
   const deleteDraftSession = useCallback((sessionId: string) => {

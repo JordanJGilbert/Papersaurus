@@ -123,7 +123,7 @@ npm run dev
 ### Email Testing
 To test email functionality:
 1. Generate a card through the wizard
-2. Enter email in Step 4
+2. Enter email in Step 4 (use `jordan.j.gilbert@gmail.com` for testing)
 3. Complete generation in Step 6
 4. Check inbox for professionally formatted email
 
@@ -131,6 +131,36 @@ To test email functionality:
 - **Message Generation**: Gemini Pro 1.5
 - **Image Generation**: DALL-E 3 for drafts, DALL-E 3 or Ideogram for finals
 - **Card Descriptions**: GPT-4 for creative prompts
+
+## Recent Architecture Improvements
+
+### Prompt Generation Consolidation (Latest)
+Successfully consolidated multiple prompt generation locations into a single source of truth:
+
+#### PromptGenerator Class (`/lib/promptGenerator.ts`)
+- **Single Source of Truth**: All prompt generation now flows through `PromptGenerator` class
+- **Methods**:
+  - `generateCardPrompts()`: Creates all 4 card panel prompts
+  - `generateDraftPrompt()`: Creates front cover draft variations
+  - `generateMessagePrompt()`: Generates personalized messages
+  - `generateFinalFromDraftPrompts()`: Creates remaining panels from selected draft
+- **Visual Density System**: Context-aware decoration levels by card type
+  - Sympathy cards: Minimal decoration (5% back, 20% left, 10% right)
+  - Birthday/Holiday cards: Festive decoration (20% back, 40% left, 20% right)
+  - Professional cards: Balanced (10-15% decoration)
+- **Reference Photo Containment**: Characters/people ONLY on front cover
+- **Message-First Design**: Right interior prioritizes text legibility
+
+### WebSocket Resilience Improvements
+- **Auto-reconnection**: Reconnects on disconnect with exponential backoff
+- **Stale Job Detection**: Monitors for jobs stuck without updates for 30+ seconds
+- **Progress Extraction**: Parses progress from WebSocket messages when percentage missing
+- **Debug Logging**: Enhanced console logging for troubleshooting
+
+### Fixed Issues
+- **95% Progress Bug**: Added multiple fallback mechanisms for completion detection
+- **Reference Image Bleeding**: Explicit prompts prevent characters on non-front pages
+- **Message Generation State**: Fixed synchronization between CardWizard and useCardStudio
 
 ## Important Configuration
 - All generated cards are saved to `/var/www/flask_app/data/cards/`
