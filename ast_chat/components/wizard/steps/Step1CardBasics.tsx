@@ -43,30 +43,30 @@ interface Step1Props {
 
 // Card types with icons
 const cardTypes = [
-  { id: "custom", label: "Custom", description: "Create your own unique card type", icon: Wrench, emoji: "✨", color: "from-purple-100 to-purple-200 dark:from-purple-900 dark:to-purple-800" },
+  { id: "custom", label: "Custom", description: "Create your own", icon: Wrench, emoji: "✨", color: "from-purple-100 to-purple-200 dark:from-purple-900 dark:to-purple-800" },
   { id: "birthday", label: "Birthday", description: "Celebrate another year of life", icon: Cake, emoji: "🎂", color: "from-pink-100 to-pink-200 dark:from-pink-900 dark:to-pink-800" },
-  { id: "thank-you", label: "Thank You", description: "Express gratitude and appreciation", icon: ThumbsUp, emoji: "🙏", color: "from-blue-100 to-blue-200 dark:from-blue-900 dark:to-blue-800" },
+  { id: "thank-you", label: "Thank You", description: "Express gratitude", icon: ThumbsUp, emoji: "🙏", color: "from-blue-100 to-blue-200 dark:from-blue-900 dark:to-blue-800" },
   { id: "anniversary", label: "Anniversary", description: "Commemorate special milestones", icon: Heart, emoji: "💑", color: "from-red-100 to-red-200 dark:from-red-900 dark:to-red-800" },
-  { id: "congratulations", label: "Congratulations", description: "Celebrate achievements and success", icon: Trophy, emoji: "🎉", color: "from-yellow-100 to-yellow-200 dark:from-yellow-900 dark:to-yellow-800" },
+  { id: "congratulations", label: "Congratulations", description: "Celebrate achievements", icon: Trophy, emoji: "🎉", color: "from-yellow-100 to-yellow-200 dark:from-yellow-900 dark:to-yellow-800" },
   { id: "holiday", label: "Holiday", description: "Seasonal and holiday greetings", icon: TreePine, emoji: "🎄", color: "from-green-100 to-green-200 dark:from-green-900 dark:to-green-800" },
-  { id: "get-well", label: "Get Well Soon", description: "Send healing wishes and support", icon: Stethoscope, emoji: "💐", color: "from-teal-100 to-teal-200 dark:from-teal-900 dark:to-teal-800" },
-  { id: "sympathy", label: "Sympathy", description: "Offer comfort during difficult times", icon: CloudRain, emoji: "🕊️", color: "from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700" },
+  { id: "get-well", label: "Get Well Soon", description: "Send healing wishes", icon: Stethoscope, emoji: "💐", color: "from-teal-100 to-teal-200 dark:from-teal-900 dark:to-teal-800" },
+  { id: "sympathy", label: "Sympathy", description: "Offer comfort", icon: CloudRain, emoji: "🕊️", color: "from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700" },
   { id: "love", label: "Love & Romance", description: "Express romantic feelings", icon: Heart, emoji: "💕", color: "from-rose-100 to-rose-200 dark:from-rose-900 dark:to-rose-800" },
-  { id: "graduation", label: "Graduation", description: "Celebrate educational achievements", icon: GraduationCap, emoji: "🎓", color: "from-indigo-100 to-indigo-200 dark:from-indigo-900 dark:to-indigo-800" },
+  { id: "graduation", label: "Graduation", description: "Academic achievements", icon: GraduationCap, emoji: "🎓", color: "from-indigo-100 to-indigo-200 dark:from-indigo-900 dark:to-indigo-800" },
   { id: "new-baby", label: "New Baby", description: "Welcome new arrivals", icon: Baby, emoji: "👶", color: "from-cyan-100 to-cyan-200 dark:from-cyan-900 dark:to-cyan-800" },
   { id: "wedding", label: "Wedding", description: "Celebrate unions and marriages", icon: Church, emoji: "💒", color: "from-violet-100 to-violet-200 dark:from-violet-900 dark:to-violet-800" },
   { id: "retirement", label: "Retirement", description: "Honor career achievements", icon: Gift, emoji: "🎁", color: "from-amber-100 to-amber-200 dark:from-amber-900 dark:to-amber-800" },
   { id: "housewarming", label: "Housewarming", description: "Welcome to new homes", icon: Home, emoji: "🏡", color: "from-orange-100 to-orange-200 dark:from-orange-900 dark:to-orange-800" },
-  { id: "apology", label: "Apology", description: "Make amends and seek forgiveness", icon: MessageCircle, emoji: "🙏", color: "from-slate-100 to-slate-200 dark:from-slate-900 dark:to-slate-800" },
+  { id: "apology", label: "Apology", description: "Make amends", icon: MessageCircle, emoji: "🙏", color: "from-slate-100 to-slate-200 dark:from-slate-900 dark:to-slate-800" },
   { id: "thinking-of-you", label: "Thinking of You", description: "Show you care and remember", icon: Eye, emoji: "💭", color: "from-sky-100 to-sky-200 dark:from-sky-900 dark:to-sky-800" },
 ];
 
 // Card tone/style options
 const cardTones = [
   { id: "funny", label: "😄 Funny", description: "Humorous and lighthearted", color: "from-yellow-100 to-orange-100 dark:from-yellow-900 dark:to-orange-900" },
-  { id: "genz-humor", label: "💀 GenZ Humor", description: "Internet memes, chaotic energy, and unhinged vibes", color: "from-purple-100 to-pink-100 dark:from-purple-900 dark:to-pink-900" },
+  { id: "genz-humor", label: "💀 GenZ Humor", description: "Memes and chaotic vibes", color: "from-purple-100 to-pink-100 dark:from-purple-900 dark:to-pink-900" },
   { id: "romantic", label: "💕 Romantic", description: "Sweet and loving", color: "from-pink-100 to-rose-100 dark:from-pink-900 dark:to-rose-900" },
-  { id: "professional", label: "👔 Professional", description: "Formal and business-appropriate", color: "from-slate-100 to-gray-100 dark:from-slate-900 dark:to-gray-900" },
+  { id: "professional", label: "👔 Professional", description: "Formal and business-ready", color: "from-slate-100 to-gray-100 dark:from-slate-900 dark:to-gray-900" },
   { id: "heartfelt", label: "❤️ Heartfelt", description: "Sincere and emotional", color: "from-red-100 to-pink-100 dark:from-red-900 dark:to-pink-900" },
   { id: "playful", label: "🎉 Playful", description: "Fun and energetic", color: "from-cyan-100 to-blue-100 dark:from-cyan-900 dark:to-blue-900" },
   { id: "elegant", label: "✨ Elegant", description: "Sophisticated and refined", color: "from-violet-100 to-indigo-100 dark:from-violet-900 dark:to-indigo-900" },
@@ -99,7 +99,7 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-6 w-full">
       {/* Template Gallery Option - Temporarily Hidden */}
       {/* TODO: Re-enable when AI-powered template extraction is implemented
       <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-xl p-4 sm:p-6 border border-purple-200 dark:border-purple-800">
@@ -108,35 +108,32 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
       */}
 
       {/* Card Type Selection */}
-      <div className="space-y-3 sm:space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-8 bg-gradient-to-b from-blue-500 to-cyan-500 rounded-full" />
-          <label className="text-base font-semibold text-gray-800 dark:text-gray-200">
-            Card Type
-          </label>
-        </div>
+      <div className="space-y-3 sm:space-y-4 w-full">
+        <label className="text-base font-semibold text-gray-800 dark:text-gray-200 px-1">
+          Card Type
+        </label>
         <Select 
           value={formData.selectedType} 
           onValueChange={(value) => updateFormData({ selectedType: value })}
         >
-          <SelectTrigger className="h-12 sm:h-14 border-2 hover:border-blue-300 dark:hover:border-blue-700 transition-colors touch-manipulation text-base">
+          <SelectTrigger className="w-full h-12 sm:h-14 border-2 hover:border-blue-300 dark:hover:border-blue-700 transition-colors touch-manipulation text-base [&>span]:!line-clamp-none">
             <SelectValue>
               {(() => {
                 const selected = cardTypes.find((type) => type.id === formData.selectedType);
                 if (!selected) return <span className="text-gray-400">Choose card type</span>;
                 const IconComponent = selected.icon;
                 return (
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 bg-gradient-to-br ${selected.color} rounded-lg flex items-center justify-center shadow-sm`}>
-                      <span className="text-lg">{selected.emoji}</span>
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div className={`w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-br ${selected.color} rounded-lg flex items-center justify-center shadow-sm flex-shrink-0`}>
+                      <span className="text-sm sm:text-lg">{selected.emoji}</span>
                     </div>
-                    <span className="font-medium text-gray-900 dark:text-gray-100">{selected.label}</span>
+                    <span className="font-medium text-gray-900 dark:text-gray-100 text-sm sm:text-base">{selected.label}</span>
                   </div>
                 );
               })()}
             </SelectValue>
           </SelectTrigger>
-          <SelectContent className="max-h-[400px]">
+          <SelectContent className="max-h-[400px] w-full" position="popper" sideOffset={5}>
             {cardTypes.map((type) => {
               const IconComponent = type.icon;
               return (
@@ -178,34 +175,31 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
       </div>
 
       {/* Card Tone */}
-      <div className="space-y-3 sm:space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-8 bg-gradient-to-b from-purple-500 to-pink-500 rounded-full" />
-          <label className="text-base font-semibold text-gray-800 dark:text-gray-200">
-            Card Tone & Style
-          </label>
-        </div>
+      <div className="space-y-3 sm:space-y-4 w-full">
+        <label className="text-base font-semibold text-gray-800 dark:text-gray-200 px-1">
+          Card Tone & Style
+        </label>
         <Select 
           value={formData.selectedTone} 
           onValueChange={(value) => updateFormData({ selectedTone: value })}
         >
-          <SelectTrigger className="h-12 sm:h-14 border-2 hover:border-purple-300 dark:hover:border-purple-700 transition-colors touch-manipulation text-base">
+          <SelectTrigger className="w-full h-12 sm:h-14 border-2 hover:border-purple-300 dark:hover:border-purple-700 transition-colors touch-manipulation text-base [&>span]:!line-clamp-none">
             <SelectValue>
               {(() => {
                 const selected = cardTones.find((tone) => tone.id === formData.selectedTone);
                 if (!selected) return <span className="text-gray-400">Choose card tone</span>;
                 return (
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 bg-gradient-to-br ${selected.color} rounded-lg flex items-center justify-center shadow-sm`}>
-                      <span className="text-base">{selected.label.split(' ')[0]}</span>
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div className={`w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-br ${selected.color} rounded-lg flex items-center justify-center shadow-sm flex-shrink-0`}>
+                      <span className="text-sm sm:text-base">{selected.label.split(' ')[0]}</span>
                     </div>
-                    <span className="font-medium">{selected.label.split(' ').slice(1).join(' ')}</span>
+                    <span className="font-medium text-sm sm:text-base">{selected.label.split(' ').slice(1).join(' ')}</span>
                   </div>
                 );
               })()}
             </SelectValue>
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-[400px] w-full" position="popper" sideOffset={5}>
             {cardTones.map((tone) => (
               <SelectItem key={tone.id} value={tone.id} className="cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20">
                 <div className="flex items-center gap-3 py-1">
@@ -224,13 +218,10 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
       </div>
 
       {/* To/From Fields */}
-      <div className="space-y-3 sm:space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="w-1.5 h-8 bg-gradient-to-b from-green-500 to-teal-500 rounded-full" />
-          <label className="text-base font-semibold text-gray-800 dark:text-gray-200">
-            Personalization (Optional)
-          </label>
-        </div>
+      <div className="space-y-3 sm:space-y-4 w-full">
+        <label className="text-base font-semibold text-gray-800 dark:text-gray-200 px-1">
+          Personalization (Optional)
+        </label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">

@@ -26,6 +26,8 @@ interface Step3Props {
   savePhotoAnalysis?: (analysis: PhotoAnalysis) => void;
   skipPhotoAnalysis?: () => void;
   setShowAnalysisModal?: (show: boolean) => void;
+  // Direct URLs from cardStudio for immediate access
+  referenceImageUrlsFromStudio?: string[];
 }
 
 // Curated artistic styles
@@ -102,23 +104,59 @@ export default function Step3Personalization({
   analyzePhoto,
   savePhotoAnalysis,
   skipPhotoAnalysis,
-  setShowAnalysisModal
+  setShowAnalysisModal,
+  referenceImageUrlsFromStudio = []
 }: Step3Props) {
   const [analysisResult, setAnalysisResult] = React.useState<any>(null);
 
-  // Handle analysis when modal should open
+  // Debug log all props
   React.useEffect(() => {
-    const performAnalysis = async () => {
-      if (showAnalysisModal && pendingAnalysisIndex !== null && analyzePhoto) {
-        const imageUrl = formData.referenceImageUrls[pendingAnalysisIndex];
-        if (imageUrl) {
-          const result = await analyzePhoto(imageUrl, pendingAnalysisIndex);
+    console.log("🔍 Step3 props check:", {
+      hasAnalyzePhoto: !!analyzePhoto,
+      hasSavePhotoAnalysis: !!savePhotoAnalysis,
+      hasSkipPhotoAnalysis: !!skipPhotoAnalysis,
+      hasSetShowAnalysisModal: !!setShowAnalysisModal,
+      showAnalysisModal,
+      pendingAnalysisIndex,
+      isAnalyzing,
+      photoAnalysesLength: photoAnalyses?.length || 0
+    });
+  }, [analyzePhoto, savePhotoAnalysis, skipPhotoAnalysis, setShowAnalysisModal, showAnalysisModal, pendingAnalysisIndex, isAnalyzing, photoAnalyses]);
+
+  // Trigger photo analysis when modal opens
+  React.useEffect(() => {
+    console.log("🔍 Photo analysis effect check:", {
+      showAnalysisModal,
+      pendingAnalysisIndex,
+      hasAnalyzePhoto: !!analyzePhoto,
+      isAnalyzing,
+      hasAnalysisResult: !!analysisResult,
+      imageUrlsCount: formData.referenceImageUrls.length,
+      referenceImageUrls: formData.referenceImageUrls
+    });
+    
+    // Simplified condition - analyze when modal is shown and we have the function
+    if (showAnalysisModal && pendingAnalysisIndex !== null && analyzePhoto) {
+      // Use URLs from studio if available (they're more up-to-date), otherwise fall back to formData
+      const imageUrls = referenceImageUrlsFromStudio.length > 0 ? referenceImageUrlsFromStudio : formData.referenceImageUrls;
+      console.log("🔍 About to get image URL at index:", pendingAnalysisIndex, "from array:", imageUrls);
+      const imageUrl = imageUrls[pendingAnalysisIndex];
+      console.log("🔍 Attempting to analyze photo:", imageUrl);
+      if (imageUrl && !analysisResult) {
+        // Reset analysis result before starting new analysis
+        setAnalysisResult(null);
+        analyzePhoto(imageUrl, pendingAnalysisIndex).then(result => {
+          console.log("🔍 Analysis result received:", result);
           setAnalysisResult(result);
-        }
+        }).catch(error => {
+          console.error("🔍 Analysis failed:", error);
+          setAnalysisResult(null);
+        });
       }
-    };
-    performAnalysis();
-  }, [showAnalysisModal, pendingAnalysisIndex, analyzePhoto, formData.referenceImageUrls]);
+    }
+  }, [showAnalysisModal, pendingAnalysisIndex, analyzePhoto, formData.referenceImageUrls, referenceImageUrlsFromStudio]);
+
+  // Note: Removed duplicate useEffect that was doing the same thing
   React.useEffect(() => {
     // Auto-complete step when style is selected and valid
     const isValid = formData.selectedArtisticStyle && 
@@ -184,16 +222,16 @@ export default function Step3Personalization({
               })()}
             </SelectValue>
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-w-[calc(100vw-2rem)]">
             {artisticStyles.map((style) => (
-              <SelectItem key={style.id} value={style.id} className="cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20">
-                <div className="flex items-center gap-3 py-1">
-                  <div className={`w-10 h-10 bg-gradient-to-br ${style.color} rounded-lg flex items-center justify-center shadow-sm`}>
+              <SelectItem key={style.id} value={style.id} className="cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20 max-w-full">
+                <div className="flex items-center gap-3 py-1 w-full">
+                  <div className={`w-10 h-10 flex-shrink-0 bg-gradient-to-br ${style.color} rounded-lg flex items-center justify-center shadow-sm`}>
                     <span className="text-xl">{style.preview}</span>
                   </div>
-                  <div className="flex-1 text-left">
-                    <div className="font-semibold text-gray-900 dark:text-gray-100">{style.label}</div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">{style.description}</div>
+                  <div className="flex-1 text-left min-w-0 overflow-hidden">
+                    <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{style.label}</div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400 break-words whitespace-normal pr-2">{style.description}</div>
                   </div>
                 </div>
               </SelectItem>
@@ -317,16 +355,27 @@ export default function Step3Personalization({
       </div>
 
       {/* Photo Analysis Modal */}
-      {showAnalysisModal && pendingAnalysisIndex !== null && analyzePhoto && savePhotoAnalysis && skipPhotoAnalysis && setShowAnalysisModal && (
+      {showAnalysisModal && pendingAnalysisIndex !== null && (
         <PhotoAnalysisModal
           isOpen={showAnalysisModal}
-          onClose={() => setShowAnalysisModal(false)}
-          imageUrl={formData.referenceImageUrls[pendingAnalysisIndex]}
+          onClose={() => {
+            setShowAnalysisModal?.(false);
+            setAnalysisResult(null);
+          }}
+          imageUrl={(referenceImageUrlsFromStudio.length > 0 ? referenceImageUrlsFromStudio : formData.referenceImageUrls)[pendingAnalysisIndex]}
           imageIndex={pendingAnalysisIndex}
-          isAnalyzing={isAnalyzing}
+          isAnalyzing={isAnalyzing || false}
           analysisResult={analysisResult}
-          onSave={savePhotoAnalysis}
-          onSkip={skipPhotoAnalysis}
+          onSave={(analysis) => {
+            savePhotoAnalysis?.(analysis);
+            setAnalysisResult(null);
+            setShowAnalysisModal?.(false);
+          }}
+          onSkip={() => {
+            skipPhotoAnalysis?.();
+            setAnalysisResult(null);
+            setShowAnalysisModal?.(false);
+          }}
           toField={formData.toField}
           fromField={formData.fromField}
         />

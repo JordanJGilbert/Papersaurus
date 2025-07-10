@@ -13,6 +13,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import CardDescriptionHelper from "../CardDescriptionHelper";
+import { chatWithAI } from "@/hooks/cardStudio/utils";
 
 interface Step2Props {
   formData: CardFormData;
@@ -111,6 +113,14 @@ export default function Step2ContentCreation({
           className={isTextareaExpanded ? "resize-y" : "resize-none"}
           style={{ fontSize: '16px' }}
         />
+        
+        {/* Card Description Helper */}
+        <CardDescriptionHelper
+          formData={formData}
+          onAddToDescription={(text) => updateFormData({ prompt: text })}
+          chatWithAI={chatWithAI}
+        />
+        
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
           💡 <strong>Tip:</strong> Add colors, style, themes for better results, or leave blank for defaults
         </p>
@@ -208,32 +218,26 @@ export default function Step2ContentCreation({
               )}
             </Button>
             
-            {/* AI Generation Buttons */}
-            <div className="flex gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleMessageGeneration}
-                disabled={isGeneratingMessage || formData.isHandwrittenMessage}
-                className="gap-1 text-xs"
-              >
-                <MessageSquarePlus className="w-3 h-3" />
-                {isGeneratingMessage ? "Writing..." : "Help me write"}
-              </Button>
-              {formData.finalCardMessage && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleMessageGeneration}
-                  disabled={isGeneratingMessage || formData.isHandwrittenMessage}
-                  className="gap-1 text-xs"
-                  title="Generate another variation"
-                >
+            {/* AI Generation Button */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleMessageGeneration}
+              disabled={isGeneratingMessage || formData.isHandwrittenMessage}
+              className="gap-1 text-xs"
+            >
+              {formData.finalCardMessage ? (
+                <>
                   <RefreshCw className="w-3 h-3" />
-                  <span className="hidden sm:inline">Try another</span>
-                </Button>
+                  {isGeneratingMessage ? "Writing..." : <span className="hidden sm:inline">Try another</span>}
+                </>
+              ) : (
+                <>
+                  <MessageSquarePlus className="w-3 h-3" />
+                  {isGeneratingMessage ? "Writing..." : "Help me write"}
+                </>
               )}
-            </div>
+            </Button>
           </div>
         </div>
         
@@ -268,7 +272,7 @@ export default function Step2ContentCreation({
               </div>
             )}
             <div className="text-xs text-muted-foreground/70">
-              💡 Messages typically work best between 50-250 characters
+              💡 Messages typically work best between 50-350 characters
             </div>
           </div>
         )}
