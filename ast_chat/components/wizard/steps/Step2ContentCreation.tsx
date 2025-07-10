@@ -259,11 +259,16 @@ export default function Step2ContentCreation({
           )}
         </div>
         
-        {/* Character Count */}
-        {formData.finalCardMessage && !formData.isHandwrittenMessage && (
-          <div className="mt-1">
-            <div className="text-xs text-muted-foreground">
-              {characterCount} characters
+        {/* Character Count and Helper Text */}
+        {!formData.isHandwrittenMessage && (
+          <div className="mt-1 space-y-0.5">
+            {formData.finalCardMessage && (
+              <div className="text-xs text-muted-foreground">
+                {characterCount} characters
+              </div>
+            )}
+            <div className="text-xs text-muted-foreground/70">
+              💡 Messages typically work best between 50-250 characters
             </div>
           </div>
         )}

@@ -840,6 +840,13 @@ export function useCardStudio() {
     
     toast.success("🎉 Your card is ready!");
     
+    // Show email confirmation toast if email is provided
+    if (userEmail.trim()) {
+      toast.success(`✉️ Card sent to ${userEmail}`, {
+        duration: 5000,
+      });
+    }
+    
     // Email notifications are now handled by the backend on job completion
     // Keeping this disabled to avoid duplicate emails
     console.log('📧 Email sending disabled - backend handles email notifications');
@@ -889,7 +896,7 @@ export function useCardStudio() {
   // Monitor for stale job updates (no update for 30 seconds)
   useEffect(() => {
     if ((isGenerating || isGeneratingFinalCard) && currentJobRef.current) {
-      const checkInterval = setInterval(() => {
+      const checkInterval = setInterval(async () => {
         const timeSinceLastUpdate = Date.now() - lastJobUpdateRef.current;
         if (timeSinceLastUpdate > 30000) { // 30 seconds without update
           console.warn('⚠️ No job updates for 30 seconds, checking connection...');
@@ -904,6 +911,28 @@ export function useCardStudio() {
             if (jobId) {
               console.log('📡 Re-subscribing to job due to stale updates:', jobId);
               subscribeToJob(jobId);
+              
+              // If stuck at 95% for too long, try to check job status directly
+              if (progressPercentage >= 95) {
+                console.log('🔍 Checking job status directly due to progress stuck at 95%');
+                try {
+                  const response = await fetch(`/api/job-status/${jobId}`);
+                  if (response.ok) {
+                    const jobStatus = await response.json();
+                    if (jobStatus.status === 'completed' && jobStatus.data) {
+                      console.log('✅ Job is actually completed! Processing result...');
+                      handleJobUpdate({
+                        job_id: jobId,
+                        status: 'completed',
+                        progress: 'Card generation complete!',
+                        cardData: jobStatus.data
+                      });
+                    }
+                  }
+                } catch (error) {
+                  console.error('Failed to check job status:', error);
+                }
+              }
             }
           }
           
@@ -914,7 +943,7 @@ export function useCardStudio() {
       
       return () => clearInterval(checkInterval);
     }
-  }, [isGenerating, isGeneratingFinalCard, isSocketConnected, connectWebSocket, subscribeToJob]);
+  }, [isGenerating, isGeneratingFinalCard, isSocketConnected, connectWebSocket, subscribeToJob, progressPercentage, handleJobUpdate]);
 
   // Helper function to scroll to card preview
   const scrollToCardPreview = () => {

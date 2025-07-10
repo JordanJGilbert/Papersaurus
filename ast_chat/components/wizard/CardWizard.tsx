@@ -328,17 +328,26 @@ export default function CardWizard() {
   };
 
   const handleStepClick = (stepNumber: number) => {
-    // Allow navigation to completed steps or the next step if current is valid
-    if (wizardState.completedSteps.includes(stepNumber) || 
-        (stepNumber === wizardState.currentStep + 1 && validateStep(wizardState.currentStep)) ||
-        stepNumber < wizardState.currentStep) {
-      
+    // Allow free navigation to any completed step
+    if (wizardState.completedSteps.includes(stepNumber)) {
+      wizardState.goToStep(stepNumber);
+      return;
+    }
+    
+    // Allow navigation to the next step if current is valid
+    if (stepNumber === wizardState.currentStep + 1 && validateStep(wizardState.currentStep)) {
       // Mark current step as completed if valid
-      if (validateStep(wizardState.currentStep) && !wizardState.completedSteps.includes(wizardState.currentStep)) {
+      if (!wizardState.completedSteps.includes(wizardState.currentStep)) {
         wizardState.markStepCompleted(wizardState.currentStep);
       }
-      
       wizardState.goToStep(stepNumber);
+      return;
+    }
+    
+    // Allow backward navigation (doesn't require validation)
+    if (stepNumber < wizardState.currentStep) {
+      wizardState.goToStep(stepNumber);
+      return;
     }
   };
 
@@ -534,7 +543,7 @@ export default function CardWizard() {
           <div className="flex items-center gap-2 text-sm">
             <Clock className="w-4 h-4 text-purple-600" />
             <span className="text-gray-600 dark:text-gray-400">
-              {cardHistory.totalDrafts} draft{cardHistory.totalDrafts !== 1 ? 's' : ''} available
+              {cardHistory.totalDrafts} saved session{cardHistory.totalDrafts !== 1 ? 's' : ''}
             </span>
             <Button
               variant="outline"

@@ -23,41 +23,57 @@ const artisticStyles = [
     id: "ai-smart-style", 
     label: "✨ Smart Style", 
     description: "Let our experts choose the perfect style for your card",
+    color: "from-purple-100 to-pink-100 dark:from-purple-900 dark:to-pink-900",
+    preview: "✨"
   },
   {
     id: "custom", 
     label: "✨ Custom Style", 
     description: "Define your own unique artistic style",
+    color: "from-violet-100 to-purple-100 dark:from-violet-900 dark:to-purple-900",
+    preview: "🎯"
   },
   { 
     id: "watercolor", 
     label: "🎨 Watercolor", 
     description: "Soft, flowing paint effects (our personal favorite)",
+    color: "from-blue-100 to-cyan-100 dark:from-blue-900 dark:to-cyan-900",
+    preview: "🎨"
   },
   {
     id: "minimalist", 
     label: "✨ Minimalist", 
     description: "Clean, simple, elegant design",
+    color: "from-gray-100 to-slate-100 dark:from-gray-900 dark:to-slate-900",
+    preview: "◯"
   },
   { 
     id: "botanical", 
     label: "🌿 Botanical", 
     description: "Beautiful flowers and nature elements",
+    color: "from-green-100 to-emerald-100 dark:from-green-900 dark:to-emerald-900",
+    preview: "🌿"
   },
   { 
     id: "comic-book", 
     label: "💥 Comic Book", 
     description: "Bold graphic novel style",
+    color: "from-yellow-100 to-red-100 dark:from-yellow-900 dark:to-red-900",
+    preview: "💥"
   },
   { 
     id: "dreamy-fantasy", 
     label: "🌸 Dreamy Fantasy", 
     description: "Enchanting anime-inspired art",
+    color: "from-pink-100 to-purple-100 dark:from-pink-900 dark:to-purple-900",
+    preview: "🌸"
   },
   {
     id: "modern-geometric", 
     label: "🔷 Modern Geometric", 
     description: "Clean contemporary shapes",
+    color: "from-indigo-100 to-blue-100 dark:from-indigo-900 dark:to-blue-900",
+    preview: "🔷"
   },
 ];
 
@@ -154,14 +170,32 @@ export default function Step3Personalization({
           onValueChange={(value) => updateFormData({ selectedArtisticStyle: value })}
         >
           <SelectTrigger>
-            <SelectValue placeholder="Choose artistic style" />
+            <SelectValue placeholder="Choose artistic style">
+              {(() => {
+                const selected = artisticStyles.find((style) => style.id === formData.selectedArtisticStyle);
+                if (!selected) return <span className="text-gray-400">Choose artistic style</span>;
+                return (
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 bg-gradient-to-br ${selected.color} rounded-lg flex items-center justify-center shadow-sm`}>
+                      <span className="text-lg">{selected.preview}</span>
+                    </div>
+                    <span className="font-medium">{selected.label}</span>
+                  </div>
+                );
+              })()}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {artisticStyles.map((style) => (
-              <SelectItem key={style.id} value={style.id}>
-                <div className="text-left w-full">
-                  <div className="font-medium">{style.label}</div>
-                  <div className="text-xs text-muted-foreground">{style.description}</div>
+              <SelectItem key={style.id} value={style.id} className="cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20">
+                <div className="flex items-center gap-3 py-1">
+                  <div className={`w-10 h-10 bg-gradient-to-br ${style.color} rounded-lg flex items-center justify-center shadow-sm`}>
+                    <span className="text-xl">{style.preview}</span>
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="font-semibold text-gray-900 dark:text-gray-100">{style.label}</div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">{style.description}</div>
+                  </div>
                 </div>
               </SelectItem>
             ))}
