@@ -166,10 +166,22 @@ interface GeneratedCard {
 - **WebSocket status** indicators
 - **Draft completion** counters
 
-### Responsive Design
-- **Mobile-first** approach
+### Mobile-First Design Philosophy
+- **Primary focus on mobile experience** - optimized for 375px viewport
+- **Desktop compatibility maintained** without separate mobile/desktop code paths
+- **Single codebase approach** - mobile optimizations work well on desktop
+- **Touch-first interactions** with appropriate sizing and spacing
+- **Concise text and messaging** to reduce cognitive load on small screens
+
+### Mobile UX Optimizations
+- **Shortened text and tips** - concise messaging throughout all wizard steps
+- **Reduced textarea heights** - 3 rows default, 6 expanded vs previous 5/8
+- **Simplified placeholders** - removed verbose examples and instructions
+- **Condensed tip sections** - 3 bullets max instead of 4+ for better mobile readability
+- **Touch-friendly form elements** - 16px font size to prevent iOS zoom
+- **Optimized button sizing** - adequate touch targets for mobile interaction
+- **Simplified language** - "Tips" instead of "Quick Tips", shorter descriptions
 - **Collapsible sections** for smaller screens
-- **Touch-friendly** interactions
 - **Accessible** navigation
 
 ## Development Patterns

@@ -206,7 +206,7 @@ export default function Step3Personalization({
         {formData.selectedImageModel === "gpt-image-1" && (
           <>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-              Upload photos to create cartoon characters that look like the people in your photos!
+              Upload photos to create cartoon characters!
             </p>
             
             {/* Upload Area */}
@@ -273,14 +273,13 @@ export default function Step3Personalization({
         )}
       </div>
 
-      {/* Tips */}
-      <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
-        <h4 className="font-medium text-purple-900 dark:text-purple-100 mb-2">🎨 Personalization Tips</h4>
+      {/* Tips - Mobile Optimized */}
+      <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800">
+        <h4 className="font-medium text-purple-900 dark:text-purple-100 mb-2">🎨 Tips</h4>
         <ul className="text-sm text-purple-800 dark:text-purple-200 space-y-1">
-          <li>• Smart Style automatically chooses the best style for your card</li>
-          <li>• Reference photos create cartoon versions - perfect for including people</li>
-          <li>• Watercolor style is our most popular choice</li>
-          <li>• All personalization options are optional</li>
+          <li>• Smart Style picks best style</li>
+          <li>• Photos create cartoon versions</li>
+          <li>• All options are optional</li>
         </ul>
       </div>
     </div>

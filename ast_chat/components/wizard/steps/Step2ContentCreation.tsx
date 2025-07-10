@@ -57,15 +57,15 @@ export default function Step2ContentCreation({ formData, updateFormData, onStepC
           </Button>
         </div>
         <Textarea
-          placeholder="💡 Optional: Be specific! E.g., 'Birthday card with cute cats and rainbow colors for my sister who loves anime' (or leave blank for a beautiful default design)"
+          placeholder="💡 Optional: E.g., 'Birthday card with cute cats and rainbow colors'"
           value={formData.prompt}
           onChange={(e) => updateFormData({ prompt: e.target.value })}
-          rows={isTextareaExpanded ? 8 : 5}
+          rows={isTextareaExpanded ? 6 : 3}
           className={isTextareaExpanded ? "resize-y" : "resize-none"}
           style={{ fontSize: '16px' }}
         />
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          💡 <strong>Tip:</strong> Add details like colors, style, recipient's interests, and specific themes for personalized results, or leave blank for a beautiful default card!
+          💡 <strong>Tip:</strong> Add colors, style, themes for better results, or leave blank for defaults
         </p>
       </div>
 
@@ -107,10 +107,10 @@ export default function Step2ContentCreation({ formData, updateFormData, onStepC
           </div>
         </div>
         <Textarea
-          placeholder={formData.isHandwrittenMessage ? "✍️ Leave blank - you'll handwrite your message" : "💝 Your personal message here... (or click 'Help me write' for AI assistance)"}
+          placeholder={formData.isHandwrittenMessage ? "✍️ Leave blank - you'll handwrite" : "💝 Your message here... (or click 'Help me write')"}
           value={formData.finalCardMessage}
           onChange={(e) => updateFormData({ finalCardMessage: e.target.value })}
-          rows={isMessageExpanded ? 8 : 5}
+          rows={isMessageExpanded ? 6 : 3}
           className={isMessageExpanded ? "resize-y" : "resize-none"}
           style={{ fontSize: '16px' }}
           disabled={formData.isHandwrittenMessage}
@@ -136,14 +136,13 @@ export default function Step2ContentCreation({ formData, updateFormData, onStepC
         </div>
       </div>
 
-      {/* Tips */}
-      <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
-        <h4 className="font-medium text-green-900 dark:text-green-100 mb-2">✨ Content Tips</h4>
+      {/* Tips - Mobile Optimized */}
+      <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 border border-green-200 dark:border-green-800">
+        <h4 className="font-medium text-green-900 dark:text-green-100 mb-2">✨ Tips</h4>
         <ul className="text-sm text-green-800 dark:text-green-200 space-y-1">
-          <li>• Be specific with descriptions for better personalized results</li>
-          <li>• Use "Help me write" for AI-generated messages based on your card type</li>
-          <li>• Both fields are optional - AI can create beautiful defaults</li>
-          <li>• Choose handwritten message if you want to write it yourself later</li>
+          <li>• Be specific for better results</li>
+          <li>• Use "Help me write" for AI messages</li>
+          <li>• Both fields are optional</li>
         </ul>
       </div>
     </div>

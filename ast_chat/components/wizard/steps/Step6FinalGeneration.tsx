@@ -279,19 +279,11 @@ export default function Step6FinalGeneration({
               </div>
               <div className="flex-1">
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  Creating complete high-quality version with:
+                  Creating your complete card
                 </p>
-                <ul className="text-sm space-y-1">
-                  <li>✓ High-resolution front cover</li>
-                  <li>✓ Personalized back cover</li>
-                  {!formData.isFrontBackOnly && (
-                    <>
-                      <li>✓ Interior left page</li>
-                      <li>✓ Interior right page</li>
-                    </>
-                  )}
-                  <li>✓ Print-ready quality</li>
-                </ul>
+                <p className="text-sm text-green-700 dark:text-green-300 font-medium">
+                  ✓ Ready to generate final version
+                </p>
               </div>
             </div>
           </CardContent>

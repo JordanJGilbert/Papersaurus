@@ -140,26 +140,21 @@ export default function Step5Review({
       </div>
 
       {/* Draft Mode Description */}
-      <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+      <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800">
         <div className="flex items-start gap-3">
-          <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
-            <span className="text-white text-lg">🎨</span>
+          <div className="w-6 h-6 bg-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
+            <span className="text-white text-sm">🎨</span>
           </div>
           <div>
-            <h4 className="font-medium text-purple-900 dark:text-purple-100 mb-2">
-              Draft Mode (Recommended)
+            <h4 className="font-medium text-purple-900 dark:text-purple-100 mb-1">
+              Draft Mode
             </h4>
-            <p className="text-sm text-purple-700 dark:text-purple-300 mb-3">
-              Generate 5 different front cover designs quickly, then pick your favorite for complete high-quality card generation.
+            <p className="text-sm text-purple-700 dark:text-purple-300">
+              Generate 5 designs, pick your favorite
               {formData.selectedArtisticStyle === "ai-smart-style" && (
-                <span className="font-medium"> With Smart Style, you'll see your card in 5 curated artistic styles!</span>
+                <span className="font-medium"> in curated styles</span>
               )}
             </p>
-            <ul className="text-xs text-purple-600 dark:text-purple-400 space-y-1">
-              <li>• ⚡ Fast preview generation (~30-60 seconds)</li>
-              <li>• 🎯 Choose your favorite design before final generation</li>
-              <li>• 💎 Final card in high quality (~1-2 minutes)</li>
-            </ul>
           </div>
         </div>
       </div>

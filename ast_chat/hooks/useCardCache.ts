@@ -59,26 +59,28 @@ export const useCardCache = () => {
     };
   }, []);
 
-  // Load from localStorage on mount
+  // Load from localStorage on mount (after hydration)
   useEffect(() => {
-    if (!globalCache) {
-      try {
-        const stored = localStorage.getItem(CACHE_KEY);
-        if (stored) {
-          const parsed: CardCache = JSON.parse(stored);
-          const isExpired = Date.now() - parsed.lastFetched > CACHE_DURATION;
-          
-          if (!isExpired) {
-            globalCache = parsed;
-            setCache(parsed);
-            console.log('📦 Loaded cached template cards:', parsed.cards.length);
-          } else {
-            localStorage.removeItem(CACHE_KEY);
-            console.log('🗑️ Expired cache removed');
-          }
+    if (typeof window === 'undefined' || globalCache) return;
+    
+    try {
+      const stored = localStorage.getItem(CACHE_KEY);
+      if (stored) {
+        const parsed: CardCache = JSON.parse(stored);
+        const isExpired = Date.now() - parsed.lastFetched > CACHE_DURATION;
+        
+        if (!isExpired) {
+          globalCache = parsed;
+          setCache(parsed);
+          console.log('📦 Loaded cached template cards:', parsed.cards.length);
+        } else {
+          localStorage.removeItem(CACHE_KEY);
+          console.log('🗑️ Expired cache removed');
         }
-      } catch (error) {
-        console.error('Failed to load cache:', error);
+      }
+    } catch (error) {
+      console.error('Failed to load cache:', error);
+      if (typeof window !== 'undefined') {
         localStorage.removeItem(CACHE_KEY);
       }
     }
@@ -109,10 +111,12 @@ export const useCardCache = () => {
             };
 
             // Save to localStorage
-            try {
-              localStorage.setItem(CACHE_KEY, JSON.stringify(globalCache));
-            } catch (error) {
-              console.warn('Failed to save cache to localStorage:', error);
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.setItem(CACHE_KEY, JSON.stringify(globalCache));
+              } catch (error) {
+                console.warn('Failed to save cache to localStorage:', error);
+              }
             }
 
             notifyListeners();
@@ -173,10 +177,12 @@ export const useCardCache = () => {
           }
 
           // Save to localStorage
-          try {
-            localStorage.setItem(CACHE_KEY, JSON.stringify(globalCache));
-          } catch (error) {
-            console.warn('Failed to save cache to localStorage:', error);
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem(CACHE_KEY, JSON.stringify(globalCache));
+            } catch (error) {
+              console.warn('Failed to save cache to localStorage:', error);
+            }
           }
 
           notifyListeners();
@@ -232,10 +238,12 @@ export const useCardCache = () => {
         };
 
         // Save to localStorage
-        try {
-          localStorage.setItem(CACHE_KEY, JSON.stringify(globalCache));
-        } catch (error) {
-          console.warn('Failed to save cache to localStorage:', error);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(CACHE_KEY, JSON.stringify(globalCache));
+          } catch (error) {
+            console.warn('Failed to save cache to localStorage:', error);
+          }
         }
 
         notifyListeners();
@@ -297,7 +305,9 @@ export const useCardCache = () => {
 
   const clearCache = useCallback(() => {
     globalCache = null;
-    localStorage.removeItem(CACHE_KEY);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(CACHE_KEY);
+    }
     setCache(null);
     notifyListeners();
   }, []);

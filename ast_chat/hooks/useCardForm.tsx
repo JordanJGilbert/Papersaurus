@@ -112,17 +112,10 @@ const restoreFormDataFromStorage = (): CardFormData => {
 };
 
 export function useCardForm() {
-  const [formData, setFormData] = useState<CardFormData>(() => {
-    // Initialize with restored data on first load
-    if (typeof window !== 'undefined') {
-      return restoreFormDataFromStorage();
-    }
-    return defaultFormData;
-  });
-
+  const [formData, setFormData] = useState<CardFormData>(defaultFormData);
   const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
 
-  // Initialize form data from storage on component mount
+  // Initialize form data from storage on component mount (after hydration)
   useEffect(() => {
     if (typeof window !== 'undefined' && !isInitialLoadComplete) {
       const restoredData = restoreFormDataFromStorage();

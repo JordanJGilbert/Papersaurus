@@ -57,17 +57,14 @@ const restoreWizardStateFromStorage = (): WizardStateData => {
 };
 
 export function useWizardState() {
-  const [wizardState, setWizardState] = useState<WizardStateData>(() => {
-    // Initialize with restored data on first load
-    if (typeof window !== 'undefined') {
-      return restoreWizardStateFromStorage();
-    }
-    return { currentStep: 1, completedSteps: [], timestamp: Date.now() };
+  const [wizardState, setWizardState] = useState<WizardStateData>({ 
+    currentStep: 1, 
+    completedSteps: [], 
+    timestamp: Date.now() 
   });
-
   const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
 
-  // Initialize wizard state from storage on component mount
+  // Initialize wizard state from storage on component mount (after hydration)
   useEffect(() => {
     if (typeof window !== 'undefined' && !isInitialLoadComplete) {
       const restoredState = restoreWizardStateFromStorage();

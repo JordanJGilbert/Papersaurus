@@ -100,132 +100,12 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      {/* Template Gallery Option */}
+      {/* Template Gallery Option - Temporarily Hidden */}
+      {/* TODO: Re-enable when AI-powered template extraction is implemented
       <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-xl p-4 sm:p-6 border border-purple-200 dark:border-purple-800">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex-1">
-              <h3 className="text-lg sm:text-xl font-semibold text-purple-900 dark:text-purple-100 mb-2 flex items-center gap-2">
-                <Image className="w-5 h-5" />
-                Start with a Template
-              </h3>
-              <p className="text-sm text-purple-700 dark:text-purple-300">
-                Browse our collection of pre-made cards and customize them to your needs
-              </p>
-            </div>
-            <Button
-              onClick={() => setShowTemplateGallery(true)}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white h-12 px-6 text-base font-medium touch-manipulation w-full sm:w-auto"
-            >
-              <Sparkles className="w-5 h-5 mr-2" />
-              Browse Templates
-            </Button>
-          </div>
-          
-          {/* Template Preview Cards */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-purple-600 dark:text-purple-400 font-medium">
-                Popular Templates
-              </p>
-              <button
-                onClick={() => setShowTemplateGallery(true)}
-                className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium"
-              >
-                View All →
-              </button>
-            </div>
-            
-            {/* Mobile Template Grid - 2 rows with more templates */}
-            <div className="sm:hidden">
-              <div className="grid grid-cols-4 gap-2 mb-3">
-                {[
-                  { type: 'Birthday', color: 'from-pink-400 to-rose-400', emoji: '🎂', id: 'birthday' },
-                  { type: 'Thank You', color: 'from-green-400 to-emerald-400', emoji: '🙏', id: 'thank-you' },
-                  { type: 'Love', color: 'from-red-400 to-pink-400', emoji: '💕', id: 'love' },
-                  { type: 'Holiday', color: 'from-blue-400 to-cyan-400', emoji: '🎄', id: 'holiday' }
-                ].map((template, index) => (
-                  <div
-                    key={index}
-                    className="cursor-pointer group touch-manipulation"
-                    onClick={() => {
-                      updateFormData({ selectedType: template.id });
-                      setShowTemplateGallery(true);
-                    }}
-                  >
-                    <div className={`aspect-[3/4] bg-gradient-to-br ${template.color} rounded-lg flex items-center justify-center mb-1 group-hover:scale-105 transition-transform shadow-sm border border-white/20`}>
-                      <span className="text-xl">{template.emoji}</span>
-                    </div>
-                    <p className="text-xs text-center text-purple-700 dark:text-purple-300 font-medium leading-tight">
-                      {template.type}
-                    </p>
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                {[
-                  { type: 'Congratulations', color: 'from-yellow-400 to-orange-400', emoji: '🎉', id: 'congratulations' },
-                  { type: 'Wedding', color: 'from-purple-400 to-pink-400', emoji: '💒', id: 'wedding' },
-                  { type: 'Graduation', color: 'from-indigo-400 to-purple-400', emoji: '🎓', id: 'graduation' },
-                  { type: 'Get Well', color: 'from-teal-400 to-green-400', emoji: '🌟', id: 'get-well' }
-                ].map((template, index) => (
-                  <div
-                    key={index}
-                    className="cursor-pointer group touch-manipulation"
-                    onClick={() => {
-                      updateFormData({ selectedType: template.id });
-                      setShowTemplateGallery(true);
-                    }}
-                  >
-                    <div className={`aspect-[3/4] bg-gradient-to-br ${template.color} rounded-lg flex items-center justify-center mb-1 group-hover:scale-105 transition-transform shadow-sm border border-white/20`}>
-                      <span className="text-xl">{template.emoji}</span>
-                    </div>
-                    <p className="text-xs text-center text-purple-700 dark:text-purple-300 font-medium leading-tight">
-                      {template.type}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Desktop Template Horizontal Scroll */}
-            <div className="hidden sm:flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 touch-pan-x">
-              {[
-                { type: 'Birthday', color: 'from-pink-400 to-rose-400', emoji: '🎂', id: 'birthday' },
-                { type: 'Thank You', color: 'from-green-400 to-emerald-400', emoji: '🙏', id: 'thank-you' },
-                { type: 'Love', color: 'from-red-400 to-pink-400', emoji: '💕', id: 'love' },
-                { type: 'Holiday', color: 'from-blue-400 to-cyan-400', emoji: '🎄', id: 'holiday' },
-                { type: 'Congratulations', color: 'from-yellow-400 to-orange-400', emoji: '🎉', id: 'congratulations' }
-              ].map((template, index) => (
-                <div
-                  key={index}
-                  className="flex-shrink-0 w-24 cursor-pointer group touch-manipulation"
-                  onClick={() => {
-                    updateFormData({ selectedType: template.id });
-                    setShowTemplateGallery(true);
-                  }}
-                >
-                  <div className={`aspect-[3/4] bg-gradient-to-br ${template.color} rounded-lg flex items-center justify-center mb-2 group-hover:scale-105 transition-transform shadow-sm border border-white/20`}>
-                    <span className="text-3xl">{template.emoji}</span>
-                  </div>
-                  <p className="text-xs text-center text-purple-700 dark:text-purple-300 font-medium leading-tight">
-                    {template.type}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        ... template content ...
       </div>
-
-      {/* Divider */}
-      <div className="flex items-center gap-3 sm:gap-4">
-        <div className="flex-1 h-px bg-gray-300 dark:bg-gray-600"></div>
-        <span className="text-sm text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 px-3 py-1.5 rounded-full border whitespace-nowrap">
-          or create from scratch
-        </span>
-        <div className="flex-1 h-px bg-gray-300 dark:bg-gray-600"></div>
-      </div>
+      */}
 
       {/* Card Type Selection */}
       <div className="space-y-3 sm:space-y-4">
@@ -371,18 +251,18 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
         </div>
       </div>
 
-      {/* Quick Tips */}
-      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
-        <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">💡 Quick Tips</h4>
+      {/* Quick Tips - Mobile Optimized */}
+      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
+        <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">💡 Tips</h4>
         <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
-          <li>• Choose the card type that best matches your occasion</li>
-          <li>• The tone affects the visual style and message generation</li>
-          <li>• To/From fields are optional but help personalize your card</li>
-          <li>• Use templates for faster creation or start from scratch</li>
+          <li>• Pick your card type and tone</li>
+          <li>• To/From fields help personalize</li>
+          <li>• All fields are optional</li>
         </ul>
       </div>
 
-      {/* Template Gallery Modal */}
+      {/* Template Gallery Modal - Temporarily Hidden */}
+      {/* TODO: Re-enable when AI-powered template extraction is implemented
       <TemplateGallery
         formData={formData}
         updateFormData={updateFormData}
@@ -390,6 +270,7 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
         isOpen={showTemplateGallery}
         onClose={() => setShowTemplateGallery(false)}
       />
+      */}
     </div>
   );
 } 

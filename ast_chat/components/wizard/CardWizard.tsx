@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight, Sparkles, CheckCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, Sparkles, CheckCircle, History, Clock } from "lucide-react";
 import { toast } from "sonner";
 
 import StepIndicator from "./StepIndicator";
@@ -14,10 +14,12 @@ import Step4Details from "./steps/Step4Details";
 import Step5Review from "./steps/Step5Review";
 import Step6FinalGeneration from "./steps/Step6FinalGeneration";
 import WizardNavigation from "./WizardNavigation";
+import CardHistoryModal from "../CardHistoryModal";
 
 import { useCardStudio } from "@/hooks/useCardStudio";
 import { useCardForm } from "@/hooks/useCardForm";
 import { useWizardState } from "@/hooks/useWizardState";
+import { useCardHistory } from "@/hooks/useCardHistory";
 
 export interface WizardStep {
   id: string;
@@ -49,9 +51,9 @@ const wizardSteps: WizardStep[] = [
   },
   {
     id: "details",
-    title: "Details & Settings",
-    mobileTitle: "Details",
-    description: "Email and advanced options"
+    title: "Email Address",
+    mobileTitle: "Email",
+    description: "Where to send your finished card"
   },
   {
     id: "drafts",
@@ -71,14 +73,36 @@ export default function CardWizard() {
   // Use hooks for form data and wizard state persistence
   const cardForm = useCardForm();
   const wizardState = useWizardState();
+  const cardHistory = useCardHistory();
   
   // Use the comprehensive useCardStudio hook
   const cardStudio = useCardStudio();
+  
+  // History modal state
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   // Check for pending jobs on component mount
   useEffect(() => {
     cardStudio.checkPendingJobs();
   }, []);
+
+  // Auto-save drafts when user creates draft cards
+  useEffect(() => {
+    if (cardStudio.draftCards.length > 0 && cardForm.isInitialLoadComplete) {
+      cardHistory.saveDraftSession(
+        cardForm.formData,
+        cardStudio.draftCards,
+        cardStudio.selectedDraftIndex
+      );
+    }
+  }, [cardStudio.draftCards, cardStudio.selectedDraftIndex, cardForm.formData, cardForm.isInitialLoadComplete, cardHistory]);
+
+  // Auto-save completed cards
+  useEffect(() => {
+    if (cardStudio.generatedCard && cardStudio.isCardCompleted) {
+      cardHistory.addCompletedCard(cardStudio.generatedCard);
+    }
+  }, [cardStudio.generatedCard, cardStudio.isCardCompleted, cardHistory]);
 
   // Sync form data with cardStudio when form data changes
   useEffect(() => {
@@ -112,6 +136,64 @@ export default function CardWizard() {
   const updateFormData = (updates: any) => {
     // Update form data which will trigger persistence and sync to cardStudio
     cardForm.updateFormData(updates);
+  };
+
+  // Create a wrapper for handleFileUpload that updates both form and cardStudio
+  const handleFileUploadWrapper = async (file: File, type: 'handwriting' | 'reference') => {
+    if (!file.type.startsWith('image/')) {
+      toast.error("Please upload an image file");
+      return;
+    }
+
+    cardStudio.setIsUploading(true);
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL || 'https://vibecarding.com'}/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) throw new Error(`Upload failed: ${response.status}`);
+      
+      const result = await response.json();
+      
+      if (type === 'handwriting') {
+        // Update cardStudio state
+        cardStudio.setHandwritingSample(file);
+        cardStudio.setHandwritingSampleUrl(result.url);
+        toast.success("Handwriting sample uploaded!");
+      } else {
+        // Update both cardStudio and form data for reference images
+        const newImages = [...cardForm.formData.referenceImages, file];
+        const newUrls = [...cardForm.formData.referenceImageUrls, result.url];
+        
+        // Update cardStudio state
+        cardStudio.setReferenceImages(newImages);
+        cardStudio.setReferenceImageUrls(newUrls);
+        
+        // Update form data
+        updateFormData({
+          referenceImages: newImages,
+          referenceImageUrls: newUrls
+        });
+        
+        console.log("🔍 DEBUG: Reference image uploaded successfully:", {
+          fileName: file.name,
+          url: result.url,
+          totalImages: newImages.length
+        });
+        
+        toast.success(`Reference image uploaded! ${newImages.length} photo${newImages.length > 1 ? 's' : ''} ready for character creation.`);
+      }
+    } catch (error) {
+      console.error('Upload failed:', error);
+      toast.error("Upload failed. Please try again.");
+    } finally {
+      cardStudio.setIsUploading(false);
+    }
   };
 
   // Create a wrapper for handleGetMessageHelp that updates both form and cardStudio
@@ -221,6 +303,31 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
     if (lowerPrompt.includes('baby')) return 'new-baby';
     if (lowerPrompt.includes('sorry') || lowerPrompt.includes('apolog')) return 'apology';
     return null;
+  };
+
+  // Resume draft session
+  const handleResumeDraft = (sessionId: string) => {
+    const session = cardHistory.resumeDraftSession(sessionId);
+    if (session) {
+      // Update form data with saved session data
+      cardForm.updateFormData(session.formData);
+      
+      // Update cardStudio with draft cards
+      cardStudio.setDraftCards(session.draftCards);
+      cardStudio.setSelectedDraftIndex(session.selectedDraftIndex);
+      cardStudio.setIsDraftMode(true);
+      
+      // Navigate to appropriate step
+      if (session.draftCards.length > 0) {
+        // If drafts exist, go to draft selection step
+        wizardState.goToStep(5);
+      } else {
+        // Otherwise go to content creation step
+        wizardState.goToStep(2);
+      }
+      
+      toast.success('Draft session resumed successfully!');
+    }
   };
 
   // Validation function for each step
@@ -339,8 +446,22 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
                 wizardState.markStepCompleted(3);
               }
             }}
-            handleFileUpload={cardStudio.handleFileUpload}
-            handleRemoveReferenceImage={cardStudio.handleRemoveReferenceImage}
+            handleFileUpload={handleFileUploadWrapper}
+            handleRemoveReferenceImage={(index: number) => {
+              // Update both cardStudio and form data
+              const newImages = cardForm.formData.referenceImages.filter((_, i) => i !== index);
+              const newUrls = cardForm.formData.referenceImageUrls.filter((_, i) => i !== index);
+              
+              // Update cardStudio state
+              cardStudio.setReferenceImages(newImages);
+              cardStudio.setReferenceImageUrls(newUrls);
+              
+              // Update form data
+              updateFormData({
+                referenceImages: newImages,
+                referenceImageUrls: newUrls
+              });
+            }}
             isUploading={cardStudio.isUploading}
           />
         );
@@ -414,6 +535,45 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 px-4 sm:px-6 lg:px-8 safe-area-padding">
+      {/* Header with History Button */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            Card Wizard
+          </h1>
+          {(cardHistory.hasCompletedCards || cardHistory.hasDraftSessions) && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowHistoryModal(true)}
+              className="flex items-center gap-2"
+            >
+              <History className="w-4 h-4" />
+              <span className="hidden sm:inline">History</span>
+              <span className="sm:hidden">({cardHistory.totalCards + cardHistory.totalDrafts})</span>
+            </Button>
+          )}
+        </div>
+        
+        {/* Draft Resume Banner */}
+        {cardHistory.hasDraftSessions && (
+          <div className="flex items-center gap-2 text-sm">
+            <Clock className="w-4 h-4 text-purple-600" />
+            <span className="text-gray-600 dark:text-gray-400">
+              {cardHistory.totalDrafts} draft{cardHistory.totalDrafts !== 1 ? 's' : ''} available
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowHistoryModal(true)}
+              className="text-purple-600 hover:text-purple-700"
+            >
+              Resume
+            </Button>
+          </div>
+        )}
+      </div>
+
       {/* Step Indicator */}
       <StepIndicator
         steps={wizardSteps}
@@ -467,6 +627,17 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
         onNext={handleNext}
         canProceed={canProceed}
         isGenerating={cardStudio.isGenerating}
+      />
+
+      {/* History Modal */}
+      <CardHistoryModal
+        isOpen={showHistoryModal}
+        onClose={() => setShowHistoryModal(false)}
+        onResumeDraft={handleResumeDraft}
+        onLoadCard={(cardId) => {
+          // Handle loading completed card for viewing
+          toast.info('Card viewing functionality coming soon!');
+        }}
       />
     </div>
   );
