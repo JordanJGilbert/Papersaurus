@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Upload, X, Wand2 } from "lucide-react";
 import { CardFormData } from "@/hooks/useCardForm";
 import { toast } from "sonner";
+import PhotoAnalysisModal from "../PhotoAnalysisModal";
+import { PhotoAnalysis } from "@/hooks/cardStudio/constants";
 
 interface Step3Props {
   formData: CardFormData;
@@ -15,6 +17,15 @@ interface Step3Props {
   handleFileUpload?: (file: File, type: 'handwriting' | 'reference') => Promise<void>;
   handleRemoveReferenceImage?: (index: number) => void;
   isUploading?: boolean;
+  // Photo analysis props
+  photoAnalyses?: PhotoAnalysis[];
+  isAnalyzing?: boolean;
+  showAnalysisModal?: boolean;
+  pendingAnalysisIndex?: number | null;
+  analyzePhoto?: (imageUrl: string, imageIndex: number) => Promise<any>;
+  savePhotoAnalysis?: (analysis: PhotoAnalysis) => void;
+  skipPhotoAnalysis?: () => void;
+  setShowAnalysisModal?: (show: boolean) => void;
 }
 
 // Curated artistic styles
@@ -83,8 +94,31 @@ export default function Step3Personalization({
   onStepComplete, 
   handleFileUpload: externalHandleFileUpload,
   handleRemoveReferenceImage: externalHandleRemoveReferenceImage,
-  isUploading = false 
+  isUploading = false,
+  photoAnalyses = [],
+  isAnalyzing = false,
+  showAnalysisModal = false,
+  pendingAnalysisIndex = null,
+  analyzePhoto,
+  savePhotoAnalysis,
+  skipPhotoAnalysis,
+  setShowAnalysisModal
 }: Step3Props) {
+  const [analysisResult, setAnalysisResult] = React.useState<any>(null);
+
+  // Handle analysis when modal should open
+  React.useEffect(() => {
+    const performAnalysis = async () => {
+      if (showAnalysisModal && pendingAnalysisIndex !== null && analyzePhoto) {
+        const imageUrl = formData.referenceImageUrls[pendingAnalysisIndex];
+        if (imageUrl) {
+          const result = await analyzePhoto(imageUrl, pendingAnalysisIndex);
+          setAnalysisResult(result);
+        }
+      }
+    };
+    performAnalysis();
+  }, [showAnalysisModal, pendingAnalysisIndex, analyzePhoto, formData.referenceImageUrls]);
   React.useEffect(() => {
     // Auto-complete step when style is selected and valid
     const isValid = formData.selectedArtisticStyle && 
@@ -316,6 +350,22 @@ export default function Step3Personalization({
           <li>• All options are optional</li>
         </ul>
       </div>
+
+      {/* Photo Analysis Modal */}
+      {showAnalysisModal && pendingAnalysisIndex !== null && analyzePhoto && savePhotoAnalysis && skipPhotoAnalysis && setShowAnalysisModal && (
+        <PhotoAnalysisModal
+          isOpen={showAnalysisModal}
+          onClose={() => setShowAnalysisModal(false)}
+          imageUrl={formData.referenceImageUrls[pendingAnalysisIndex]}
+          imageIndex={pendingAnalysisIndex}
+          isAnalyzing={isAnalyzing}
+          analysisResult={analysisResult}
+          onSave={savePhotoAnalysis}
+          onSkip={skipPhotoAnalysis}
+          toField={formData.toField}
+          fromField={formData.fromField}
+        />
+      )}
     </div>
   );
 } 

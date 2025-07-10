@@ -12,11 +12,25 @@ VibeCarding is a modern Next.js application that generates personalized greeting
   - The site is accessible at vibecarding.com with SSL configured
 
 ### Wizard Architecture
-The app uses a step-based wizard with:
-- **CardWizard.tsx**: Main wrapper component that manages wizard state and step navigation
+The app uses a step-based wizard with modular components:
+
+#### Core Hooks:
+- **useCardStudio**: Main hook containing all card generation logic (refactored into 7 modules)
 - **useWizardState**: Hook for managing step progression and validation
 - **useCardForm**: Hook for form data persistence across sessions
-- **useCardStudio**: Main hook containing all card generation logic (migrated from page.tsx)
+- **useCardHistory**: Hook for tracking generated cards and draft sessions
+
+#### Wizard Components:
+- **CardWizard**: Main wrapper component (refactored into 4 modules)
+- **StepIndicator**: Visual progress indicator with mobile optimization
+- **WizardNavigation**: Step navigation controls
+- **CardHistoryModal**: Resume drafts and view completed cards
+
+#### Modular Architecture Benefits:
+- Each component/hook has a single responsibility
+- Easy to test and maintain individual modules
+- Improved code reusability across the application
+- Better separation of concerns between UI and business logic
 
 ### State Management
 - Form data persists in localStorage via `useCardForm` hook
@@ -131,10 +145,77 @@ To test email functionality:
 - **Message Generation**: Gemini Pro 1.5
 - **Image Generation**: DALL-E 3 for drafts, DALL-E 3 or Ideogram for finals
 - **Card Descriptions**: GPT-4 for creative prompts
+- **Prompt Generation**: Gemini 2.0 Flash for combined prompt generation
+
+### AI Chat Helper Function (`chatWithAI`)
+The `chatWithAI` helper function in `/hooks/cardStudio/utils.ts` provides a unified interface for AI interactions:
+
+```typescript
+chatWithAI(userMessage: string, options: {
+  systemPrompt?: string | null;
+  model?: string;              // Default: 'gemini-2.5-pro'
+  includeThoughts?: boolean;    // Default: false
+  jsonSchema?: any;            // JSON Schema for structured output
+  attachments?: string[];      // Base64 image attachments
+})
+```
+
+#### Key Features:
+- **JSON Schema Support**: Pass a JSON Schema to get structured, validated responses
+- **Multiple Models**: Supports various AI models (gemini, gpt-4, etc.)
+- **Image Attachments**: Can include base64 images for vision tasks
+- **Error Handling**: Automatic error parsing and fallback handling
+
+#### Example with JSON Schema:
+```typescript
+const response = await chatWithAI(prompt, {
+  systemPrompt: "You are a greeting card designer",
+  model: 'gemini-2.0-flash',
+  jsonSchema: {
+    type: "object",
+    properties: {
+      backCover: { type: "string" },
+      leftInterior: { type: "string" },
+      rightInterior: { type: "string" }
+    },
+    required: ["backCover", "leftInterior", "rightInterior"]
+  }
+});
+// response will be a parsed JSON object matching the schema
+```
 
 ## Recent Architecture Improvements
 
-### Prompt Generation Consolidation (Latest)
+### Code Refactoring for Maintainability (Latest - January 2025)
+Successfully refactored the two largest files in the codebase into modular, maintainable components:
+
+#### useCardStudio Hook Refactoring
+Broke down the massive `useCardStudio.ts` (2048 lines) into 7 focused modules:
+- **useWebSocket.ts** (100 lines): WebSocket connection and job subscription management
+- **useJobManagement.ts** (140 lines): Job tracking, storage, and time management
+- **useMessageGeneration.ts** (130 lines): AI message generation with history/undo/redo
+- **useFileHandling.ts** (90 lines): File upload handling for references and handwriting
+- **useDraftGeneration.ts** (445 lines): Draft card generation and selection logic
+- **useCardGeneration.ts** (410 lines): Final card generation and completion handling
+- **constants.ts** (110 lines): Shared constants, types, and configuration
+- **utils.ts** (145 lines): Shared utility functions (email, AI chat, etc.)
+
+#### CardWizard Component Refactoring
+Split `CardWizard.tsx` (627 lines) into 4 smaller components:
+- **CardWizardRefactored.tsx** (225 lines): Main component with state management
+- **CardWizardEffects.tsx** (95 lines): All useEffect hooks and side effects
+- **CardWizardSteps.tsx** (130 lines): Step rendering and switching logic
+- **CardWizardHelpers.tsx** (165 lines): Helper functions and wrapper utilities
+
+#### Benefits Achieved:
+- **Better Code Organization**: Each module has a single, clear responsibility
+- **Improved Testability**: Smaller modules are easier to unit test
+- **Enhanced Reusability**: Utilities and constants can be imported individually
+- **Easier Maintenance**: Average file size reduced from 1300+ to ~200 lines
+- **Backward Compatibility**: Original imports preserved via re-exports
+- **Type Safety**: All modules maintain full TypeScript support
+
+### Prompt Generation Consolidation
 Successfully consolidated multiple prompt generation locations into a single source of truth:
 
 #### PromptGenerator Class (`/lib/promptGenerator.ts`)
@@ -143,13 +224,21 @@ Successfully consolidated multiple prompt generation locations into a single sou
   - `generateCardPrompts()`: Creates all 4 card panel prompts
   - `generateDraftPrompt()`: Creates front cover draft variations
   - `generateMessagePrompt()`: Generates personalized messages
-  - `generateFinalFromDraftPrompts()`: Creates remaining panels from selected draft
+  - `generateFinalFromDraftPrompts()`: Creates remaining panels from selected draft (legacy)
+  - `generateFinalFromDraftPromptsCombined()`: **NEW** - Creates all non-front prompts in single AI call for better cohesion
 - **Visual Density System**: Context-aware decoration levels by card type
   - Sympathy cards: Minimal decoration (5% back, 20% left, 10% right)
   - Birthday/Holiday cards: Festive decoration (20% back, 40% left, 20% right)
   - Professional cards: Balanced (10-15% decoration)
 - **Reference Photo Containment**: Characters/people ONLY on front cover
 - **Message-First Design**: Right interior prioritizes text legibility
+
+#### Combined Prompt Generation (NEW)
+The `generateFinalFromDraftPromptsCombined()` method generates back cover, left interior, and right interior prompts in a single AI call:
+- **Context Awareness**: Front cover prompt is clearly marked as "CONTEXT ONLY"
+- **Cohesive Design**: AI generates all 3 prompts together for better visual harmony
+- **JSON Schema Output**: Uses structured JSON response for reliability
+- **Fallback**: Automatically falls back to individual generation if combined fails
 
 ### WebSocket Resilience Improvements
 - **Auto-reconnection**: Reconnects on disconnect with exponential backoff
@@ -161,6 +250,35 @@ Successfully consolidated multiple prompt generation locations into a single sou
 - **95% Progress Bug**: Added multiple fallback mechanisms for completion detection
 - **Reference Image Bleeding**: Explicit prompts prevent characters on non-front pages
 - **Message Generation State**: Fixed synchronization between CardWizard and useCardStudio
+
+## Gallery UI Implementation
+
+### Enhanced Gallery Features
+The gallery at `/gallery` now includes comprehensive UI enhancements:
+
+#### Features:
+- **Multiple View Modes**: Grid, List, and Masonry layouts
+- **Advanced Filtering**: Filter by card type and tone
+- **Sorting Options**: Newest, Oldest, and Popular
+- **Enhanced Card Preview Modal**: 
+  - View all 4 card panels (front, back, left interior, right interior)
+  - Zoom controls (50% to 300%)
+  - Download individual panels
+  - Like/favorite functionality
+  - Copy share link
+- **Responsive Design**: Mobile-optimized with touch-friendly controls
+- **Real-time Search**: Search by prompt, message, or recipient
+
+#### Components:
+- **EnhancedGallery** (`/components/EnhancedGallery.tsx`): Main gallery component with filtering and viewing logic
+- **Gallery Page** (`/app/gallery/page.tsx`): Updated page with filter sidebar and view mode controls
+
+#### Technical Implementation:
+- Uses `useCardCache` hook for efficient data loading
+- Infinite scroll with intersection observer
+- Debounced search for performance
+- Motion animations with Framer Motion
+- Responsive grid layouts with Tailwind CSS
 
 ## Important Configuration
 - All generated cards are saved to `/var/www/flask_app/data/cards/`
@@ -174,3 +292,5 @@ Successfully consolidated multiple prompt generation locations into a single sou
 - Social sharing features
 - Card scheduling for future delivery
 - Multi-language support
+- Gallery analytics and view counts
+- User profiles and collections
