@@ -1,0 +1,17 @@
+{
+  "id": "fascinatingBeigeCattle",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_06f7c2f2.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_2efa3e29.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_f1fbbd4f.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_05802d42.png",
+  "createdAt": 1752102401.2314162,
+  "expiresAt": 1783638401.2314172,
+  "version": 1,
+  "generatedPrompts": {
+    "frontCover": "A charming and funny watercolor painting of a slightly frazzled, cartoon-style sloth wearing a festive party hat, hilariously attempting to blow out a single, stubbornly lit birthday candle on a tiny cupcake it's holding. The sloth has a look of comical concentration, with its cheeks puffed out. Soft, flowing watercolor washes in shades of green, brown, and pastel party colors create the scene, with artistic brush strokes and organic paint bleeds on a visible paper texture. In the center, written in a beautiful, readable, handwritten cursive script, is the text \"Happy belated... I mean, timely... Birthday\". Flat 2D artwork.",
+    "backCover": "A simple and elegant watercolor background that matches the front cover's style. The design features soft, flowing washes of pastel party colors and gentle green hues, with visible paper texture and organic paint bleeds creating a serene, abstract composition. A few delicate, whimsical swirls of color and tiny, festive confetti shapes are scattered playfully across the top-left portion of the card, echoing the party theme in a minimalist way. The overall feeling is calm and artistic. The bottom-right corner, approximately 1 inch square, is left completely blank and unadorned, blending seamlessly with the paper texture background for QR code placement. Full-bleed, no people or characters.",
+    "leftInterior": "A beautiful, full-bleed watercolor painting continuing the artistic style of the front cover. The design features an abstract pattern of oversized, cheerful confetti and serpentine streamers painted in soft pastel party colors with hints of sloth-brown and green. The shapes are rendered with artistic brush strokes, soft edges, and gentle, flowing watercolor washes, creating a sense of lighthearted celebration. The artwork is purely decorative, with a visible paper texture and organic paint bleeds, creating a dynamic yet harmonious composition that complements the card's theme. No characters or text.",
+    "rightInterior": "A decorative watercolor background with soft, flowing washes of muted pastel colors and a visible paper texture, matching the front cover's artistic style. The artwork features subtle, whimsical confetti shapes and delicate swirls framing the central area, painted in light greens and browns that enhance but do not distract from the text. In the center, positioned for maximum legibility away from the edges, the following message is written in a beautiful, extremely clear, and elegant handwritten cursive script with high contrast against the light background: \"John,\nHappy birthday! I was going to make a joke about you getting old, but then I remembered I have to see you every day and I value my safety. Hope you have a fantastic day filled with cake and questionable decisions!\n\nAll the best,\nLauren\""
+  }
+}

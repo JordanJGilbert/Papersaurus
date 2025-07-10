@@ -1,0 +1,17 @@
+{
+  "id": "honorableWineCattle",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_3936f331.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_639b500f.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_1ab079e5.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_a3101069.png",
+  "createdAt": 1752101244.2982888,
+  "expiresAt": 1783637244.2982898,
+  "version": 1,
+  "generatedPrompts": {
+    "frontCover": "A charming and humorous watercolor painting of a cartoon-style Tyrannosaurus Rex wearing a tiny, festive party hat, struggling comically to hold a giant, beautifully wrapped birthday present with its notoriously small arms. The T-Rex has a look of cheerful determination on its face. The background is a soft wash of light pastel colors, with subtle paint splatters and visible paper texture. Centered in the middle, in a beautiful, readable, and elegant handwritten cursive script, is the text \"hope your birthday is T-Rexcellent\". The overall style is flat 2D, with artistic brush strokes and organic paint bleeds, evoking a whimsical, hand-painted feel.",
+    "backCover": "A minimalist and serene full-bleed watercolor background that matches the front cover's soft pastel color wash. The design features a few delicate, stylized watercolor dinosaur footprints trailing from the top-left towards the center. The footprints are rendered in a slightly darker, complementary shade, with visible brush strokes and organic paint bleeds. The entire background has a visible paper texture and subtle paint splatters, maintaining visual consistency. The bottom-right corner, approximately 1 inch square, is left completely blank and unadorned for QR code placement. The overall aesthetic is clean, artistic, and peaceful.",
+    "leftInterior": "A beautiful and abstract full-bleed watercolor composition that harmonizes with the card's theme. The design features a dynamic arrangement of colorful geometric confetti shapes and festive streamers, painted in the same light pastel palette as the front cover. The elements appear to be gently floating across the page, creating a sense of celebration and movement. The style is flat 2D, with artistic brush strokes, soft flowing colors, organic paint bleeds, and a visible paper texture throughout, creating a whimsical and decorative interior panel. There are no characters or text.",
+    "rightInterior": "A full-bleed watercolor background with a soft wash of light pastel colors and visible paper texture, consistent with the rest of the card. The design features subtle, decorative watercolor elements like festive confetti and tiny party streamers artfully arranged along the top-left and bottom-right corners, framing the central space without being intrusive. In the center of the card, positioned for optimal legibility away from the edges, is the message written in a beautiful, extremely readable, and elegant handwritten cursive script. The text is rendered in a dark, high-contrast color to stand out clearly against the light background. The message is: \"John,\nHappy birthday! I was going to make a joke about you getting old, but then I remembered I have to see you every day and I value my safety. Hope you have a fantastic day filled with cake and questionable decisions!\n\nAll the best,\nLauren\""
+  }
+}

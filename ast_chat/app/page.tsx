@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Eye, Wrench } from "lucide-react";
+import { Sparkles, Eye } from "lucide-react";
 import Link from "next/link";
 
 import CardWizard from "@/components/wizard/CardWizard";
@@ -35,11 +35,6 @@ export default function HomePage() {
                 </div>
               </div>
               <div className="flex items-center space-x-2">
-                <Link href="/legacy">
-                  <Button variant="ghost" size="sm" className="p-2">
-                    <Wrench className="w-4 h-4" />
-                  </Button>
-                </Link>
                 <Link href="/gallery">
                   <Button variant="ghost" size="sm" className="p-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">
                     <Eye className="w-4 h-4" />
@@ -52,12 +47,6 @@ export default function HomePage() {
             {/* Desktop Header Layout */}
             <div className="hidden sm:flex items-center justify-between w-full">
               <div className="flex items-center space-x-3">
-                <Link href="/legacy">
-                  <Button variant="ghost" size="sm" className="gap-2">
-                    <Wrench className="w-4 h-4" />
-                    Legacy Mode
-                  </Button>
-                </Link>
                 <div className="flex items-center space-x-2">
                   <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
                     <Sparkles className="w-5 h-5 text-white" />

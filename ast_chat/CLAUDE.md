@@ -29,8 +29,7 @@ VibeCarding is a modern Next.js application that generates personalized greeting
 
 ### Navigation Structure
 ```
-/app/page.tsx        - Now uses CardWizard as main interface
-/app/legacy/page.tsx - Original single-page form (legacy)
+/app/page.tsx        - Main interface using CardWizard
 /app/wizard/page.tsx - Alternative wizard route
 ```
 
@@ -237,14 +236,12 @@ interface GeneratedCard {
 9. **URL Consistency**: Ensure all systems use same `{domain}/card/{card_id}` pattern
 
 ## Migration Notes
-- **Main interface**: `/app/page.tsx` now uses CardWizard as primary experience
-- **Legacy mode**: Original functionality preserved in `/app/legacy/page.tsx`
+- **Main interface**: `/app/page.tsx` uses CardWizard as primary experience
 - **Wizard mode**: Alternative wizard route at `/app/wizard/page.tsx`
-- **Shared components**: Both modes use same underlying components
-- **State management**: `useCardStudio` hook works with both interfaces
-- **Form persistence**: New wizard includes automatic form data persistence
-- **QR Code System**: Unified backend QR generation for both legacy and wizard interfaces
-- **Email System**: Consistent URL generation and Gmail API integration across all interfaces
+- **State management**: `useCardStudio` hook for card generation
+- **Form persistence**: Automatic form data persistence with localStorage
+- **QR Code System**: Unified backend QR generation
+- **Email System**: Consistent URL generation and Gmail API integration
 
 ## Environment Configuration
 - `NEXT_PUBLIC_BACKEND_API_URL` - Backend API base URL

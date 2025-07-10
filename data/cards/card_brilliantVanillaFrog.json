@@ -1,0 +1,17 @@
+{
+  "id": "brilliantVanillaFrog",
+  "prompt": "Generated card for jordan.j.gilbert@gmail.com",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_7cccecc9.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_bb675cc8.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_ecf0eb20.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_cacdc3a4.png",
+  "createdAt": 1752103856.529866,
+  "expiresAt": 1783639856.5298665,
+  "version": 1,
+  "generatedPrompts": {
+    "frontCover": "A minimalist 2D flat illustration for a birthday card front. The background is a clean, bright white. In the center, a simple, charming cartoon-style line drawing of an old-fashioned rotary telephone. The telephone cord playfully loops and spells out the word \"birthday\" in a beautiful, readable, elegant handwritten cursive script. The greeting is positioned centrally, leaving ample white space around it. The overall design is sophisticated, humorous, and uncluttered, with clean lines and an air of elegant simplicity.",
+    "backCover": "A minimalist 2D flat illustration for a birthday card back, maintaining a clean and serene aesthetic. The background is a solid, clean, bright white. In the top-left corner, a single, subtle black line drawing of the coiled part of a telephone cord, as if it's trailing off the edge of the card. The design is extremely simple and elegant, echoing the front cover's style. The bottom-right corner, approximately 1 inch square, is left completely blank and undecorated, providing a clear space for a QR code. The overall composition is spacious and uncluttered.",
+    "leftInterior": "A creative decorative art piece for the left interior of a greeting card, continuing the minimalist 2D flat illustration style. The background is a clean, bright white. A single, elegant black line, representing the telephone cord from the front cover, gracefully enters from the right edge (the spine of the card), loops into a simple, beautiful, abstract swirl in the center of the page, and then exits off the left edge. The design is purely artistic and decorative, with clean lines and a sense of playful movement, creating a harmonious and sophisticated visual connection to the other card panels.",
+    "rightInterior": "The right interior of a birthday card, designed to be visually cohesive with the minimalist 2D flat illustration style. The background is a clean, bright white. The message is centrally located and written in a beautiful, highly readable, elegant handwritten cursive script. The text reads exactly: \"John,\nHappy birthday! I was going to make a joke about you getting old, but then I remembered I have to see you every day and I value my safety. Hope you have a fantastic day filled with cake and questionable decisions!\n\nAll the best,\nLauren\". The text is rendered in a clean black line with high contrast against the white background, ensuring crystal clear legibility. The message is framed by subtle decorative elements: a single, delicate black line representing the telephone cord enters from the top left, loops gently above the text, and exits at the bottom right, staying well clear of the words. This simple artwork enhances the message without distracting from it, maintaining the card's overall sophisticated and uncluttered aesthetic. The text and key elements are positioned at least 10% away from all edges."
+  }
+}
