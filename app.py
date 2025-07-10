@@ -87,7 +87,16 @@ except ImportError as e: # Added "as e" and fixed the print statement
 app = Flask(__name__)
 
 # Initialize SocketIO for real-time communication
-socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True)
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins="*", 
+    logger=True, 
+    engineio_logger=True,
+    ping_timeout=60,  # 60 seconds before considering connection dead
+    ping_interval=25,  # Send ping every 25 seconds
+    max_http_buffer_size=10**8,  # 100MB max buffer for large payloads
+    async_mode='threading'  # Use threading for better compatibility
+)
 
 # Context processor to inject DOMAIN into templates
 @app.context_processor
@@ -103,16 +112,17 @@ init_signal_bot()
 # WebSocket event handlers for real-time card generation updates
 @socketio.on('connect')
 def handle_connect():
-    print(f"Client connected: {request.sid}")
+    print(f"[WEBSOCKET] Client connected: {request.sid}")
     emit('connected', {'status': 'connected', 'message': 'WebSocket connection established'})
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    print(f"Client disconnected: {request.sid}")
+    print(f"[WEBSOCKET] Client disconnected: {request.sid}")
 
 @socketio.on('subscribe_job')
 def handle_subscribe_job(data):
     """Subscribe to updates for a specific job"""
+    print(f"[WEBSOCKET] subscribe_job received from {request.sid} with data: {data}")
     job_id = data.get('job_id')
     if not job_id:
         emit('error', {'message': 'job_id is required'})
@@ -120,7 +130,7 @@ def handle_subscribe_job(data):
     
     # Join the job room
     join_room(f"job_{job_id}")
-    print(f"Client {request.sid} subscribed to job {job_id}")
+    print(f"[WEBSOCKET] Client {request.sid} subscribed to job {job_id}")
     
     # Send current job status if available
     if job_id in job_storage:
@@ -6037,7 +6047,8 @@ def call_mcp_service(tool_name, arguments):
             raise Exception(f"MCP service returned status {mcp_response.status_code}: {mcp_response.text}")
         
         response_data = mcp_response.json()
-        print(f"MCP response data: {response_data}")
+        # Don't print full response data as it may contain large base64 images
+        print(f"MCP response received - status: {response_data.get('status', 'unknown')}, has_result: {bool(response_data.get('result'))}")
         
         # Check for errors in response
         if response_data.get("error") and response_data["error"] != "None":
@@ -6045,11 +6056,16 @@ def call_mcp_service(tool_name, arguments):
         
         # Parse result
         result = response_data.get("result")
-        print(f"MCP result type: {type(result)}, content: {result}")
+        # Don't print full result content as it may contain large base64 images
+        print(f"MCP result type: {type(result)}, is_list: {isinstance(result, list)}, length: {len(result) if isinstance(result, list) else 'N/A'}")
         if isinstance(result, str):
             try:
                 result = json.loads(result)
-            except:
+                print(f"After parsing JSON string - type: {type(result)}, is_dict: {isinstance(result, dict)}, is_list: {isinstance(result, list)}")
+                if isinstance(result, dict):
+                    print(f"Dict keys: {list(result.keys())}")
+            except Exception as e:
+                print(f"Failed to parse JSON: {e}")
                 raise Exception("Invalid JSON response from MCP service")
         
         # Handle case where result is a list (which seems to be the actual format)

@@ -75,5 +75,71 @@
     "label": "group_photo_celebration_backyard",
     "description": "A group of people are gathered in a backyard setting for a celebration, with decorative lighting and large numbers '25' indicating an anniversary or milestone.",
     "size": 410039
+  },
+  "3d11aa0c-b11b-44f2-b916-3efaf1665dd0": {
+    "filename": "3d11aa0c-b11b-44f2-b916-3efaf1665dd0.jpg",
+    "path": "/var/www/flask_app/claude_attachments/3d11aa0c-b11b-44f2-b916-3efaf1665dd0.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_2149a35f-0d6d-4663-89b4-f18e47ae99cb&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752183411949,
+    "message_id": "+17145986105_1752183411949",
+    "label": "couple_photo_analysis_interface",
+    "description": "A couple poses for a photo against a waterfront background, within the context of a photo analysis application interface. The interface includes fields for relationship information and special instructions.",
+    "size": 314327
+  },
+  "47244136-ee9a-4811-b7d2-8acb2556bb0c": {
+    "filename": "47244136-ee9a-4811-b7d2-8acb2556bb0c.jpg",
+    "path": "/var/www/flask_app/claude_attachments/47244136-ee9a-4811-b7d2-8acb2556bb0c.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_699564e9-d213-4799-a70d-caa20fe7aa03&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752183845737,
+    "message_id": "+17145986105_1752183845737",
+    "label": "vibecarding_photo_analysis_details",
+    "description": "Screenshot of the 'Photo Analysis' screen within the VibeCarding app, showing details about scene analysis and person detection for personalized greeting card creation.",
+    "size": 196279
+  },
+  "92f4a15f-d1e3-4530-ac7e-d44d5221a12d": {
+    "filename": "92f4a15f-d1e3-4530-ac7e-d44d5221a12d.jpg",
+    "path": "/var/www/flask_app/claude_attachments/92f4a15f-d1e3-4530-ac7e-d44d5221a12d.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_428b5563-8bbe-4e26-93a7-9a33b752abc3&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752184364521,
+    "message_id": "+17145986105_1752184364521",
+    "label": "vibecarding_card_details_page",
+    "description": "A screenshot of the VibeCarding card details page, where users can select the card type, tone, and personalization options, as well as upload reference photos to create cartoon characters.",
+    "size": 179692
+  },
+  "3cedda9f-0186-4ba2-8d50-38436e706346": {
+    "filename": "3cedda9f-0186-4ba2-8d50-38436e706346.png",
+    "path": "/var/www/flask_app/claude_attachments/3cedda9f-0186-4ba2-8d50-38436e706346.png",
+    "url": "https://vibecarding.com/serve_image?key=attachment_a1efdd91-251c-498c-8aa5-eee57dca270c&type=image/png",
+    "mime_type": "image/png",
+    "timestamp": 1752185122544,
+    "message_id": "+17145986105_1752185122544",
+    "label": "vibecarding_card_wizard_creating",
+    "description": "This screenshot shows the VibeCarding Card Wizard, specifically the screen where the app is creating card variations. It's at step 5 of 6, \"Draft Selection.\"",
+    "size": 286155
+  },
+  "faa8f576-daaa-46d4-9723-9be319deb8c2": {
+    "filename": "faa8f576-daaa-46d4-9723-9be319deb8c2.png",
+    "path": "/var/www/flask_app/claude_attachments/faa8f576-daaa-46d4-9723-9be319deb8c2.png",
+    "url": "https://vibecarding.com/serve_image?key=attachment_1fd1c581-781b-4207-9769-2ae520363917&type=image/png",
+    "mime_type": "image/png",
+    "timestamp": 1752186818283,
+    "message_id": "+17145986105_1752186818283",
+    "label": "vibecarding_card_wizard_step",
+    "description": "Screenshot of the card wizard creation process on VibeCarding, showing step 5 of 6 where the system is creating 5 front cover variations.",
+    "size": 274042
+  },
+  "0380a091-6fb5-44ee-9290-9b72c64c8bbe": {
+    "filename": "0380a091-6fb5-44ee-9290-9b72c64c8bbe.jpg",
+    "path": "/var/www/flask_app/claude_attachments/0380a091-6fb5-44ee-9290-9b72c64c8bbe.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_7c2053c9-1d79-44d5-b608-18bf14a321a0&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752188363642,
+    "message_id": "+17145986105_1752188363642",
+    "label": "couple_at_outdoor_festival",
+    "description": "A smiling couple takes a selfie at an outdoor event, possibly a festival, with food stalls and a crowd in the background, under bright sunlight.",
+    "size": 273950
   }
 }

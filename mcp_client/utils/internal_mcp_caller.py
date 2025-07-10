@@ -85,7 +85,7 @@ async def call_another_mcp_tool(
                 # This case means mcp_service returned a 200 OK, with a valid QueryResponse structure,
                 # but the 'result' field was empty/null, and 'error' was also null.
                 # This could be valid if a tool successfully does an action but returns no data.
-                print(f"[InternalMCPCallHelper] Tool '{tool_name}' call to mcp_service returned no 'result' string and no 'error'. Raw response: {response_data}")
+                print(f"[InternalMCPCallHelper] Tool '{tool_name}' call to mcp_service returned no 'result' string and no 'error'.")
                 return {}, None # Empty dict signifies success with no specific data payload
 
         except httpx.HTTPStatusError as e:

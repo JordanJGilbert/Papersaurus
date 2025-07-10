@@ -10,6 +10,10 @@ export function useWebSocket() {
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const currentJobRef = useRef<string | null>(null);
   const lastJobUpdateRef = useRef<number>(Date.now());
+  const connectionStartTimeRef = useRef<number | null>(null);
+  const reconnectionAttemptsRef = useRef<number>(0);
+  const MAX_CONNECTION_AGE = 5 * 60 * 1000; // 5 minutes in milliseconds
+  const hasShownStaleToastRef = useRef(false);
 
   const connectWebSocket = useCallback(() => {
     if (socketRef.current?.connected) {
@@ -17,20 +21,49 @@ export function useWebSocket() {
       return;
     }
 
+    // Check if connection is stale (older than 5 minutes)
+    if (connectionStartTimeRef.current && 
+        Date.now() - connectionStartTimeRef.current > MAX_CONNECTION_AGE) {
+      console.log('⏰ Connection attempt is stale (>5 minutes), stopping reconnection');
+      reconnectionAttemptsRef.current = 0;
+      connectionStartTimeRef.current = null;
+      
+      // Only show toast once
+      if (!hasShownStaleToastRef.current) {
+        toast.error('Connection timed out. Please refresh the page if needed.');
+        hasShownStaleToastRef.current = true;
+      }
+      
+      return;
+    }
+
+    // Set connection start time on first attempt
+    if (!connectionStartTimeRef.current) {
+      connectionStartTimeRef.current = Date.now();
+    }
+
+    reconnectionAttemptsRef.current++;
+
     try {
       console.log('🔌 Connecting to WebSocket...');
       const socket = io(BACKEND_API_BASE_URL, {
         transports: ['websocket', 'polling'],
-        timeout: 10000,
+        timeout: 60000, // Increased to 60 seconds for image generation
         reconnection: true,
         reconnectionDelay: 1000,
-        reconnectionAttempts: 5
+        reconnectionAttempts: 10, // Increased retry attempts
+        reconnectionDelayMax: 5000 // Max delay between reconnection attempts
       });
 
       socket.on('connect', () => {
         console.log('✅ WebSocket connected:', socket.id);
         setIsSocketConnected(true);
         toast.success('🔗 Real-time updates connected');
+        
+        // Reset connection tracking on successful connect
+        connectionStartTimeRef.current = null;
+        reconnectionAttemptsRef.current = 0;
+        hasShownStaleToastRef.current = false;
         
         // Resubscribe to current job if any
         if (currentJobRef.current) {
@@ -52,6 +85,15 @@ export function useWebSocket() {
       socket.on('connect_error', (error: Error) => {
         console.error('❌ WebSocket connection error:', error);
         setIsSocketConnected(false);
+        
+        // Check if we should stop trying
+        if (connectionStartTimeRef.current && 
+            Date.now() - connectionStartTimeRef.current > MAX_CONNECTION_AGE) {
+          console.log('⏰ Stopping reconnection attempts after 5 minutes');
+          socket.disconnect();
+          connectionStartTimeRef.current = null;
+          reconnectionAttemptsRef.current = 0;
+        }
       });
 
       socketRef.current = socket;
@@ -67,6 +109,8 @@ export function useWebSocket() {
       socketRef.current.disconnect();
       socketRef.current = null;
       setIsSocketConnected(false);
+      connectionStartTimeRef.current = null;
+      reconnectionAttemptsRef.current = 0;
     }
   }, []);
 

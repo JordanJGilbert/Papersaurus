@@ -46,38 +46,7 @@ export function CardWizardSteps({
             }
           }}
           onTemplateSelect={handleTemplateSelect}
-        />
-      );
-    
-    case 2:
-      return (
-        <Step2ContentCreation
-          formData={formData}
-          updateFormData={updateFormData}
-          onStepComplete={() => {
-            if (!wizardState.completedSteps.includes(2)) {
-              wizardState.markStepCompleted(2);
-            }
-          }}
-          handleGetMessageHelp={handleGetMessageHelpWrapper}
-          isGeneratingMessage={cardStudio.isGeneratingMessage}
-          messageHistory={cardStudio.messageHistory}
-          currentMessageIndex={cardStudio.currentMessageIndex}
-          undoMessage={undoMessageWrapper}
-          redoMessage={redoMessageWrapper}
-        />
-      );
-    
-    case 3:
-      return (
-        <Step3Personalization
-          formData={formData}
-          updateFormData={updateFormData}
-          onStepComplete={() => {
-            if (!wizardState.completedSteps.includes(3)) {
-              wizardState.markStepCompleted(3);
-            }
-          }}
+          // Photo upload props (moved from Step3)
           handleFileUpload={handleFileUploadWrapper}
           handleRemoveReferenceImage={(index: number) => {
             // Update both cardStudio and form data
@@ -107,6 +76,39 @@ export function CardWizardSteps({
           setShowAnalysisModal={cardStudio.setShowAnalysisModal}
           // Pass cardStudio's URLs directly for immediate access
           referenceImageUrlsFromStudio={cardStudio.referenceImageUrls}
+        />
+      );
+    
+    case 2:
+      return (
+        <Step2ContentCreation
+          formData={formData}
+          updateFormData={updateFormData}
+          onStepComplete={() => {
+            if (!wizardState.completedSteps.includes(2)) {
+              wizardState.markStepCompleted(2);
+            }
+          }}
+          handleGetMessageHelp={handleGetMessageHelpWrapper}
+          isGeneratingMessage={cardStudio.isGeneratingMessage}
+          messageHistory={cardStudio.messageHistory}
+          currentMessageIndex={cardStudio.currentMessageIndex}
+          undoMessage={undoMessageWrapper}
+          redoMessage={redoMessageWrapper}
+          photoAnalyses={cardStudio.photoAnalyses}
+        />
+      );
+    
+    case 3:
+      return (
+        <Step3Personalization
+          formData={formData}
+          updateFormData={updateFormData}
+          onStepComplete={() => {
+            if (!wizardState.completedSteps.includes(3)) {
+              wizardState.markStepCompleted(3);
+            }
+          }}
         />
       );
     

@@ -3,31 +3,13 @@
 import React from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Upload, X, Wand2 } from "lucide-react";
 import { CardFormData } from "@/hooks/useCardForm";
-import { toast } from "sonner";
-import PhotoAnalysisModal from "../PhotoAnalysisModal";
-import { PhotoAnalysis } from "@/hooks/cardStudio/constants";
+import { CheckCircle } from "lucide-react";
 
 interface Step3Props {
   formData: CardFormData;
   updateFormData: (updates: Partial<CardFormData>) => void;
   onStepComplete?: () => void;
-  handleFileUpload?: (file: File, type: 'handwriting' | 'reference') => Promise<void>;
-  handleRemoveReferenceImage?: (index: number) => void;
-  isUploading?: boolean;
-  // Photo analysis props
-  photoAnalyses?: PhotoAnalysis[];
-  isAnalyzing?: boolean;
-  showAnalysisModal?: boolean;
-  pendingAnalysisIndex?: number | null;
-  analyzePhoto?: (imageUrl: string, imageIndex: number) => Promise<any>;
-  savePhotoAnalysis?: (analysis: PhotoAnalysis) => void;
-  skipPhotoAnalysis?: () => void;
-  setShowAnalysisModal?: (show: boolean) => void;
-  // Direct URLs from cardStudio for immediate access
-  referenceImageUrlsFromStudio?: string[];
 }
 
 // Curated artistic styles
@@ -93,110 +75,38 @@ const artisticStyles = [
 export default function Step3Personalization({ 
   formData, 
   updateFormData, 
-  onStepComplete, 
-  handleFileUpload: externalHandleFileUpload,
-  handleRemoveReferenceImage: externalHandleRemoveReferenceImage,
-  isUploading = false,
-  photoAnalyses = [],
-  isAnalyzing = false,
-  showAnalysisModal = false,
-  pendingAnalysisIndex = null,
-  analyzePhoto,
-  savePhotoAnalysis,
-  skipPhotoAnalysis,
-  setShowAnalysisModal,
-  referenceImageUrlsFromStudio = []
+  onStepComplete
 }: Step3Props) {
-  const [analysisResult, setAnalysisResult] = React.useState<any>(null);
 
-  // Debug log all props
-  React.useEffect(() => {
-    console.log("🔍 Step3 props check:", {
-      hasAnalyzePhoto: !!analyzePhoto,
-      hasSavePhotoAnalysis: !!savePhotoAnalysis,
-      hasSkipPhotoAnalysis: !!skipPhotoAnalysis,
-      hasSetShowAnalysisModal: !!setShowAnalysisModal,
-      showAnalysisModal,
-      pendingAnalysisIndex,
-      isAnalyzing,
-      photoAnalysesLength: photoAnalyses?.length || 0
-    });
-  }, [analyzePhoto, savePhotoAnalysis, skipPhotoAnalysis, setShowAnalysisModal, showAnalysisModal, pendingAnalysisIndex, isAnalyzing, photoAnalyses]);
-
-  // Trigger photo analysis when modal opens
-  React.useEffect(() => {
-    console.log("🔍 Photo analysis effect check:", {
-      showAnalysisModal,
-      pendingAnalysisIndex,
-      hasAnalyzePhoto: !!analyzePhoto,
-      isAnalyzing,
-      hasAnalysisResult: !!analysisResult,
-      imageUrlsCount: formData.referenceImageUrls.length,
-      referenceImageUrls: formData.referenceImageUrls
-    });
-    
-    // Simplified condition - analyze when modal is shown and we have the function
-    if (showAnalysisModal && pendingAnalysisIndex !== null && analyzePhoto) {
-      // Use URLs from studio if available (they're more up-to-date), otherwise fall back to formData
-      const imageUrls = referenceImageUrlsFromStudio.length > 0 ? referenceImageUrlsFromStudio : formData.referenceImageUrls;
-      console.log("🔍 About to get image URL at index:", pendingAnalysisIndex, "from array:", imageUrls);
-      const imageUrl = imageUrls[pendingAnalysisIndex];
-      console.log("🔍 Attempting to analyze photo:", imageUrl);
-      if (imageUrl && !analysisResult) {
-        // Reset analysis result before starting new analysis
-        setAnalysisResult(null);
-        analyzePhoto(imageUrl, pendingAnalysisIndex).then(result => {
-          console.log("🔍 Analysis result received:", result);
-          setAnalysisResult(result);
-        }).catch(error => {
-          console.error("🔍 Analysis failed:", error);
-          setAnalysisResult(null);
-        });
-      }
-    }
-  }, [showAnalysisModal, pendingAnalysisIndex, analyzePhoto, formData.referenceImageUrls, referenceImageUrlsFromStudio]);
-
-  // Note: Removed duplicate useEffect that was doing the same thing
   React.useEffect(() => {
     // Auto-complete step when style is selected and valid
     const isValid = formData.selectedArtisticStyle && 
-      (formData.selectedArtisticStyle !== "custom" || formData.customStyleDescription.trim()) &&
-      (formData.referenceImageUrls.length === 0 || formData.selectedImageModel === "gpt-image-1");
+      (formData.selectedArtisticStyle !== "custom" || formData.customStyleDescription.trim());
     
     if (isValid) {
       onStepComplete?.();
     }
-  }, [formData.selectedArtisticStyle, formData.customStyleDescription, formData.referenceImageUrls, formData.selectedImageModel, onStepComplete]);
-
-  const handleFileUploadLocal = async (file: File) => {
-    // Always use external handler if available
-    if (externalHandleFileUpload) {
-      await externalHandleFileUpload(file, 'reference');
-      return;
-    }
-
-    // Fallback error if no handler is provided
-    toast.error("File upload handler not available");
-  };
-
-  const handleRemoveImage = (index: number) => {
-    // Use external handler if available, otherwise use local implementation
-    if (externalHandleRemoveReferenceImage) {
-      externalHandleRemoveReferenceImage(index);
-      return;
-    }
-
-    // Local implementation
-    const newImages = formData.referenceImages.filter((_, i) => i !== index);
-    const newUrls = formData.referenceImageUrls.filter((_, i) => i !== index);
-    updateFormData({ 
-      referenceImages: newImages,
-      referenceImageUrls: newUrls
-    });
-  };
+  }, [formData.selectedArtisticStyle, formData.customStyleDescription, onStepComplete]);
 
   return (
     <div className="space-y-6">
+      {/* Show confirmation if photos were uploaded in Step 1 */}
+      {formData.referenceImageUrls.length > 0 && (
+        <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
+          <div className="flex items-start gap-3">
+            <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+            <div>
+              <h4 className="font-medium text-green-900 dark:text-green-100 mb-1">
+                ✨ Reference photos uploaded!
+              </h4>
+              <p className="text-sm text-green-700 dark:text-green-300">
+                {formData.referenceImageUrls.length} photo{formData.referenceImageUrls.length > 1 ? 's' : ''} will be used to create personalized cartoon characters
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Artistic Style Selection */}
       <div>
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
@@ -260,126 +170,15 @@ export default function Step3Personalization({
         )}
       </div>
 
-      {/* Reference Photos */}
-      <div>
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-          Reference Photos (Optional)
-        </label>
-        
-        {formData.selectedImageModel !== "gpt-image-1" && formData.referenceImageUrls.length === 0 && (
-          <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg mb-3">
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              Reference photos are only available with GPT Image 1 model. You can enable this in the Details step.
-            </p>
-          </div>
-        )}
-
-        {formData.selectedImageModel === "gpt-image-1" && (
-          <>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-              Upload photos to create cartoon characters!
-            </p>
-            
-            {/* Upload Area */}
-            <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4 text-center">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => e.target.files?.[0] && handleFileUploadLocal(e.target.files[0])}
-                disabled={isUploading}
-                className="hidden"
-                id="reference-upload"
-              />
-              <label htmlFor="reference-upload" className={`cursor-pointer ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                <Wand2 className={`w-6 h-6 mx-auto mb-2 text-gray-400 ${isUploading ? 'animate-spin' : ''}`} />
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  {isUploading ? "Uploading..." : "Upload reference photo"}
-                </div>
-              </label>
-            </div>
-          </>
-        )}
-
-        {/* Display uploaded images */}
-        {formData.referenceImageUrls.length > 0 && (
-          <div className="mt-4 space-y-2">
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              {formData.referenceImageUrls.length} photo{formData.referenceImageUrls.length > 1 ? 's' : ''} uploaded:
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {formData.referenceImageUrls.map((url, index) => (
-                <div key={index} className="relative group">
-                  <img
-                    src={url}
-                    alt={`Reference ${index + 1}`}
-                    className="w-full aspect-square object-cover rounded border"
-                  />
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleRemoveImage(index)}
-                    className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X className="w-3 h-3" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-            
-            {/* Transformation Instructions */}
-            <div className="mt-3">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-                Character Style Instructions (Optional)
-              </label>
-              <Textarea
-                placeholder="e.g., 'Make us look like anime characters', 'Keep our exact outfits but in watercolor style'"
-                value={formData.imageTransformation}
-                onChange={(e) => updateFormData({ imageTransformation: e.target.value })}
-                rows={3}
-                className="resize-none"
-                style={{ fontSize: '16px' }}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* Tips - Mobile Optimized */}
       <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800">
         <h4 className="font-medium text-purple-900 dark:text-purple-100 mb-2">🎨 Tips</h4>
         <ul className="text-sm text-purple-800 dark:text-purple-200 space-y-1">
-          <li>• Smart Style picks best style</li>
-          <li>• Photos create cartoon versions</li>
-          <li>• All options are optional</li>
+          <li>• Smart Style picks the best style for your card</li>
+          <li>• Each style brings unique character to your design</li>
+          <li>• Custom style lets you describe exactly what you want</li>
         </ul>
       </div>
-
-      {/* Photo Analysis Modal */}
-      {showAnalysisModal && pendingAnalysisIndex !== null && (
-        <PhotoAnalysisModal
-          isOpen={showAnalysisModal}
-          onClose={() => {
-            setShowAnalysisModal?.(false);
-            setAnalysisResult(null);
-          }}
-          imageUrl={(referenceImageUrlsFromStudio.length > 0 ? referenceImageUrlsFromStudio : formData.referenceImageUrls)[pendingAnalysisIndex]}
-          imageIndex={pendingAnalysisIndex}
-          isAnalyzing={isAnalyzing || false}
-          analysisResult={analysisResult}
-          onSave={(analysis) => {
-            savePhotoAnalysis?.(analysis);
-            setAnalysisResult(null);
-            setShowAnalysisModal?.(false);
-          }}
-          onSkip={() => {
-            skipPhotoAnalysis?.();
-            setAnalysisResult(null);
-            setShowAnalysisModal?.(false);
-          }}
-          toField={formData.toField}
-          fromField={formData.fromField}
-        />
-      )}
     </div>
   );
 } 

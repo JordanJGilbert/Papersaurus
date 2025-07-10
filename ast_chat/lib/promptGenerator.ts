@@ -63,6 +63,7 @@ export interface MessageConfig {
   theme: string;
   toField?: string;
   fromField?: string;
+  photoAnalyses?: PhotoAnalysis[];
 }
 
 export interface FinalFromDraftConfig {
@@ -292,12 +293,29 @@ Return ONLY the front cover prompt as plain text.`;
     const cardTypeForPrompt = config.customCardType || config.cardType;
     const effectivePrompt = config.theme || `A beautiful ${cardTypeForPrompt} card with ${config.toneDescription} style`;
 
+    // Build photo context if available
+    let photoContext = '';
+    if (config.photoAnalyses && config.photoAnalyses.length > 0) {
+      const selectedPeople = config.photoAnalyses.flatMap(analysis => 
+        analysis.selectedPeople || []
+      );
+      
+      if (selectedPeople.length > 0) {
+        const peopleDescriptions = selectedPeople.map(person => {
+          const name = person.name || person.description;
+          return name;
+        }).join(', ');
+        
+        photoContext = `\nPhoto Context: The card features ${peopleDescriptions} from the uploaded photo(s).`;
+      }
+    }
+
     return `Create a ${config.toneDescription} message for a ${cardTypeForPrompt} greeting card.
 
 Card Theme/Description: "${effectivePrompt}"
 ${config.toField ? `Recipient: ${config.toField}` : "Recipient: [not specified]"}
 ${config.fromField ? `Sender: ${config.fromField}` : "Sender: [not specified]"}
-Card Tone: ${config.toneLabel} - ${config.toneDescription}
+Card Tone: ${config.toneLabel} - ${config.toneDescription}${photoContext}
 
 Instructions:
 - Write a message that is ${config.toneDescription} and feels personal and genuine
@@ -305,6 +323,7 @@ Instructions:
 - ${config.fromField ? `Write as if ${config.fromField} is personally writing this message` : `Write in a ${config.toneDescription} tone`}
 - Match the ${config.toneDescription} tone and occasion of the ${cardTypeForPrompt} card type
 - Be inspired by the theme: "${effectivePrompt}"
+${photoContext ? '- Reference the people from the photos naturally in your message if appropriate' : ''}
 - Keep it concise but meaningful (2-4 sentences ideal)
 - Make it feel authentic, not generic
 ${this.SAFETY_REQUIREMENTS}

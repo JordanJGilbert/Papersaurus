@@ -26,6 +26,7 @@ interface Step2Props {
   currentMessageIndex?: number;
   undoMessage?: () => void;
   redoMessage?: () => void;
+  photoAnalyses?: any[];
 }
 
 export default function Step2ContentCreation({ 
@@ -37,7 +38,8 @@ export default function Step2ContentCreation({
   messageHistory = [],
   currentMessageIndex = -1,
   undoMessage,
-  redoMessage
+  redoMessage,
+  photoAnalyses = []
 }: Step2Props) {
   const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
   const [isMessageExpanded, setIsMessageExpanded] = useState(false);
@@ -119,6 +121,7 @@ export default function Step2ContentCreation({
           formData={formData}
           onAddToDescription={(text) => updateFormData({ prompt: text })}
           chatWithAI={chatWithAI}
+          photoAnalyses={photoAnalyses}
         />
         
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">

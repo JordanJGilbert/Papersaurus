@@ -198,6 +198,9 @@ export function useCardGeneration(props: CardGenerationProps) {
     setCurrentCardId(null);
     setIsCardCompleted(false);
 
+    // Stop any existing timers first
+    props.stopElapsedTimeTracking();
+    
     setIsGenerating(true);
     startElapsedTimeTracking(undefined, 120);
     setGenerationProgress("Creating your personalized card...");

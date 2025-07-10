@@ -4,14 +4,18 @@ import React, { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { CardFormData } from "@/hooks/useCardForm";
 import { 
   Wrench, Cake, ThumbsUp, Heart, Trophy, TreePine, Stethoscope, 
   CloudRain, GraduationCap, Baby, Church, Gift, Home, MessageCircle, Eye,
-  Image, Sparkles
+  Image, Sparkles, Upload, X, Wand2
 } from "lucide-react";
 import TemplateGallery from "../TemplateGallery";
 import { useCardCache } from "@/hooks/useCardCache";
+import PhotoAnalysisModal from "../PhotoAnalysisModal";
+import { PhotoAnalysis } from "@/hooks/cardStudio/constants";
+import { toast } from "sonner";
 
 interface GeneratedCard {
   id: string;
@@ -39,6 +43,21 @@ interface Step1Props {
   updateFormData: (updates: Partial<CardFormData>) => void;
   onStepComplete?: () => void;
   onTemplateSelect?: (template: GeneratedCard) => void;
+  // Photo upload props (moved from Step3)
+  handleFileUpload?: (file: File, type: 'handwriting' | 'reference') => Promise<void>;
+  handleRemoveReferenceImage?: (index: number) => void;
+  isUploading?: boolean;
+  // Photo analysis props
+  photoAnalyses?: PhotoAnalysis[];
+  isAnalyzing?: boolean;
+  showAnalysisModal?: boolean;
+  pendingAnalysisIndex?: number | null;
+  analyzePhoto?: (imageUrl: string, imageIndex: number) => Promise<any>;
+  savePhotoAnalysis?: (analysis: PhotoAnalysis) => void;
+  skipPhotoAnalysis?: () => void;
+  setShowAnalysisModal?: (show: boolean) => void;
+  // Direct URLs from cardStudio for immediate access
+  referenceImageUrlsFromStudio?: string[];
 }
 
 // Card types with icons
@@ -76,8 +95,26 @@ const cardTones = [
   { id: "traditional", label: "🎭 Traditional", description: "Classic and timeless", color: "from-stone-100 to-amber-100 dark:from-stone-900 dark:to-amber-900" },
 ];
 
-export default function Step1CardBasics({ formData, updateFormData, onStepComplete, onTemplateSelect }: Step1Props) {
+export default function Step1CardBasics({ 
+  formData, 
+  updateFormData, 
+  onStepComplete, 
+  onTemplateSelect,
+  handleFileUpload: externalHandleFileUpload,
+  handleRemoveReferenceImage: externalHandleRemoveReferenceImage,
+  isUploading = false,
+  photoAnalyses = [],
+  isAnalyzing = false,
+  showAnalysisModal = false,
+  pendingAnalysisIndex = null,
+  analyzePhoto,
+  savePhotoAnalysis,
+  skipPhotoAnalysis,
+  setShowAnalysisModal,
+  referenceImageUrlsFromStudio = []
+}: Step1Props) {
   const [showTemplateGallery, setShowTemplateGallery] = useState(false);
+  const [analysisResult, setAnalysisResult] = React.useState<any>(null);
   const { preloadAllCards } = useCardCache();
   
   // Preload template cache when component mounts
@@ -97,6 +134,121 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
     onTemplateSelect?.(template);
     setShowTemplateGallery(false);
   };
+
+  // Compress image if needed
+  const compressImage = async (file: File, maxSizeMB: number = 10): Promise<File> => {
+    const maxSizeBytes = maxSizeMB * 1024 * 1024;
+    
+    // If file is already small enough, return as-is
+    if (file.size <= maxSizeBytes) {
+      return file;
+    }
+    
+    // Create a canvas to resize the image
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = document.createElement('img');
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          // Calculate new dimensions (max 2048px on longest side)
+          let { width, height } = img;
+          const maxDimension = 2048;
+          
+          if (width > height && width > maxDimension) {
+            height = (height / width) * maxDimension;
+            width = maxDimension;
+          } else if (height > maxDimension) {
+            width = (width / height) * maxDimension;
+            height = maxDimension;
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          
+          // Draw and compress
+          ctx?.drawImage(img, 0, 0, width, height);
+          
+          // Convert to blob with compression
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const compressedFile = new File([blob], file.name, {
+                  type: 'image/jpeg',
+                  lastModified: Date.now(),
+                });
+                resolve(compressedFile);
+              } else {
+                reject(new Error('Failed to compress image'));
+              }
+            },
+            'image/jpeg',
+            0.85 // 85% quality
+          );
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Photo upload handlers (moved from Step3)
+  const handleFileUploadLocal = async (file: File) => {
+    if (!externalHandleFileUpload) {
+      toast.error("File upload not available");
+      return;
+    }
+    
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      toast.error("Please upload a valid image file (JPG, PNG, GIF, or WebP)");
+      return;
+    }
+    
+    try {
+      // Auto-compress if needed
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      let fileToUpload = file;
+      
+      if (file.size > maxSize) {
+        toast.info("Compressing large image...");
+        fileToUpload = await compressImage(file, 10);
+        toast.success(`Image compressed from ${(file.size / 1024 / 1024).toFixed(1)}MB to ${(fileToUpload.size / 1024 / 1024).toFixed(1)}MB`);
+      }
+      
+      await externalHandleFileUpload(fileToUpload, 'reference');
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      toast.error("Failed to upload file");
+    }
+  };
+
+  const handleRemoveImage = (index: number) => {
+    if (externalHandleRemoveReferenceImage) {
+      externalHandleRemoveReferenceImage(index);
+    }
+  };
+
+  // Trigger photo analysis when modal opens
+  React.useEffect(() => {
+    if (showAnalysisModal && pendingAnalysisIndex !== null && analyzePhoto) {
+      const imageUrls = referenceImageUrlsFromStudio.length > 0 ? referenceImageUrlsFromStudio : formData.referenceImageUrls;
+      const imageUrl = imageUrls[pendingAnalysisIndex];
+      if (imageUrl && !analysisResult) {
+        setAnalysisResult(null);
+        analyzePhoto(imageUrl, pendingAnalysisIndex).then(result => {
+          setAnalysisResult(result);
+        }).catch(error => {
+          console.error("Error analyzing photo:", error);
+          toast.error("Failed to analyze photo");
+        });
+      }
+    }
+  }, [showAnalysisModal, pendingAnalysisIndex, analyzePhoto, formData.referenceImageUrls, referenceImageUrlsFromStudio, analysisResult]);
 
   return (
     <div className="space-y-4 sm:space-y-6 w-full">
@@ -250,6 +402,110 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
         </div>
       </div>
 
+      {/* Reference Photos (moved from Step 3) */}
+      <div className="space-y-3 sm:space-y-4 w-full">
+        <label className="text-base font-semibold text-gray-800 dark:text-gray-200 px-1">
+          Reference Photos (Optional)
+        </label>
+        
+        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl p-4 sm:p-6 border border-indigo-200 dark:border-indigo-800">
+          <div className="flex items-start gap-3">
+            <Wand2 className="w-6 h-6 text-indigo-600 dark:text-indigo-400 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <h4 className="font-medium text-indigo-900 dark:text-indigo-100 mb-2">
+                Upload photos to create cartoon characters!
+              </h4>
+              <p className="text-sm text-indigo-700 dark:text-indigo-300 mb-4">
+                Add photos of people to include them as personalized cartoon characters in your card
+              </p>
+              
+              {/* Upload Area */}
+              {(referenceImageUrlsFromStudio.length === 0 && formData.referenceImageUrls.length === 0) ? (
+                <div className="border-2 border-dashed border-indigo-300 dark:border-indigo-600 rounded-lg p-6 text-center">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => e.target.files?.[0] && handleFileUploadLocal(e.target.files[0])}
+                    disabled={isUploading}
+                    className="hidden"
+                    id="reference-upload"
+                  />
+                  <label htmlFor="reference-upload" className={`cursor-pointer ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    <Upload className={`w-8 h-8 mx-auto mb-2 text-indigo-400 ${isUploading ? 'animate-pulse' : ''}`} />
+                    <div className="text-base font-medium text-indigo-600 dark:text-indigo-400">
+                      {isUploading ? "Uploading..." : "Tap to upload photo"}
+                    </div>
+                    <div className="text-xs text-indigo-500 dark:text-indigo-300 mt-1">
+                      JPG, PNG up to 10MB
+                    </div>
+                  </label>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* Display uploaded images */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {(referenceImageUrlsFromStudio.length > 0 ? referenceImageUrlsFromStudio : formData.referenceImageUrls).map((url, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={url}
+                          alt={`Reference ${index + 1}`}
+                          className="w-full aspect-square object-cover rounded-lg border-2 border-indigo-200 dark:border-indigo-700"
+                        />
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleRemoveImage(index)}
+                          className="absolute top-2 right-2 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* Add more photos button */}
+                  {formData.referenceImageUrls.length < 4 && (
+                    <div className="mt-3">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => e.target.files?.[0] && handleFileUploadLocal(e.target.files[0])}
+                        disabled={isUploading}
+                        className="hidden"
+                        id="reference-upload-more"
+                      />
+                      <label htmlFor="reference-upload-more">
+                        <Button variant="outline" size="sm" disabled={isUploading} asChild>
+                          <span className="cursor-pointer">
+                            <Upload className="w-4 h-4 mr-2" />
+                            Add another photo
+                          </span>
+                        </Button>
+                      </label>
+                    </div>
+                  )}
+                  
+                  {/* Transformation Instructions */}
+                  <div className="mt-4">
+                    <label className="text-sm font-medium text-indigo-800 dark:text-indigo-200 mb-2 block">
+                      Character Style Instructions (Optional)
+                    </label>
+                    <Textarea
+                      placeholder="e.g., 'Make us look like anime characters', 'Keep our exact outfits but in watercolor style'"
+                      value={formData.imageTransformation}
+                      onChange={(e) => updateFormData({ imageTransformation: e.target.value })}
+                      rows={2}
+                      className="resize-none text-sm"
+                      style={{ fontSize: '16px' }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Quick Tips - Mobile Optimized */}
       <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
         <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">💡 Tips</h4>
@@ -270,6 +526,33 @@ export default function Step1CardBasics({ formData, updateFormData, onStepComple
         onClose={() => setShowTemplateGallery(false)}
       />
       */}
+
+      {/* Photo Analysis Modal (moved from Step3) */}
+      {showAnalysisModal && pendingAnalysisIndex !== null && (
+        <PhotoAnalysisModal
+          isOpen={showAnalysisModal}
+          onClose={() => {
+            setShowAnalysisModal?.(false);
+            setAnalysisResult(null);
+          }}
+          imageUrl={(referenceImageUrlsFromStudio.length > 0 ? referenceImageUrlsFromStudio : formData.referenceImageUrls)[pendingAnalysisIndex]}
+          imageIndex={pendingAnalysisIndex}
+          isAnalyzing={isAnalyzing || false}
+          analysisResult={analysisResult}
+          onSave={(analysis) => {
+            savePhotoAnalysis?.(analysis);
+            setAnalysisResult(null);
+            setShowAnalysisModal?.(false);
+          }}
+          onSkip={() => {
+            skipPhotoAnalysis?.();
+            setAnalysisResult(null);
+            setShowAnalysisModal?.(false);
+          }}
+          toField={formData.toField}
+          fromField={formData.fromField}
+        />
+      )}
     </div>
   );
 } 

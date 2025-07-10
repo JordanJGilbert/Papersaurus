@@ -96,6 +96,9 @@ export function useDraftGeneration(props: DraftGenerationProps) {
       return;
     }
 
+    // Stop any existing timers first
+    props.stopElapsedTimeTracking();
+    
     setIsDraftMode(true);
     setIsGenerating(true);
     startElapsedTimeTracking(undefined, 45); // 45 seconds for draft mode
@@ -221,13 +224,13 @@ export function useDraftGeneration(props: DraftGenerationProps) {
 
           console.log(`✅ Draft variation ${index + 1} job started:`, jobId);
           
-          // Store the job with style info
-          saveJobToStorage(jobId, {
-            isDraft: true,
-            draftIndex: index,
-            styleInfo: styleOverride ? { styleName: styleOverride, styleLabel: styleLabel } : undefined,
-            frontCoverPrompt: enhancedFrontCoverPrompt
-          });
+          // Don't save draft jobs to storage - only save final cards
+          // saveJobToStorage(jobId, {
+          //   isDraft: true,
+          //   draftIndex: index,
+          //   styleInfo: styleOverride ? { styleName: styleOverride, styleLabel: styleLabel } : undefined,
+          //   frontCoverPrompt: enhancedFrontCoverPrompt
+          // });
 
           // Subscribe to WebSocket updates
           subscribeToJob(jobId);
@@ -295,6 +298,9 @@ export function useDraftGeneration(props: DraftGenerationProps) {
       return;
     }
 
+    // Stop any existing timers first
+    props.stopElapsedTimeTracking();
+    
     setIsGeneratingFinalCard(true);
     setSelectedDraftIndex(displayIndex);
     startElapsedTimeTracking(undefined, 120);

@@ -124,10 +124,10 @@ export default function PhotoAnalysisModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50">
-      <div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-lg shadow-xl w-full sm:max-w-2xl h-[90vh] sm:h-auto sm:max-h-[90vh] overflow-hidden animate-slide-up sm:animate-none">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-lg shadow-xl w-full sm:max-w-2xl h-[85vh] sm:h-auto sm:max-h-[85vh] overflow-hidden animate-slide-up sm:animate-none flex flex-col">
         {/* Header */}
-        <div className="sticky top-0 bg-white dark:bg-gray-800 z-10 flex items-center justify-between p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex-shrink-0 bg-white dark:bg-gray-800 z-10 flex items-center justify-between p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
           <h2 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white">
             Photo Analysis
           </h2>
@@ -140,7 +140,8 @@ export default function PhotoAnalysisModal({
         </div>
 
         {/* Content */}
-        <div className="p-4 sm:p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 140px)' }}>
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="p-4 sm:p-6">
           {isAnalyzing ? (
             <div className="flex flex-col items-center justify-center py-12">
               <Loader2 className="w-12 h-12 animate-spin text-blue-500 mb-4" />
@@ -154,22 +155,22 @@ export default function PhotoAnalysisModal({
           ) : analysisResult ? (
             <div className="space-y-6">
               {/* Image Preview with People Count */}
-              <div className="relative">
-                <div className="aspect-w-16 aspect-h-9 sm:aspect-none">
+              <div className="relative flex-shrink-0">
+                <div className="w-full h-32 sm:h-48 overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-900">
                   <img
                     src={imageUrl}
                     alt="Reference photo"
-                    className="w-full h-48 sm:h-auto object-cover rounded-lg shadow-md"
+                    className="w-full h-full object-cover object-center"
                   />
                 </div>
-                <div className="absolute top-2 right-2 sm:top-4 sm:right-4 bg-black/70 text-white px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm">
+                <div className="absolute top-2 right-2 bg-black/70 text-white px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm">
                   <Users className="w-3 h-3 sm:w-4 sm:h-4 inline mr-1" />
                   {analysisResult.peopleCount} {analysisResult.peopleCount === 1 ? 'person' : 'people'}
                 </div>
               </div>
 
               {/* Scene Description - Collapsible on mobile */}
-              <details className="bg-gray-50 dark:bg-gray-700 p-3 sm:p-4 rounded-lg" open>
+              <details className="bg-gray-50 dark:bg-gray-700 p-3 sm:p-4 rounded-lg">
                 <summary className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white cursor-pointer">
                   Scene Details
                 </summary>
@@ -217,11 +218,11 @@ export default function PhotoAnalysisModal({
                   </div>
 
                   {/* Individual People */}
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {selectedPeople.map((person, idx) => (
                       <div
                         key={person.id}
-                        className={`p-3 sm:p-4 border-2 rounded-lg transition-all ${
+                        className={`p-3 border-2 rounded-lg transition-all ${
                           !includeEveryone && !person.includeInCard
                             ? 'border-gray-200 dark:border-gray-600 opacity-50'
                             : 'border-blue-400 dark:border-blue-500 bg-blue-50/50 dark:bg-blue-900/20'
@@ -249,9 +250,9 @@ export default function PhotoAnalysisModal({
                               {person.description} • {person.apparentAge} • {person.clothing}
                             </p>
                             {(!includeEveryone ? person.includeInCard : true) && (
-                              <div className="space-y-3">
+                              <div className="space-y-2">
                                 <div>
-                                  <label className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
+                                  <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
                                     Name (optional)
                                   </label>
                                   <input
@@ -259,13 +260,13 @@ export default function PhotoAnalysisModal({
                                     value={person.name || ''}
                                     onChange={(e) => handlePersonNameChange(person.id, e.target.value)}
                                     placeholder="e.g., John"
-                                    className="mt-1 w-full px-3 py-2 text-sm sm:text-base border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                                    className="mt-1 w-full px-2 py-1.5 text-sm border rounded-md dark:bg-gray-700 dark:border-gray-600"
                                     style={{ fontSize: '16px' }}
                                   />
                                 </div>
                                 {toField && (
                                   <div>
-                                    <label className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
                                       Relationship to {toField} (optional)
                                     </label>
                                     <input
@@ -273,7 +274,7 @@ export default function PhotoAnalysisModal({
                                       value={person.relationshipToRecipient || ''}
                                       onChange={(e) => handlePersonRelationshipChange(person.id, e.target.value)}
                                       placeholder="e.g., son, friend"
-                                      className="mt-1 w-full px-3 py-2 text-sm sm:text-base border rounded-md dark:bg-gray-700 dark:border-gray-600"
+                                      className="mt-1 w-full px-2 py-1.5 text-sm border rounded-md dark:bg-gray-700 dark:border-gray-600"
                                       style={{ fontSize: '16px' }}
                                     />
                                   </div>
@@ -331,10 +332,11 @@ export default function PhotoAnalysisModal({
               </p>
             </div>
           )}
+          </div>
         </div>
 
         {/* Footer - Mobile optimized */}
-        <div className="sticky bottom-0 bg-white dark:bg-gray-800 flex flex-col sm:flex-row gap-2 sm:gap-0 sm:justify-between items-stretch sm:items-center p-4 sm:p-6 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex-shrink-0 bg-white dark:bg-gray-800 flex flex-col sm:flex-row gap-2 sm:gap-0 sm:justify-between items-stretch sm:items-center p-4 sm:p-6 border-t border-gray-200 dark:border-gray-700">
           <button
             onClick={onSkip}
             className="order-2 sm:order-1 px-4 py-3 sm:py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100"

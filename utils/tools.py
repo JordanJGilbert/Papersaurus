@@ -131,7 +131,7 @@ async def brave_search(query, count=10, offset=None, country="us", search_lang="
                             }
                             formatted_results["faq_results"].append(faq_item)
                     
-                    print(f"Brave Search API response: {formatted_results}")
+                    print(f"Brave Search API response: {len(formatted_results.get('results', []))} results, {len(formatted_results.get('faq_results', []))} FAQs")
                     return formatted_results
                 else:
                     error_data = await response.text()

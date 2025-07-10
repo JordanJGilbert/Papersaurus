@@ -55,7 +55,17 @@ The app uses a step-based wizard with modular components:
 
 ## Recent Updates
 
-### Reference Photo Analysis Feature (Latest - January 2025)
+### Photo Upload Moved to Step 1 (Latest Update - January 2025)
+Reference photo upload has been moved from Step 3 to Step 1 for better user experience:
+
+#### Key Improvements:
+- **Earlier Engagement**: Users can upload photos right at the start
+- **Automatic Compression**: Files over 10MB are automatically compressed
+- **Better Flow**: Photo context available throughout the wizard
+- **Cleaner Separation**: Step 3 now focused solely on artistic style
+- **No Model Dependency**: Photos can be uploaded regardless of image model selection
+
+### Reference Photo Analysis Feature (January 2025)
 Added intelligent photo analysis capabilities for personalized character creation:
 
 #### New Features:
@@ -77,7 +87,7 @@ Added intelligent photo analysis capabilities for personalized character creatio
 - Maintains backward compatibility (analysis is optional)
 
 #### User Flow:
-1. Upload reference photo in Step 3
+1. Upload reference photo in Step 1 (moved from Step 3)
 2. AI analyzes photo and detects people
 3. Modal appears showing detected people
 4. User selects who to include and optionally names them
@@ -136,6 +146,8 @@ QR codes are automatically generated for each card:
    - Card type selection (Birthday, Anniversary, Thank You, etc.)
    - Tone selection (Funny, Heartfelt, Professional, etc.)
    - To/From fields (optional personalization)
+   - Reference photo upload (optional) with automatic compression for files >10MB
+   - Photo analysis for person selection and naming
    - Recent cards history display
 
 2. **Step 2 - Content & Message**
@@ -147,8 +159,7 @@ QR codes are automatically generated for each card:
 
 3. **Step 3 - Personalization (Optional)**
    - Artistic style selection
-   - Reference photo upload for cartoonification
-   - Photo analysis for person selection and naming (NEW)
+   - Shows confirmation if photos were uploaded in Step 1
    - Smart style recommendations
 
 4. **Step 4 - Email Address**
@@ -182,11 +193,28 @@ npm run dev
 
 ### Testing Changes in Production
 When testing changes on the production server:
+
+**For Frontend Changes (Next.js):**
 ```bash
-npm run build
 sudo systemctl restart vibecarding.service
 ```
-This ensures the Next.js app is rebuilt and the service is restarted with the latest changes.
+Note: The service automatically runs `npm run build` before starting, so no separate build step is needed.
+
+**For Backend Changes (Flask/app.py):**
+```bash
+sudo systemctl restart flask_app.service
+```
+
+**For MCP Server Changes (mcp_client/mcp_servers/*.py):**
+```bash
+sudo systemctl restart mcp_service.service
+```
+
+**IMPORTANT**: 
+- The VibeCarding service includes `ExecStartPre=npm run build` in its systemd configuration, so it automatically builds before starting
+- Always restart the Flask service when making changes to `app.py` or any backend Python files
+- Always restart the MCP service when making changes to any MCP server files
+- All services run under process managers and won't reflect changes until restarted
 
 ### Email Testing
 To test email functionality:

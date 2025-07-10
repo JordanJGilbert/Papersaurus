@@ -12,7 +12,8 @@ export function useMessageGeneration(
   selectedTone: string,
   prompt: string,
   toField: string,
-  fromField: string
+  fromField: string,
+  photoAnalyses?: any[]
 ) {
   const [finalCardMessage, setFinalCardMessage] = useState("");
   const [isGeneratingMessage, setIsGeneratingMessage] = useState(false);
@@ -85,7 +86,8 @@ export function useMessageGeneration(
         toneDescription: toneDescription,
         theme: effectivePrompt,
         toField: toField,
-        fromField: fromField
+        fromField: fromField,
+        photoAnalyses: photoAnalyses
       };
 
       const messagePrompt = PromptGenerator.generateMessagePrompt(messageConfig);
@@ -124,7 +126,7 @@ export function useMessageGeneration(
     } finally {
       setIsGeneratingMessage(false);
     }
-  }, [selectedType, customCardType, selectedTone, prompt, toField, fromField, finalCardMessage]);
+  }, [selectedType, customCardType, selectedTone, prompt, toField, fromField, finalCardMessage, photoAnalyses]);
 
   return {
     finalCardMessage,

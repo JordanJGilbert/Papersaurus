@@ -10,12 +10,15 @@ EnvironmentFile=/var/www/flask_app/.env
 Environment="PATH=/var/www/flask_app/.venv/bin:/home/ec2-user/.nvm/versions/node/v22.14.0/bin:/usr/local/bin:/usr/bin:/bin"
 Environment=NODE_ENV=production
 Environment=NEXT_TELEMETRY_DISABLED=1
+# Build the Next.js app before starting
+ExecStartPre=/home/ec2-user/.nvm/versions/node/v22.14.0/bin/npm run build
 ExecStart=/home/ec2-user/.nvm/versions/node/v22.14.0/bin/npm start
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
-TimeoutStartSec=60
+# Increase timeout to allow for build process
+TimeoutStartSec=300
 TimeoutStopSec=60
 KillMode=mixed
 KillSignal=SIGTERM

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from 'uuid';
 
@@ -98,15 +98,16 @@ export function useCardStudio() {
   // Use modular hooks
   const webSocket = useWebSocket();
   const jobManagement = useJobManagement();
+  const fileHandling = useFileHandling();
   const messageGeneration = useMessageGeneration(
     selectedType,
     customCardType,
     selectedTone,
     prompt,
     toField,
-    fromField
+    fromField,
+    fileHandling.photoAnalyses
   );
-  const fileHandling = useFileHandling();
   
   // Draft generation props
   const draftGenerationProps = {
@@ -342,11 +343,56 @@ export function useCardStudio() {
     webSocket.setJobUpdateHandler(handleJobUpdate);
   }, [webSocket, handleJobUpdate]);
 
+  // Track if we've already logged the stale job message
+  const staleJobLoggedRef = useRef(false);
+
   // Auto-reconnect WebSocket if disconnected during active generation
   useEffect(() => {
     if (!webSocket.isSocketConnected && 
         (cardGeneration.isGenerating || draftGeneration.isGeneratingFinalCard) && 
         webSocket.currentJobRef.current) {
+      
+      // Check if the generation has been running for more than 5 minutes
+      if (jobManagement.generationStartTime) {
+        const jobAge = Date.now() - jobManagement.generationStartTime;
+        if (jobAge > 5 * 60 * 1000) { // 5 minutes
+          if (!staleJobLoggedRef.current) {
+            console.log('⏰ Job is older than 5 minutes, stopping reconnection attempts');
+            staleJobLoggedRef.current = true;
+            
+            // Clean up stale job
+            const jobId = webSocket.currentJobRef.current;
+            if (jobId) {
+              console.log('🧹 Cleaning up stale job:', jobId);
+              
+              // Remove from localStorage (only if not a draft job)
+              if (!jobId.startsWith('draft-')) {
+                jobManagement.removeJobFromStorage(jobId);
+              }
+              
+              // Reset generation states
+              cardGeneration.setIsGenerating(false);
+              draftGeneration.setIsGeneratingFinalCard(false);
+              draftGeneration.setIsDraftMode(false);
+              draftGeneration.setDraftCards([]);
+              draftGeneration.setDraftCompletionCount(0);
+              draftGeneration.setDraftCompletionShown(false);
+              jobManagement.setCurrentJobId(null);
+              jobManagement.setGenerationProgress('');
+              jobManagement.setProgressPercentage(0);
+              jobManagement.stopElapsedTimeTracking();
+              
+              // Unsubscribe from job
+              webSocket.unsubscribeFromJob(jobId);
+              
+              // Show error toast
+              toast.error('Card generation timed out. Please try again.');
+            }
+          }
+          return;
+        }
+      }
+      
       console.log('🔄 WebSocket disconnected during generation, attempting reconnect...');
       const reconnectTimer = setTimeout(() => {
         webSocket.connectWebSocket();
@@ -363,7 +409,14 @@ export function useCardStudio() {
       
       return () => clearTimeout(reconnectTimer);
     }
-  }, [webSocket, cardGeneration.isGenerating, draftGeneration.isGeneratingFinalCard]);
+  }, [webSocket, cardGeneration.isGenerating, draftGeneration.isGeneratingFinalCard, jobManagement.generationStartTime]);
+
+  // Reset stale job flag when generation starts
+  useEffect(() => {
+    if (cardGeneration.isGenerating || draftGeneration.isGeneratingFinalCard) {
+      staleJobLoggedRef.current = false;
+    }
+  }, [cardGeneration.isGenerating, draftGeneration.isGeneratingFinalCard]);
 
   // Monitor for stale job updates
   useEffect(() => {

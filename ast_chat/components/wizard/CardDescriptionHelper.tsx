@@ -11,6 +11,7 @@ interface CardDescriptionHelperProps {
   formData: CardFormData;
   onAddToDescription: (text: string) => void;
   chatWithAI?: (message: string, options: any) => Promise<any>;
+  photoAnalyses?: any[];
 }
 
 // Contextual inspiration chips based on card type and tone
@@ -37,29 +38,66 @@ const getInspirationChips = (cardType: string, tone: string): string[] => {
 };
 
 // AI brainstorming prompts
-const getBrainstormPrompt = (cardType: string, tone: string, recipient?: string) => {
+const getBrainstormPrompt = (cardType: string, tone: string, recipient?: string, photoContext?: string) => {
   const recipientText = recipient ? `for ${recipient}` : '';
+  const photoText = photoContext ? `\n\nIMPORTANT: The user has uploaded reference photos with the following context:\n${photoContext}\n\nIncorporate these specific people and elements into your suggestions.` : '';
   
-  return `Generate 4 creative and specific card description ideas for a ${tone} ${cardType} card ${recipientText}. 
-  Each idea should be 5-10 words and include specific visual elements, themes, or scenes.
-  Make them unique and imaginative, not generic.
+  return `Generate 4 creative and specific card description ideas for a ${tone} ${cardType} card ${recipientText}.${photoText}
+  Each idea should be 20-30 words long and paint a vivid picture with specific visual elements, themes, scenes, and artistic details.
+  Make them detailed, unique and imaginative - not generic. Include colors, styles, compositions, and emotional elements.
   Return as a JSON array of strings.`;
 };
 
 export default function CardDescriptionHelper({ 
   formData, 
   onAddToDescription,
-  chatWithAI 
+  chatWithAI,
+  photoAnalyses = [] 
 }: CardDescriptionHelperProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
-  // Get contextual chips
-  const inspirationChips = useMemo(() => 
-    getInspirationChips(formData.selectedType, formData.selectedTone),
-    [formData.selectedType, formData.selectedTone]
-  );
+  // Get contextual chips (including photo-aware suggestions)
+  const inspirationChips = useMemo(() => {
+    const baseChips = getInspirationChips(formData.selectedType, formData.selectedTone);
+    
+    // Add photo-specific chips if we have analyzed photos
+    if (photoAnalyses && photoAnalyses.length > 0) {
+      const photoChips: string[] = [];
+      const selectedPeople = photoAnalyses.flatMap(analysis => 
+        analysis.selectedPeople || []
+      );
+      
+      if (selectedPeople.length > 0) {
+        // Add people-based suggestions
+        if (selectedPeople.length === 1) {
+          const person = selectedPeople[0];
+          const name = person.name || 'them';
+          photoChips.push(`${name} portrait 🎨`);
+          photoChips.push(`${name} in action`);
+        } else {
+          photoChips.push('group portrait 👥');
+          photoChips.push('everyone together');
+        }
+        
+        // Add activity/scene based suggestions if available
+        const firstAnalysis = photoAnalyses[0];
+        if (firstAnalysis?.backgroundDescription) {
+          if (firstAnalysis.backgroundDescription.toLowerCase().includes('outdoor')) {
+            photoChips.push('outdoor adventure 🌳');
+          } else if (firstAnalysis.backgroundDescription.toLowerCase().includes('indoor')) {
+            photoChips.push('cozy indoor scene 🏠');
+          }
+        }
+      }
+      
+      // Combine photo chips with base chips, photo chips first
+      return [...photoChips, ...baseChips].slice(0, 6); // Limit to 6 chips total
+    }
+    
+    return baseChips;
+  }, [formData.selectedType, formData.selectedTone, photoAnalyses]);
 
   // Handle chip click
   const handleChipClick = (chip: string) => {
@@ -76,10 +114,39 @@ export default function CardDescriptionHelper({
     setShowSuggestions(true);
     
     try {
+      // Build photo context from analyses
+      let photoContext = '';
+      if (photoAnalyses && photoAnalyses.length > 0) {
+        const selectedPeople = photoAnalyses.flatMap(analysis => 
+          analysis.selectedPeople || []
+        );
+        
+        if (selectedPeople.length > 0) {
+          const peopleDescriptions = selectedPeople.map(person => {
+            const name = person.name || person.description;
+            const details = [];
+            if (person.appearance) details.push(person.appearance);
+            if (person.age) details.push(`${person.age} years old`);
+            if (person.position) details.push(person.position);
+            if (person.expression) details.push(person.expression);
+            return `${name}: ${details.join(', ')}`;
+          });
+          
+          photoContext = `People in photos: ${peopleDescriptions.join('; ')}. `;
+          
+          // Add scene/background info if available
+          const firstAnalysis = photoAnalyses[0];
+          if (firstAnalysis?.backgroundDescription) {
+            photoContext += `Scene: ${firstAnalysis.backgroundDescription}.`;
+          }
+        }
+      }
+      
       const prompt = getBrainstormPrompt(
         formData.selectedType, 
         formData.selectedTone,
-        formData.toField
+        formData.toField,
+        photoContext
       );
       
       const response = await chatWithAI(prompt, {
@@ -97,10 +164,10 @@ export default function CardDescriptionHelper({
       console.error('Error generating suggestions:', error);
       // Fallback suggestions
       setAiSuggestions([
-        'colorful celebration scene',
-        'personalized cartoon portrait',
-        'nature-inspired design',
-        'modern geometric patterns'
+        'A vibrant celebration scene with colorful balloons, confetti, and joyful characters dancing under sparkling party lights in watercolor style',
+        'A personalized cartoon portrait featuring the recipient surrounded by their favorite hobbies, pets, and meaningful symbols in bright cheerful colors',
+        'A serene nature-inspired design with blooming wildflowers, butterflies, and soft pastel sunset creating a peaceful, dreamy atmosphere',
+        'Modern geometric patterns in bold jewel tones creating an elegant abstract design with gold accents and sophisticated minimalist appeal'
       ]);
     } finally {
       setIsGenerating(false);
@@ -155,7 +222,7 @@ export default function CardDescriptionHelper({
           {isGenerating ? (
             <div className="space-y-2">
               {[...Array(4)].map((_, i) => (
-                <Skeleton key={i} className="h-8 w-full" />
+                <Skeleton key={i} className="h-16 w-full" />
               ))}
             </div>
           ) : aiSuggestions.length > 0 && (
@@ -166,7 +233,7 @@ export default function CardDescriptionHelper({
               {aiSuggestions.map((suggestion, index) => (
                 <div
                   key={index}
-                  className="text-sm p-2 bg-background rounded cursor-pointer hover:bg-accent transition-colors"
+                  className="text-sm p-3 bg-background rounded cursor-pointer hover:bg-accent transition-colors leading-relaxed"
                   onClick={() => onAddToDescription(suggestion)}
                 >
                   {suggestion}
