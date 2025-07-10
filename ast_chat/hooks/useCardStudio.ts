@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { v4 as uuidv4 } from 'uuid';
 import * as QRCode from 'qrcode';
 import io, { Socket } from 'socket.io-client';
+import { PromptGenerator, CardConfig, DraftConfig, MessageConfig, FinalFromDraftConfig } from '@/lib/promptGenerator';
 
 // Configuration for the backend API endpoint
 const BACKEND_API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_API_URL || 'https://vibecarding.com';
@@ -373,6 +374,7 @@ export function useCardStudio() {
   const socketRef = useRef<Socket | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const currentJobRef = useRef<string | null>(null);
+  const lastJobUpdateRef = useRef<number>(Date.now());
 
   // All your existing state from page.tsx
   const [prompt, setPrompt] = useState("");
@@ -629,11 +631,24 @@ export function useCardStudio() {
     const isDraftJob = job_id.startsWith('draft-');
     const draftIndex = isDraftJob ? parseInt(job_id.split('-')[1]) : -1;
     
-    console.log('🔄 Processing job update:', { job_id, status, isDraftJob, draftIndex });
+    console.log('🔄 Processing job update:', { job_id, status, isDraftJob, draftIndex, progress });
+    
+    // Store last update time for the job
+    if (job_id === currentJobRef.current) {
+      lastJobUpdateRef.current = Date.now();
+    }
     
     // Update progress if provided
     if (progress) {
       setGenerationProgress(progress);
+      
+      // Extract percentage from progress string if possible
+      const percentMatch = progress.match(/(\d+)%/);
+      if (percentMatch) {
+        const percent = parseInt(percentMatch[1]);
+        setProgressPercentage(percent);
+        console.log(`📊 Progress update: ${percent}% - ${progress}`);
+      }
     }
     
     if (status === 'completed' && cardData) {
@@ -856,11 +871,50 @@ export function useCardStudio() {
       console.log('🔄 WebSocket disconnected during generation, attempting reconnect...');
       const reconnectTimer = setTimeout(() => {
         connectWebSocket();
+        
+        // Re-subscribe to current job after reconnection
+        const jobId = currentJobRef.current;
+        if (jobId) {
+          setTimeout(() => {
+            console.log('📡 Re-subscribing to job after reconnect:', jobId);
+            subscribeToJob(jobId);
+          }, 1000); // Give socket time to connect
+        }
       }, 2000);
       
       return () => clearTimeout(reconnectTimer);
     }
-  }, [isSocketConnected, isGenerating, isGeneratingFinalCard, connectWebSocket]);
+  }, [isSocketConnected, isGenerating, isGeneratingFinalCard, connectWebSocket, subscribeToJob]);
+
+  // Monitor for stale job updates (no update for 30 seconds)
+  useEffect(() => {
+    if ((isGenerating || isGeneratingFinalCard) && currentJobRef.current) {
+      const checkInterval = setInterval(() => {
+        const timeSinceLastUpdate = Date.now() - lastJobUpdateRef.current;
+        if (timeSinceLastUpdate > 30000) { // 30 seconds without update
+          console.warn('⚠️ No job updates for 30 seconds, checking connection...');
+          
+          // If WebSocket is disconnected, try to reconnect
+          if (!isSocketConnected) {
+            console.log('🔄 WebSocket disconnected, reconnecting...');
+            connectWebSocket();
+          } else {
+            // WebSocket is connected but no updates - might need to re-subscribe
+            const jobId = currentJobRef.current;
+            if (jobId) {
+              console.log('📡 Re-subscribing to job due to stale updates:', jobId);
+              subscribeToJob(jobId);
+            }
+          }
+          
+          // Reset the timer
+          lastJobUpdateRef.current = Date.now();
+        }
+      }, 10000); // Check every 10 seconds
+      
+      return () => clearInterval(checkInterval);
+    }
+  }, [isGenerating, isGeneratingFinalCard, isSocketConnected, connectWebSocket, subscribeToJob]);
 
   // Helper function to scroll to card preview
   const scrollToCardPreview = () => {
@@ -1023,34 +1077,19 @@ export function useCardStudio() {
       // Use effective prompt logic here too
       const effectivePrompt = prompt.trim() || `A beautiful ${cardTypeForPrompt} card with ${toneDescription} style`;
       
-      const messagePrompt = `Create a ${toneDescription} message for a ${cardTypeForPrompt} greeting card.
+      // Use PromptGenerator for message generation
+      const messageConfig: MessageConfig = {
+        cardType: selectedType,
+        customCardType: customCardType,
+        tone: selectedTone,
+        toneLabel: selectedToneObj ? selectedToneObj.label : "Heartfelt",
+        toneDescription: toneDescription,
+        theme: effectivePrompt,
+        toField: toField,
+        fromField: fromField
+      };
 
-Card Theme/Description: "${effectivePrompt}"
-${toField ? `Recipient: ${toField}` : "Recipient: [not specified]"}
-${fromField ? `Sender: ${fromField}` : "Sender: [not specified]"}
-Card Tone: ${selectedToneObj ? selectedToneObj.label : "Heartfelt"} - ${toneDescription}
-
-Instructions:
-- Write a message that is ${toneDescription} and feels personal and genuine
-- ${toField ? `Address the message to ${toField} directly, using their name naturally` : "Write in a way that could be personalized to any recipient"}
-- ${fromField ? `Write as if ${fromField} is personally writing this message` : `Write in a ${toneDescription} tone`}
-- Match the ${toneDescription} tone and occasion of the ${cardTypeForPrompt} card type
-- Be inspired by the theme: "${effectivePrompt}"
-- Keep it concise but meaningful (2-4 sentences ideal)
-- Make it feel authentic, not generic
-- SAFETY: Never include brand names, character names, trademarked terms, or inappropriate content. If the theme references these, use generic alternatives or focus on the emotions/concepts instead
-- Keep content family-friendly and appropriate for all ages
-- ${selectedTone === 'funny' ? 'Include appropriate humor that fits the occasion' : ''}
-- ${selectedTone === 'genz-humor' ? 'Use GenZ humor with internet slang, memes, and chaotic energy - think "no cap", "periodt", "it\'s giving...", "slay", etc. Be unhinged but endearing' : ''}
-- ${selectedTone === 'professional' ? 'Keep it formal and business-appropriate' : ''}
-- ${selectedTone === 'romantic' ? 'Include loving and romantic language' : ''}
-- ${selectedTone === 'playful' ? 'Use fun and energetic language' : ''}
-- ${toField && fromField ? `Show the relationship between ${fromField} and ${toField} through the ${toneDescription} message tone` : ""}
-- ${fromField ? `End the message with a signature line like "Love, ${fromField}" or "- ${fromField}" or similar, naturally integrated into the message.` : ""}
-
-Return ONLY the message text that should appear inside the card - no quotes, no explanations, no markdown formatting (no *bold*, _italics_, or other markdown), just the complete ${toneDescription} message in plain text.
-
-IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outside these tags will be ignored.`;
+      const messagePrompt = PromptGenerator.generateMessagePrompt(messageConfig);
 
       const generatedMessage = await chatWithAI(messagePrompt, {
         model: "gemini-2.5-pro",
@@ -1076,9 +1115,13 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
         addMessageToHistory(extractedMessage);
         
         toast.success("✨ Personalized message created!");
+        
+        // Return the generated message so the caller can use it
+        return extractedMessage;
       }
     } catch (error) {
       toast.error("Failed to generate message. Please try again.");
+      return null;
     } finally {
       setIsGeneratingMessage(false);
     }
@@ -1138,6 +1181,7 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
       setCurrentJobId(jobId);
       
       const cardTypeForPrompt = selectedType === "custom" ? customCardType : selectedType;
+      const selectedToneObj = cardTones.find(tone => tone.id === selectedTone);
       let messageContent = finalCardMessage;
       
       // Handle message generation if needed
@@ -1187,61 +1231,45 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags.`;
 
       setGenerationProgress("🎨 Creating artistic vision for your card...");
 
-      // Generate prompts
-      const promptGenerationQuery = `Create prompts for a ${cardTypeForPrompt} greeting card.
+      // Use PromptGenerator for card prompts
+      const cardConfig: CardConfig = {
+        cardType: selectedType,
+        customCardType: customCardType,
+        tone: selectedTone,
+        toneDescription: selectedToneObj?.description.toLowerCase() || "heartfelt and sincere",
+        theme: prompt || `A beautiful ${cardTypeForPrompt} card`,
+        toField: toField,
+        fromField: fromField,
+        message: messageContent,
+        isHandwrittenMessage: isHandwrittenMessage,
+        artisticStyle: selectedStyle,
+        referenceImageUrls: referenceImageUrls,
+        isFrontBackOnly: isFrontBackOnly,
+        selectedImageModel: selectedImageModel
+      };
 
-Theme: "${prompt || `A beautiful ${cardTypeForPrompt} card`}"
-Style: ${selectedStyle?.label || "Default"}
-${toField ? `To: ${toField}` : ""}
-${fromField ? `From: ${fromField}` : ""}
-${!isFrontBackOnly ? `Message: "${messageContent}"` : ""}
-${referenceImageUrls.length > 0 ? `Reference Photos: ${referenceImageUrls.length} photo(s) provided for character creation` : ""}
+      const generatedPrompts = PromptGenerator.generateCardPrompts(cardConfig);
 
-Requirements:
-- Flat 2D artwork for printing
-- Full-bleed backgrounds extending to edges
-- Keep text, faces, and key elements at least 10% away from top/bottom edges
-- Family-friendly and appropriate for greeting cards
-- Style: ${styleModifier}
+      // Apply reference photo enhancements for GPT-1
+      if (referenceImageUrls.length > 0 && selectedImageModel === "gpt-1") {
+        generatedPrompts.frontCover = PromptGenerator.enhancePromptWithReferencePhotos(
+          generatedPrompts.frontCover, 
+          true, 
+          selectedImageModel
+        );
+      }
 
-${!isFrontBackOnly ? `For the right interior page with the message, ensure:
-- EXACT TEXT REPRODUCTION: The message text must be reproduced EXACTLY as written: "${messageContent}" - every word, punctuation mark, and character must be perfect
-- CRYSTAL CLEAR LEGIBILITY: The handwriting must be extremely readable - prioritize clarity over artistic flourishes
-- NO SPELLING ERRORS: Every word must be spelled correctly exactly as provided in the message
-- PROPER SPACING: Use appropriate letter spacing, word spacing, and line spacing for easy reading
-- CONTRAST: Ensure high contrast between text and background for maximum readability
-- SIZE: Make text large enough to read easily - avoid cramped or tiny text that's difficult to decipher
-- COMPLETE MESSAGE: Include the ENTIRE message text - do not truncate, abbreviate, or omit any part
-- Use beautiful, clearly readable handwritten cursive script that feels elegant and personal
-- The handwriting should be legible first, elegant second - readability is the top priority
-- Position the message text in the optimal location for readability (center area, avoid top/bottom 10%)
-- Create decorative elements that complement but never interfere with text legibility
-- Ensure decorative artwork frames the message beautifully without obscuring any text` : ''}
+      // For compatibility with the chatWithAI response format, we'll need to format the prompts
+      const formattedPrompts = {
+        frontCover: generatedPrompts.frontCover,
+        backCover: generatedPrompts.backCover,
+        ...(isFrontBackOnly ? {} : {
+          leftInterior: generatedPrompts.leftInterior,
+          rightInterior: generatedPrompts.rightInterior
+        })
+      };
 
-Return JSON:
-{
-  "frontCover": "detailed front cover prompt",
-  "backCover": "detailed back cover prompt"${!isFrontBackOnly ? ',\n  "leftInterior": "detailed left interior prompt",\n  "rightInterior": "detailed right interior prompt"' : ''}
-}`;
-
-      const generatedPrompts = await chatWithAI(promptGenerationQuery, {
-        jsonSchema: {
-          type: "object",
-          properties: {
-            frontCover: { type: "string" },
-            backCover: { type: "string" },
-            ...(isFrontBackOnly ? {} : { 
-              leftInterior: { type: "string" },
-              rightInterior: { type: "string" }
-            })
-          },
-          required: ["frontCover", "backCover", ...(isFrontBackOnly ? [] : ["leftInterior", "rightInterior"])]
-        },
-        model: "gemini-2.5-pro",
-        attachments: referenceImageUrls
-      });
-
-      if (!generatedPrompts || !generatedPrompts.frontCover) {
+      if (!formattedPrompts || !formattedPrompts.frontCover) {
         throw new Error("Failed to generate image prompts");
       }
 
@@ -1261,7 +1289,7 @@ Return JSON:
         isFrontBackOnly,
         numberOfCards,
         selectedPaperSize,
-        prompts: generatedPrompts,
+        prompts: formattedPrompts,
         paperConfig
       };
       
@@ -1280,7 +1308,7 @@ Return JSON:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           jobId,
-          prompts: generatedPrompts,
+          prompts: formattedPrompts,
           config: {
             userNumber: "+17145986105",
             modelVersion: selectedImageModel,
@@ -1434,24 +1462,23 @@ Return JSON:
             ? customStyleDescription 
             : selectedStyle?.promptModifier || "";
 
-          const frontCoverPromptQuery = `You are an expert AI greeting card designer. Create a front cover prompt for a ${cardTypeForPrompt} greeting card.
+          // Use PromptGenerator for draft prompts
+          const draftConfig: DraftConfig = {
+            cardType: selectedType,
+            customCardType: customCardType,
+            tone: selectedTone,
+            toneLabel: selectedToneObj ? selectedToneObj.label : "Heartfelt",
+            toneDescription: toneDescription,
+            theme: effectivePrompt,
+            toField: toField,
+            fromField: fromField,
+            artisticStyle: selectedStyle,
+            referenceImageUrls: referenceImageUrls,
+            isDraftVariation: selectedArtisticStyle === "smart",
+            variationIndex: index
+          };
 
-Theme: "${effectivePrompt}"
-Style: ${selectedStyle?.label || "Default"}
-Tone: ${selectedToneObj ? selectedToneObj.label : "Heartfelt"} - ${toneDescription}
-${toField ? `To: ${toField}` : ""}
-${fromField ? `From: ${fromField}` : ""}
-${referenceImageUrls.length > 0 ? `Reference Photos: I have attached ${referenceImageUrls.length} reference photo${referenceImageUrls.length > 1 ? 's' : ''} for character creation.` : ""}
-
-Front Cover Requirements:
-- Include "${cardTypeForPrompt}" greeting text positioned safely in center area (avoid top/bottom 10%)
-- Use beautiful, readable handwritten cursive script
-- ${referenceImageUrls.length > 0 ? 'Create cartoon/illustrated characters from reference photos' : 'Create charming cartoon-style figures if needed'}
-- Be creative and unique, avoid generic designs
-- Flat 2D artwork for printing
-- Style: ${styleModifier}
-
-Return ONLY the front cover prompt as plain text.`;
+          const frontCoverPromptQuery = PromptGenerator.generateDraftPrompt(draftConfig);
 
           const frontCoverPrompt = await chatWithAI(frontCoverPromptQuery, {
             model: "gemini-2.5-pro",
@@ -1464,9 +1491,11 @@ Return ONLY the front cover prompt as plain text.`;
 
           // Enhance with reference image instructions if available
           let enhancedFrontCoverPrompt = frontCoverPrompt.trim();
-          if (referenceImageUrls.length > 0 && selectedDraftModel === "gpt-image-1") {
-            enhancedFrontCoverPrompt += `\n\nCRITICAL CHARACTER REFERENCE INSTRUCTIONS: I have provided ${referenceImageUrls.length > 1 ? 'multiple reference photos' : 'a reference photo'} as input image${referenceImageUrls.length > 1 ? 's' : ''}. You MUST create cartoon/illustrated characters that accurately represent ONLY the people who are actually visible in ${referenceImageUrls.length > 1 ? 'these reference photos' : 'this reference photo'} with high fidelity to their appearance.`;
-          }
+          enhancedFrontCoverPrompt = PromptGenerator.enhancePromptWithReferencePhotos(
+            enhancedFrontCoverPrompt,
+            referenceImageUrls.length > 0,
+            selectedDraftModel
+          );
 
           // Generate the image
           const jobId = `draft-${index}-${uuidv4()}`;
@@ -1628,104 +1657,35 @@ Return ONLY the front cover prompt as plain text.`;
       
       // Get style from the selected draft or fall back to current setting  
       const draftStyleInfo = selectedDraft.styleInfo;
+      let selectedStyle;
       let styleModifier = "";
       if (draftStyleInfo && draftStyleInfo.styleName) {
-        const selectedStyle = artisticStyles.find(style => style.id === draftStyleInfo.styleName);
+        selectedStyle = artisticStyles.find(style => style.id === draftStyleInfo.styleName);
         styleModifier = selectedStyle?.promptModifier || "";
       } else {
-        const selectedStyle = artisticStyles.find(style => style.id === selectedArtisticStyle);
+        selectedStyle = artisticStyles.find(style => style.id === selectedArtisticStyle);
         styleModifier = selectedArtisticStyle === "custom" 
           ? customStyleDescription 
           : selectedStyle?.promptModifier || "";
       }
       
-      const generateOtherPromptsQuery = `You are creating the remaining prompts for a greeting card. You already have the front cover prompt below.
+      // Use PromptGenerator for final card from draft
+      const finalFromDraftConfig: FinalFromDraftConfig = {
+        frontCoverPrompt: storedFrontCoverPrompt,
+        cardType: selectedType,
+        customCardType: customCardType,
+        theme: effectivePrompt,
+        tone: selectedTone,
+        toneDescription: toneDescription,
+        toField: toField,
+        fromField: fromField,
+        message: messageContent,
+        isHandwrittenMessage: isHandwrittenMessage,
+        artisticStyle: selectedStyle,
+        isFrontBackOnly: isFrontBackOnly
+      };
 
-EXISTING FRONT COVER PROMPT:
-"${storedFrontCoverPrompt}"
-
-CARD CONTEXT:
-- Type: ${cardTypeForPrompt}
-- Theme: "${effectivePrompt}"  
-- Tone: ${toneDescription}
-${toField ? `- To: ${toField}` : ""}
-${fromField ? `- From: ${fromField}` : ""}
-${!isFrontBackOnly ? `- Message: "${messageContent}"` : ""}
-${isHandwrittenMessage ? "- Note: Include space for handwritten message" : ""}
-
-TASK: Create prompts for the remaining card sections that are visually cohesive with the existing front cover. Use the same color palette, artistic style, lighting, and visual elements from the front cover to create a unified design.
-
-Requirements:
-- Maintain visual continuity with the front cover design
-- Use the same artistic style: ${styleModifier}
-- Keep consistent color palette, lighting, and mood
-- Full-bleed backgrounds extending to edges
-- Keep text/faces 0.5" from left/right edges for safe printing
-- IMPORTANT: Keep text, faces, and key elements at least 10% away from top/bottom edges
-
-Generate prompts for:
-
-1. Back Cover: Create a simple, peaceful design that complements the front cover. Reference subtle elements from the front cover but keep it minimal and serene. NO PEOPLE, just beautiful artistic elements. IMPORTANT: Leave the bottom-right corner area (approximately 1 inch square) completely clear and undecorated for QR code placement.
-
-${!isFrontBackOnly ? `2. Left Interior: Creative decorative art that harmonizes with the front cover style. NO PEOPLE or characters, focus on artistic elements like patterns, landscapes, objects, or abstract art that matches the front cover's mood and style.
-
-3. Right Interior: ${isHandwrittenMessage ? `Design elegant writing space with decorative elements that complement the front cover style. Position decorative elements safely away from edges. NO PEOPLE or characters.` : `Include message text: "${messageContent}" positioned safely in center area (avoid top/bottom 10% of image) integrated into decorative artwork that matches the front cover style. 
-
-CRITICAL TEXT ACCURACY & LEGIBILITY REQUIREMENTS:
-- EXACT TEXT REPRODUCTION: The message text must be reproduced EXACTLY as written: "${messageContent}" - every word, punctuation mark, and character must be perfect
-- PUT TEXT IN QUOTES: Always enclose the message text in double quotes like "message..." to make it clear this is literal text to be rendered exactly
-- CRYSTAL CLEAR LEGIBILITY: The handwriting must be extremely readable - prioritize clarity over artistic flourishes
-- NO SPELLING ERRORS: Every word must be spelled correctly exactly as provided in the message
-- PROPER SPACING: Use appropriate letter spacing, word spacing, and line spacing for easy reading
-- CONTRAST: Ensure high contrast between text and background for maximum readability
-- SIZE: Make text large enough to read easily - avoid cramped or tiny text that's difficult to decipher
-- COMPLETE MESSAGE: Include the ENTIRE message text - do not truncate, abbreviate, or omit any part
-
-HANDWRITING STYLE SPECIFICATIONS:
-- Use beautiful, clearly readable handwritten cursive script that feels elegant and personal
-- The handwriting should be legible first, elegant second - readability is the top priority
-- Maintain consistent character formation throughout the message
-- Use natural, flowing strokes with slight variations in line weight for authenticity
-- Think of sophisticated calligraphy that's still approachable and easy to read
-- The handwriting should feel genuine and heartfelt but never sacrifice clarity
-- Use a nice pen-style appearance with natural ink flow
-
-LAYOUT & INTEGRATION:
-- Position the message text in the optimal location for readability (center area, avoid top/bottom 10%)
-- Create decorative elements that complement but never interfere with text legibility
-- Ensure decorative artwork frames the message beautifully without obscuring any text
-- Think beyond typical florals and patterns - create something unexpected and artistic
-- NO PEOPLE or characters in the decorative elements
-- The decorative elements should enhance the message's emotional impact
-
-QUALITY ASSURANCE:
-- Before finalizing, verify that every word in "${messageContent}" is clearly legible
-- Check that the text flows naturally and maintains consistent style throughout
-- Ensure the message stands out prominently against the background
-- Confirm that decorative elements enhance rather than distract from the text. NO PEOPLE or characters.`}` : ''}
-
-Return JSON:
-{
-  "frontCover": "${storedFrontCoverPrompt}",
-  "backCover": "detailed back cover prompt"${!isFrontBackOnly ? ',\n  "leftInterior": "detailed left interior prompt",\n  "rightInterior": "detailed right interior prompt"' : ''}
-}`;
-
-      const finalPrompts = await chatWithAI(generateOtherPromptsQuery, {
-        jsonSchema: {
-          type: "object",
-          properties: {
-            frontCover: { type: "string" },
-            backCover: { type: "string" },
-            ...(isFrontBackOnly ? {} : { 
-              leftInterior: { type: "string" },
-              rightInterior: { type: "string" }
-            })
-          },
-          required: ["frontCover", "backCover", ...(isFrontBackOnly ? [] : ["leftInterior", "rightInterior"])]
-        },
-        model: "gemini-2.5-pro",
-        attachments: referenceImageUrls
-      });
+      const finalPrompts = PromptGenerator.generateFinalFromDraftPrompts(finalFromDraftConfig);
 
       if (!finalPrompts || !finalPrompts.frontCover || !finalPrompts.backCover) {
         throw new Error("Failed to generate complete prompts for final card");

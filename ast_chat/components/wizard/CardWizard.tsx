@@ -80,6 +80,9 @@ export default function CardWizard() {
   
   // History modal state
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  
+  // Flag to prevent auto-saving during resume
+  const [isResumingDraft, setIsResumingDraft] = useState(false);
 
   // Check for pending jobs on component mount
   useEffect(() => {
@@ -88,21 +91,21 @@ export default function CardWizard() {
 
   // Auto-save drafts when user creates draft cards
   useEffect(() => {
-    if (cardStudio.draftCards.length > 0 && cardForm.isInitialLoadComplete) {
+    if (cardStudio.draftCards.length > 0 && cardForm.isInitialLoadComplete && !isResumingDraft) {
       cardHistory.saveDraftSession(
         cardForm.formData,
         cardStudio.draftCards,
         cardStudio.selectedDraftIndex
       );
     }
-  }, [cardStudio.draftCards, cardStudio.selectedDraftIndex, cardForm.formData, cardForm.isInitialLoadComplete, cardHistory]);
+  }, [cardStudio.draftCards, cardStudio.selectedDraftIndex, cardForm.formData, cardForm.isInitialLoadComplete, isResumingDraft]);
 
   // Auto-save completed cards
   useEffect(() => {
     if (cardStudio.generatedCard && cardStudio.isCardCompleted) {
       cardHistory.addCompletedCard(cardStudio.generatedCard);
     }
-  }, [cardStudio.generatedCard, cardStudio.isCardCompleted, cardHistory]);
+  }, [cardStudio.generatedCard, cardStudio.isCardCompleted]);
 
   // Sync form data with cardStudio when form data changes
   useEffect(() => {
@@ -130,7 +133,7 @@ export default function CardWizard() {
     cardStudio.setSelectedPaperSize(formData.selectedPaperSize);
     cardStudio.setNumberOfCards(formData.numberOfCards);
     cardStudio.setIsFrontBackOnly(formData.isFrontBackOnly);
-  }, [cardForm.formData, cardForm.isInitialLoadComplete, cardStudio]);
+  }, [cardForm.formData, cardForm.isInitialLoadComplete]);
 
   // Create a simplified updateFormData function for the wizard steps
   const updateFormData = (updates: any) => {
@@ -198,80 +201,14 @@ export default function CardWizard() {
 
   // Create a wrapper for handleGetMessageHelp that updates both form and cardStudio
   const handleGetMessageHelpWrapper = async () => {
-    // We need to modify the cardStudio function to also update the form
-    // For now, let's create a custom implementation that does both
-    if (cardStudio.selectedType === "custom" && !cardStudio.customCardType.trim()) {
-      toast.error("Please describe your custom card type first!");
-      return;
-    }
+    // Call the cardStudio's handleGetMessageHelp function which now uses PromptGenerator
+    const generatedMessage = await cardStudio.handleGetMessageHelp();
     
-    cardStudio.setIsGeneratingMessage(true);
-
-    try {
-      const cardTypeForPrompt = cardStudio.selectedType === "custom" ? cardStudio.customCardType : cardStudio.selectedType;
-      const selectedToneObj = cardStudio.cardTones.find(tone => tone.id === cardStudio.selectedTone);
-      const toneDescription = selectedToneObj ? selectedToneObj.description.toLowerCase() : "heartfelt and sincere";
-      
-      const effectivePrompt = cardStudio.prompt.trim() || `A beautiful ${cardTypeForPrompt} card with ${toneDescription} style`;
-      
-      const messagePrompt = `Create a ${toneDescription} message for a ${cardTypeForPrompt} greeting card.
-
-Card Theme/Description: "${effectivePrompt}"
-${cardStudio.toField ? `Recipient: ${cardStudio.toField}` : "Recipient: [not specified]"}
-${cardStudio.fromField ? `Sender: ${cardStudio.fromField}` : "Sender: [not specified]"}
-Card Tone: ${selectedToneObj ? selectedToneObj.label : "Heartfelt"} - ${toneDescription}
-
-Instructions:
-- Write a message that is ${toneDescription} and feels personal and genuine
-- ${cardStudio.toField ? `Address the message to ${cardStudio.toField} directly, using their name naturally` : "Write in a way that could be personalized to any recipient"}
-- ${cardStudio.fromField ? `Write as if ${cardStudio.fromField} is personally writing this message` : `Write in a ${toneDescription} tone`}
-- Match the ${toneDescription} tone and occasion of the ${cardTypeForPrompt} card type
-- Be inspired by the theme: "${effectivePrompt}"
-- Keep it concise but meaningful (2-4 sentences ideal)
-- Make it feel authentic, not generic
-- SAFETY: Never include brand names, character names, trademarked terms, or inappropriate content. If the theme references these, use generic alternatives or focus on the emotions/concepts instead
-- Keep content family-friendly and appropriate for all ages
-- ${cardStudio.selectedTone === 'funny' ? 'Include appropriate humor that fits the occasion' : ''}
-- ${cardStudio.selectedTone === 'genz-humor' ? 'Use GenZ humor with internet slang, memes, and chaotic energy - think "no cap", "periodt", "it\'s giving...", "slay", etc. Be unhinged but endearing' : ''}
-- ${cardStudio.selectedTone === 'professional' ? 'Keep it formal and business-appropriate' : ''}
-- ${cardStudio.selectedTone === 'romantic' ? 'Include loving and romantic language' : ''}
-- ${cardStudio.selectedTone === 'playful' ? 'Use fun and energetic language' : ''}
-- ${cardStudio.toField && cardStudio.fromField ? `Show the relationship between ${cardStudio.fromField} and ${cardStudio.toField} through the ${toneDescription} message tone` : ""}
-- ${cardStudio.fromField ? `End the message with a signature line like "Love, ${cardStudio.fromField}" or "- ${cardStudio.fromField}" or similar, naturally integrated into the message.` : ""}
-
-Return ONLY the message text that should appear inside the card - no quotes, no explanations, no markdown formatting (no *bold*, _italics_, or other markdown), just the complete ${toneDescription} message in plain text.
-
-IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outside these tags will be ignored.`;
-
-      const generatedMessage = await cardStudio.chatWithAI(messagePrompt, {
-        model: "gemini-2.5-pro",
-        includeThoughts: false
+    // After message generation, update the form data with the new message
+    if (generatedMessage) {
+      updateFormData({
+        finalCardMessage: generatedMessage
       });
-
-      if (generatedMessage?.trim()) {
-        const messageMatch = generatedMessage.match(/<MESSAGE>([\s\S]*?)<\/MESSAGE>/);
-        let extractedMessage = messageMatch ? messageMatch[1].trim() : generatedMessage.trim();
-        
-        extractedMessage = extractedMessage.replace(/<\/?MESSAGE>/g, '').trim();
-        
-        // Update both cardStudio state and form data
-        cardStudio.setFinalCardMessage(extractedMessage);
-        updateFormData({
-          finalCardMessage: extractedMessage
-        });
-        
-        // Add to history
-        if (cardStudio.finalCardMessage.trim() && cardStudio.finalCardMessage.trim() !== extractedMessage) {
-          cardStudio.addMessageToHistory(cardStudio.finalCardMessage);
-        }
-        cardStudio.addMessageToHistory(extractedMessage);
-        
-        toast.success("✨ Personalized message created!");
-      }
-    } catch (error) {
-      toast.error("Failed to generate message. Please try again.");
-    } finally {
-      cardStudio.setIsGeneratingMessage(false);
     }
   };
 
@@ -307,6 +244,9 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
 
   // Resume draft session
   const handleResumeDraft = (sessionId: string) => {
+    // Set flag to prevent auto-saving during resume
+    setIsResumingDraft(true);
+    
     const session = cardHistory.resumeDraftSession(sessionId);
     if (session) {
       // Update form data with saved session data
@@ -327,6 +267,13 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
       }
       
       toast.success('Draft session resumed successfully!');
+      
+      // Reset flag after a short delay to allow state updates to complete
+      setTimeout(() => {
+        setIsResumingDraft(false);
+      }, 100);
+    } else {
+      setIsResumingDraft(false);
     }
   };
 
@@ -433,6 +380,10 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
             }}
             handleGetMessageHelp={handleGetMessageHelpWrapper}
             isGeneratingMessage={cardStudio.isGeneratingMessage}
+            messageHistory={cardStudio.messageHistory}
+            currentMessageIndex={cardStudio.currentMessageIndex}
+            undoMessage={cardStudio.undoMessage}
+            redoMessage={cardStudio.redoMessage}
           />
         );
       

@@ -1,10 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, MessageSquarePlus } from "lucide-react";
+import { ChevronDown, MessageSquarePlus, RefreshCw, Undo2, Redo2, History } from "lucide-react";
 import { CardFormData } from "@/hooks/useCardForm";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 interface Step2Props {
   formData: CardFormData;
@@ -12,9 +20,23 @@ interface Step2Props {
   onStepComplete?: () => void;
   handleGetMessageHelp?: () => Promise<void>;
   isGeneratingMessage?: boolean;
+  messageHistory?: string[];
+  currentMessageIndex?: number;
+  undoMessage?: () => void;
+  redoMessage?: () => void;
 }
 
-export default function Step2ContentCreation({ formData, updateFormData, onStepComplete, handleGetMessageHelp, isGeneratingMessage }: Step2Props) {
+export default function Step2ContentCreation({ 
+  formData, 
+  updateFormData, 
+  onStepComplete, 
+  handleGetMessageHelp, 
+  isGeneratingMessage,
+  messageHistory = [],
+  currentMessageIndex = -1,
+  undoMessage,
+  redoMessage
+}: Step2Props) {
   const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
   const [isMessageExpanded, setIsMessageExpanded] = useState(false);
 
@@ -28,6 +50,32 @@ export default function Step2ContentCreation({ formData, updateFormData, onStepC
       await handleGetMessageHelp();
     }
   };
+
+  // Dynamic placeholder based on card type and tone
+  const messagePlaceholder = useMemo(() => {
+    if (formData.isHandwrittenMessage) return "✍️ Leave blank - you'll handwrite";
+    
+    const { selectedType, selectedTone } = formData;
+    
+    if (selectedType === 'birthday' && selectedTone === 'funny') {
+      return "💝 Add a joke about their age or a funny memory...";
+    } else if (selectedType === 'anniversary' && selectedTone === 'romantic') {
+      return "💝 Express your love and cherished memories...";
+    } else if (selectedType === 'thank-you' && selectedTone === 'professional') {
+      return "💝 Express gratitude professionally...";
+    } else if (selectedTone === 'funny') {
+      return "💝 Add humor, jokes, or funny memories...";
+    } else if (selectedTone === 'heartfelt') {
+      return "💝 Share sincere feelings and warm wishes...";
+    }
+    
+    return "💝 Your message here... (or click 'Help me write')";
+  }, [formData.selectedType, formData.selectedTone, formData.isHandwrittenMessage]);
+
+  const canUndo = currentMessageIndex > 0;
+  const canRedo = currentMessageIndex < messageHistory.length - 1;
+  const characterCount = formData.finalCardMessage?.length || 0;
+  const isIdealLength = characterCount >= 50 && characterCount <= 150;
 
   return (
     <div className="space-y-6">
@@ -75,7 +123,73 @@ export default function Step2ContentCreation({ formData, updateFormData, onStepC
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
             Card Message
           </label>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            {/* Message History Dropdown */}
+            {messageHistory.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1 text-xs"
+                    disabled={formData.isHandwrittenMessage}
+                  >
+                    <History className="w-3 h-3" />
+                    <span className="hidden sm:inline">History</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-80">
+                  {messageHistory.map((msg, idx) => (
+                    <DropdownMenuItem
+                      key={idx}
+                      onClick={() => updateFormData({ finalCardMessage: msg })}
+                      className="block"
+                    >
+                      <div className="text-sm truncate">{msg}</div>
+                      {idx === currentMessageIndex && (
+                        <div className="text-xs text-muted-foreground mt-1">Current</div>
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                  {messageHistory.length > 5 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                        Showing last {Math.min(5, messageHistory.length)} messages
+                      </div>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            
+            {/* Undo/Redo Buttons */}
+            {(undoMessage || redoMessage) && (
+              <div className="flex gap-0.5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={undoMessage}
+                  disabled={!canUndo || formData.isHandwrittenMessage}
+                  className="px-1.5"
+                  title="Undo"
+                >
+                  <Undo2 className="w-3 h-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={redoMessage}
+                  disabled={!canRedo || formData.isHandwrittenMessage}
+                  className="px-1.5"
+                  title="Redo"
+                >
+                  <Redo2 className="w-3 h-3" />
+                </Button>
+              </div>
+            )}
+            
+            {/* Expand/Collapse */}
             <Button
               variant="ghost"
               size="sm"
@@ -85,36 +199,78 @@ export default function Step2ContentCreation({ formData, updateFormData, onStepC
               {isMessageExpanded ? (
                 <>
                   <ChevronDown className="w-3 h-3" />
-                  Collapse
+                  <span className="hidden sm:inline">Collapse</span>
                 </>
               ) : (
                 <>
                   <ChevronDown className="w-3 h-3 rotate-180" />
-                  Expand
+                  <span className="hidden sm:inline">Expand</span>
                 </>
               )}
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleMessageGeneration}
-              disabled={isGeneratingMessage || formData.isHandwrittenMessage}
-              className="gap-1 text-xs"
-            >
-              <MessageSquarePlus className="w-3 h-3" />
-              {isGeneratingMessage ? "Writing..." : "Help me write"}
-            </Button>
+            
+            {/* AI Generation Buttons */}
+            <div className="flex gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleMessageGeneration}
+                disabled={isGeneratingMessage || formData.isHandwrittenMessage}
+                className="gap-1 text-xs"
+              >
+                <MessageSquarePlus className="w-3 h-3" />
+                {isGeneratingMessage ? "Writing..." : "Help me write"}
+              </Button>
+              {formData.finalCardMessage && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleMessageGeneration}
+                  disabled={isGeneratingMessage || formData.isHandwrittenMessage}
+                  className="gap-1 text-xs"
+                  title="Generate another variation"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span className="hidden sm:inline">Try another</span>
+                </Button>
+              )}
+            </div>
           </div>
         </div>
-        <Textarea
-          placeholder={formData.isHandwrittenMessage ? "✍️ Leave blank - you'll handwrite" : "💝 Your message here... (or click 'Help me write')"}
-          value={formData.finalCardMessage}
-          onChange={(e) => updateFormData({ finalCardMessage: e.target.value })}
-          rows={isMessageExpanded ? 6 : 3}
-          className={isMessageExpanded ? "resize-y" : "resize-none"}
-          style={{ fontSize: '16px' }}
-          disabled={formData.isHandwrittenMessage}
-        />
+        
+        {/* Message Textarea with Loading State */}
+        <div className="relative">
+          {isGeneratingMessage ? (
+            <div className="space-y-2">
+              <Skeleton className="h-16 w-full" />
+              <div className="text-xs text-muted-foreground animate-pulse">
+                Creating personalized message...
+              </div>
+            </div>
+          ) : (
+            <Textarea
+              placeholder={messagePlaceholder}
+              value={formData.finalCardMessage}
+              onChange={(e) => updateFormData({ finalCardMessage: e.target.value })}
+              rows={isMessageExpanded ? 6 : 3}
+              className={isMessageExpanded ? "resize-y" : "resize-none"}
+              style={{ fontSize: '16px' }}
+              disabled={formData.isHandwrittenMessage}
+            />
+          )}
+        </div>
+        
+        {/* Character Count */}
+        {formData.finalCardMessage && !formData.isHandwrittenMessage && (
+          <div className="flex justify-between items-center mt-1">
+            <div className="text-xs text-muted-foreground">
+              {characterCount} characters
+            </div>
+            <div className={`text-xs ${isIdealLength ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}>
+              {isIdealLength ? '✓ ' : ''}Ideal: 50-150 characters
+            </div>
+          </div>
+        )}
         
         {/* Handwritten Message Option */}
         <div className="flex items-center space-x-2 mt-2">
