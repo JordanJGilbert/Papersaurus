@@ -1,0 +1,17 @@
+{
+  "id": "outgoingNeonGrasshopper",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_2a266357.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_aafcaa76.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_80992571.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_eb0d779e.png",
+  "generatedPrompts": {
+    "frontCover": "A watercolor painting in a flat 2D style for a greeting card front. Two cartoon-illustrated sisters, based on the reference photo, are depicted in a comically intense argument in Seattle. In the background, a soft, rain-streaked watercolor scene shows the Space Needle and Pike Place Market. The first sister, with her specific hairstyle and clothing from the photo, dramatically gestures towards an overturned box of fish, as if scolding it. The second sister, also matching her reference photo appearance, has her arms crossed with an exaggerated \"Oakland\" tough-girl pout, defiantly ignoring her sibling to stare down a cartoon seagull that is cheekily trying to steal a french fry from a paper cone on the ground. The scene is full of humorous tension and lighthearted sibling rivalry. Centered on the card in a beautiful, readable, handwritten cursive script is the text \"sisters at battle\". The artwork features soft flowing colors, artistic brush strokes, a visible paper texture, and organic paint bleeds characteristic of watercolor.",
+    "backCover": "A minimalist watercolor accent for a greeting card back. A single, gracefully curved brushstroke in a muted teal, reminiscent of a Seattle rain cloud, sweeps across the top-left corner. The watercolor style features soft flowing colors, visible paper texture, and organic paint bleeds. The composition is simple, leaving the bottom-right area completely empty for a QR code. Flat 2D artwork.",
+    "leftInterior": "A subtle watercolor background for a greeting card interior. A wash of soft grays and muted blues, evoking a rainy Seattle sky, covers the entire panel. In the top-left and bottom-right corners, small, artistic splatters of a warm, coffee-brown color add a gentle contrast. The overall design is understated, featuring soft flowing colors, artistic brush strokes, a visible paper texture, and organic paint bleeds. Flat 2D artwork with no people or text.",
+    "rightInterior": "A simple watercolor design for a greeting card interior. A plain off-white background with a visible paper texture provides a clean space for text. A delicate, hand-painted brown coffee mug, steaming gently, is placed in the bottom-left corner as a small, charming detail. The watercolor style features soft flowing colors and organic paint bleeds, ensuring the illustration does not interfere with the message area. The message 'To the Li Sisters,\nHeard there was a battle brewing in Seattle! You can take the girls out of Oakland, but you can't take the Oakland out of the girls, I guess. Hope you've declared a truce over some good coffee!' is centered on the card in a clean, sans-serif font."
+  },
+  "createdAt": 1752125821.2980616,
+  "expiresAt": 1783661821.298062,
+  "version": 1
+}

@@ -367,7 +367,7 @@ export function useDraftGeneration(props: DraftGenerationProps) {
             userNumber: "+17145986105",
             modelVersion: selectedImageModel,
             aspectRatio: paperSizes.find(size => size.id === selectedPaperSize)?.aspectRatio || "9:16",
-            quality: "medium",
+            quality: "high",
             outputFormat: "jpeg",
             outputCompression: 100,
             moderation: "low",

@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { History, Clock, CheckCircle } from "lucide-react";
+import { History, Clock, CheckCircle, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import StepIndicator from "./StepIndicator";
@@ -157,6 +157,25 @@ export default function CardWizard() {
   // Check if we can proceed from current step
   const canProceed = validateStep(wizardState.currentStep);
 
+  // Handle create new card
+  const handleCreateNew = () => {
+    if (wizardState.currentStep > 1 || cardForm.formData.selectedType || cardForm.formData.selectedTone) {
+      // Show confirmation if user has made progress
+      if (window.confirm('Are you sure you want to start over? All current progress will be lost.')) {
+        cardForm.resetForm();
+        wizardState.resetWizardState();
+        // TODO: Add resetStudio method to cardStudio hook
+        // Reset key cardStudio state manually for now
+        cardStudio.setDraftCards([]);
+        cardStudio.setGeneratedCard(null);
+        cardStudio.setIsGenerating(false);
+        cardStudio.setGenerationProgress("");
+        cardStudio.setSelectedDraftIndex(-1);
+        toast.success('Started new card');
+      }
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 px-4 sm:px-6 lg:px-8 safe-area-padding">
       {/* Header with History Button */}
@@ -179,23 +198,37 @@ export default function CardWizard() {
           )}
         </div>
         
-        {/* Draft Resume Banner */}
-        {cardHistory.hasDraftSessions && (
-          <div className="flex items-center gap-2 text-sm">
-            <Clock className="w-4 h-4 text-purple-600" />
-            <span className="text-gray-600 dark:text-gray-400">
-              {cardHistory.totalDrafts} saved session{cardHistory.totalDrafts !== 1 ? 's' : ''}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowHistoryModal(true)}
-              className="text-purple-600 hover:text-purple-700"
-            >
-              Resume
-            </Button>
-          </div>
-        )}
+        {/* Right side buttons */}
+        <div className="flex items-center gap-2">
+          {/* Create New Card Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCreateNew}
+            className="flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">New Card</span>
+          </Button>
+          
+          {/* Draft Resume Banner */}
+          {cardHistory.hasDraftSessions && (
+            <div className="flex items-center gap-2 text-sm">
+              <Clock className="w-4 h-4 text-purple-600" />
+              <span className="text-gray-600 dark:text-gray-400 hidden sm:inline">
+                {cardHistory.totalDrafts} saved
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowHistoryModal(true)}
+                className="text-purple-600 hover:text-purple-700"
+              >
+                Resume
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Step Indicator */}

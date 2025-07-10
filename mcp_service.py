@@ -1,4 +1,23 @@
 #!/usr/bin/env python3
+
+# Configure logging BEFORE any imports to ensure it takes precedence
+import logging
+
+# Set up basic logging configuration to prevent child processes from overriding
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=None  # Don't set a stream handler here, let individual loggers handle it
+)
+
+# Suppress specific noisy loggers
+logging.getLogger("sse_starlette").setLevel(logging.WARNING)
+logging.getLogger("sse_starlette.sse").setLevel(logging.WARNING)
+logging.getLogger("mcp.server.streamable_http").setLevel(logging.WARNING)
+logging.getLogger("mcp.server").setLevel(logging.WARNING)
+logging.getLogger("mcp").setLevel(logging.WARNING)
+
+# Now import everything else
 import os
 import sys
 import json
@@ -15,7 +34,6 @@ from pydantic import BaseModel, Field, model_validator
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager, AsyncExitStack
 from collections import defaultdict
-import logging
 import subprocess
 import traceback
 import uuid
@@ -1080,6 +1098,9 @@ class MCPManager:
                     
                     # Ensure unbuffered output for immediate print statement visibility
                     server_env["PYTHONUNBUFFERED"] = "1"
+                    # Suppress debug logging in child processes
+                    server_env["PYTHONWARNINGS"] = "ignore"
+                    server_env["MCP_LOG_LEVEL"] = "WARNING"
                     
                     config = {
                         "command": "python",
@@ -1152,6 +1173,9 @@ class MCPManager:
         
         # Ensure unbuffered output for immediate print statement visibility
         server_env["PYTHONUNBUFFERED"] = "1"
+        # Suppress debug logging in child processes
+        server_env["PYTHONWARNINGS"] = "ignore"
+        server_env["MCP_LOG_LEVEL"] = "WARNING"
         
         # server_script_path can be absolute (e.g., from create_mcp_server) or relative
         config = {
@@ -1274,12 +1298,12 @@ service_globally_initialized = False
 
 # Set up logger for mcp_service
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 # Create console handler if not already present
 if not logger.handlers:
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG)
+    console_handler.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
@@ -1305,6 +1329,9 @@ async def lifespan(app: FastAPI):
                 if INTERNAL_API_KEY:
                     server_env["MCP_INTERNAL_API_KEY"] = INTERNAL_API_KEY
                 server_env["PYTHONUNBUFFERED"] = "1"
+                # Suppress debug logging in child processes
+                server_env["PYTHONWARNINGS"] = "ignore"
+                server_env["MCP_LOG_LEVEL"] = "WARNING"
                 
                 discovered_server_configs.append({
                     "command": "python",
@@ -1333,6 +1360,9 @@ async def lifespan(app: FastAPI):
                         if INTERNAL_API_KEY:
                             server_env["MCP_INTERNAL_API_KEY"] = INTERNAL_API_KEY
                         server_env["PYTHONUNBUFFERED"] = "1"
+                        # Suppress debug logging in child processes
+                        server_env["PYTHONWARNINGS"] = "ignore"
+                        server_env["MCP_LOG_LEVEL"] = "WARNING"
 
                         # Check if this server config (based on absolute path) is already in discovered_server_configs
                         # This avoids re-adding if a user server somehow matches a core server path pattern

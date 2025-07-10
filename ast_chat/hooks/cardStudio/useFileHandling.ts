@@ -52,13 +52,17 @@ export function useFileHandling() {
         console.log("🔍 DEBUG: Reference image uploaded successfully:", {
           fileName: file.name,
           url: result.url,
+          newImageIndex,
           totalImages: referenceImages.length + 1
         });
         toast.success(`Reference image uploaded! ${referenceImages.length + 1} photo${referenceImages.length + 1 > 1 ? 's' : ''} ready for character creation.`);
         
-        // Trigger analysis modal for this image
-        setPendingAnalysisIndex(newImageIndex);
-        setShowAnalysisModal(true);
+        // Wait a moment for state to update before triggering analysis modal
+        setTimeout(() => {
+          console.log("🔍 Opening analysis modal for index:", newImageIndex);
+          setPendingAnalysisIndex(newImageIndex);
+          setShowAnalysisModal(true);
+        }, 100);
       }
     } catch (error) {
       toast.error("Upload failed. Please try again.");
@@ -88,70 +92,146 @@ export function useFileHandling() {
 
   // Analyze a photo using AI vision
   const analyzePhoto = useCallback(async (imageUrl: string, imageIndex: number): Promise<PhotoAnalysisResult | null> => {
+    console.log("📸 Starting photo analysis for:", imageUrl);
     setIsAnalyzing(true);
     try {
-      const analysisPrompt = `Analyze this photo and identify all people visible. For each person:
-1. Describe their position in the image (far-left, left, center-left, center, center-right, right, far-right)
-2. Provide a brief description of their appearance
-3. Estimate their apparent age range (e.g., "20-25", "40s", "elderly")
+      // Ensure the image URL is absolute
+      let fullImageUrl = imageUrl;
+      if (imageUrl.startsWith('/')) {
+        fullImageUrl = `${window.location.origin}${imageUrl}`;
+      }
+      console.log("📸 Using full image URL:", fullImageUrl);
+      
+      const analysisPrompt = `Analyze this photo and provide a detailed JSON response with the following structure:
+{
+  "peopleCount": <number of people in photo>,
+  "people": [
+    {
+      "id": "person-1",
+      "position": <one of: "far-left", "left", "center-left", "center", "center-right", "right", "far-right">,
+      "positionDescription": <natural description like "person on the far left wearing blue">,
+      "description": <overall appearance description>,
+      "apparentAge": <age range like "20-25" or "40s">,
+      "gender": <apparent gender if identifiable>,
+      "hairColor": <hair color>,
+      "hairStyle": <hair style/length>,
+      "distinguishingFeatures": <notable features like glasses, beard, etc.>,
+      "clothing": <what they're wearing>,
+      "expression": <facial expression/mood>
+    }
+  ],
+  "hasPets": <boolean>,
+  "petDescription": <description of pets if present>,
+  "backgroundDescription": <description of the background/environment>,
+  "setting": <type of setting like "outdoor park", "beach", "indoor", etc.>,
+  "overallMood": <overall mood/atmosphere of the photo>,
+  "lighting": <lighting conditions>
+}
+
+For each person:
+1. Describe their position in the image using the enum values
+2. Provide a brief description of their appearance  
+3. Estimate their apparent age range
 4. Note their hair color and style
 5. Describe their clothing
 6. Note any distinguishing features
 7. Describe their expression/mood
-8. Also note if there are any pets, the background/setting, overall mood, and lighting
 
-Return a detailed JSON response following the schema provided.`;
+Return ONLY the JSON response, no additional text.`;
 
-      const result = await chatWithAI(analysisPrompt, {
-        attachments: [imageUrl],
-        model: "gemini-2.0-flash-exp",
-        jsonSchema: {
-          type: "object",
-          properties: {
-            peopleCount: { type: "number", description: "Total number of people in the photo" },
-            people: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  id: { type: "string", description: "Unique identifier like 'person-1'" },
-                  position: { 
-                    type: "string", 
-                    enum: ["far-left", "left", "center-left", "center", "center-right", "right", "far-right"],
-                    description: "Position in the image"
-                  },
-                  positionDescription: { type: "string", description: "Natural description like 'person on the far left wearing blue'" },
-                  description: { type: "string", description: "Overall appearance description" },
-                  apparentAge: { type: "string", description: "Age range like '20-25' or '40s'" },
-                  gender: { type: "string", description: "Apparent gender if identifiable" },
-                  hairColor: { type: "string", description: "Hair color" },
-                  hairStyle: { type: "string", description: "Hair style/length" },
-                  distinguishingFeatures: { type: "string", description: "Notable features like glasses, beard, etc." },
-                  clothing: { type: "string", description: "What they're wearing" },
-                  expression: { type: "string", description: "Facial expression/mood" }
-                },
-                required: ["id", "position", "positionDescription", "description", "apparentAge", "hairColor", "hairStyle", "clothing", "expression"]
-              }
-            },
-            hasPets: { type: "boolean", description: "Whether pets are visible" },
-            petDescription: { type: "string", description: "Description of pets if present" },
-            backgroundDescription: { type: "string", description: "Description of the background/environment" },
-            setting: { type: "string", description: "Type of setting (outdoor park, beach, indoor, etc.)" },
-            overallMood: { type: "string", description: "Overall mood/atmosphere of the photo" },
-            lighting: { type: "string", description: "Lighting conditions" }
-          },
-          required: ["peopleCount", "people", "hasPets", "backgroundDescription", "setting", "overallMood", "lighting"]
-        }
+      // Use the analyze_images tool through the MCP service
+      const response = await fetch('/internal/call_mcp_tool', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tool_name: 'analyze_images',
+          arguments: {
+            urls: [fullImageUrl],
+            analysis_prompt: analysisPrompt
+          }
+        })
       });
-
-      console.log("📸 Photo analysis result:", result);
-      return result as PhotoAnalysisResult;
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("analyze_images error response:", errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      
+      const data = await response.json();
+      console.log("🤖 analyze_images response data:", data);
+      
+      if (data.error && data.error !== "None" && data.error !== null) {
+        throw new Error(data.error);
+      }
+      
+      let result;
+      if (typeof data.result === 'string') {
+        try {
+          result = JSON.parse(data.result);
+        } catch {
+          result = { status: 'error', message: 'Invalid JSON response from MCP' };
+        }
+      } else {
+        result = data.result;
+      }
+      
+      if (result.status === 'error') {
+        throw new Error(result.message);
+      }
+      
+      // Extract the analysis from the results array
+      if (result.results && result.results.length > 0) {
+        const imageResult = result.results[0];
+        if (imageResult.status === 'success' && imageResult.analysis) {
+          console.log("📸 Raw analysis text:", imageResult.analysis);
+          
+          // Try to parse the analysis as JSON
+          try {
+            // Extract JSON from the analysis text
+            let jsonText = imageResult.analysis;
+            
+            // If the response contains markdown code blocks, extract the JSON
+            const jsonMatch = jsonText.match(/```json\s*([\s\S]*?)\s*```/);
+            if (jsonMatch) {
+              jsonText = jsonMatch[1];
+            }
+            
+            // Parse the JSON
+            const analysisData = JSON.parse(jsonText);
+            console.log("📸 Parsed analysis data:", analysisData);
+            
+            // Ensure the data matches our expected structure
+            if (typeof analysisData.peopleCount === 'number' && Array.isArray(analysisData.people)) {
+              setIsAnalyzing(false);
+              return analysisData as PhotoAnalysisResult;
+            } else {
+              console.error("Analysis data doesn't match expected structure");
+              setIsAnalyzing(false);
+              return null;
+            }
+          } catch (parseError) {
+            console.error("Failed to parse analysis as JSON:", parseError);
+            console.error("Raw analysis:", imageResult.analysis);
+            setIsAnalyzing(false);
+            return null;
+          }
+        } else {
+          console.error("Image analysis failed:", imageResult.message);
+          setIsAnalyzing(false);
+          return null;
+        }
+      } else {
+        console.error("No results returned from analyze_images");
+        setIsAnalyzing(false);
+        return null;
+      }
+      
     } catch (error) {
       console.error("Failed to analyze photo:", error);
       toast.error("Failed to analyze photo. You can still use it without analysis.");
-      return null;
-    } finally {
       setIsAnalyzing(false);
+      return null;
     }
   }, []);
 

@@ -152,8 +152,8 @@ async def analyze_images(urls: list, analysis_prompt: str = "Describe this image
                 with ThreadPoolExecutor(max_workers=4) as executor:
                     img_bytes = await asyncio.get_event_loop().run_in_executor(executor, process_image)
 
-                # Use the adapter for Gemini LLM call - using Flash-Lite for faster analysis
-                adapter = get_llm_adapter("gemini-2.5-flash-lite-preview-06-17")
+                # Use the adapter for Gemini LLM call - using 2.5 Pro for better accuracy
+                adapter = get_llm_adapter("gemini-2.5-pro")
                 attachment = AttachmentPart(mime_type="image/jpeg", data=img_bytes, name=url)
                 history = [
                     StandardizedMessage(
@@ -164,7 +164,7 @@ async def analyze_images(urls: list, analysis_prompt: str = "Describe this image
                 ]
                 llm_config = StandardizedLLMConfig()
                 llm_response = await adapter.generate_content(
-                    model_name="gemini-2.5-flash-lite-preview-06-17",
+                    model_name="gemini-2.5-pro",
                     history=history,
                     tools=None,
                     config=llm_config

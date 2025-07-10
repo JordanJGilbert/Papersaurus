@@ -1,0 +1,17 @@
+{
+  "id": "devotedMintBee",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_fc4c10b9.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_a04a0273.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_42ce6de3.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_e4c961ae.png",
+  "generatedPrompts": {
+    "frontCover": "A charming cartoon watercolor scene of a slightly frazzled, but happy, sloth wearing a party hat, awkwardly attempting to hang a \"Happy Birthday\" banner with the help of a confused toucan and a mischievous monkey. The sloth is tangled in the banner string, the toucan is holding one end with its beak, and the monkey is playfully pulling the other end, causing the banner to sag comically in the middle. In the center of the sagging banner, the text \"Happy Birthday Sarah!\" is written in a beautiful, readable, handwritten cursive script. The entire scene is rendered in a soft, flowing watercolor style with visible artistic brushstrokes, subtle paint splatters, and organic paint bleeds on a textured paper background. The colors are vibrant yet gentle, contributing to a lighthearted and humorous feel. Flat 2D artwork.",
+    "backCover": "A minimalist design featuring a small, elegant watercolor illustration of two intertwined jungle vines with a few simple, colorful tropical leaves in the top-left corner. The illustration is done in a soft, flowing watercolor painting style with gentle, vibrant colors, artistic brush strokes, and subtle organic paint bleeds on a textured paper background. The rest of the panel is the clean, textured paper background, leaving the bottom-right area completely empty. Flat 2D artwork.",
+    "leftInterior": "A decorative border of lush, tropical watercolor foliage, including monstera leaves and ferns, frames the top and left sides of the panel. The illustration uses a soft, flowing watercolor painting style with gentle, vibrant colors, visible artistic brush strokes, and organic paint bleeds, all against a textured paper background, creating a subtle and complementary design. Flat 2D artwork.",
+    "rightInterior": "The message 'Happy Birthday! Hope your day is filled with joy and laughter!' is centered in a clean, easily readable san-serif font. The background is a simple, textured paper. In the top-right and bottom-left corners, there are small, delicate watercolor splashes in gentle, vibrant colors, rendered in a soft, flowing watercolor painting style with artistic brush strokes and organic paint bleeds, ensuring the text remains the primary focus. Flat 2D artwork."
+  },
+  "createdAt": 1752175991.22243,
+  "expiresAt": 1783711991.2224305,
+  "version": 1
+}

@@ -105,6 +105,8 @@ export function CardWizardSteps({
           savePhotoAnalysis={cardStudio.savePhotoAnalysis}
           skipPhotoAnalysis={cardStudio.skipPhotoAnalysis}
           setShowAnalysisModal={cardStudio.setShowAnalysisModal}
+          // Pass cardStudio's URLs directly for immediate access
+          referenceImageUrlsFromStudio={cardStudio.referenceImageUrls}
         />
       );
     

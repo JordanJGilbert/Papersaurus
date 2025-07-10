@@ -1,0 +1,79 @@
+{
+  "cd562867-f44a-434a-bc8e-885a1cc2535e": {
+    "filename": "cd562867-f44a-434a-bc8e-885a1cc2535e.png",
+    "path": "/var/www/flask_app/claude_attachments/cd562867-f44a-434a-bc8e-885a1cc2535e.png",
+    "url": "https://vibecarding.com/serve_image?key=attachment_de9d8107-59b3-4777-b499-5bb20029ceb5&type=image/png",
+    "mime_type": "image/png",
+    "timestamp": 1752173097246,
+    "message_id": "+17145986105_1752173097246",
+    "label": "artistic_style_watercolor_selection",
+    "description": "Screenshot showing the 'Watercolor' selection under the 'Artistic Style' menu. It is represented by a paint palette emoji.",
+    "size": 77139
+  },
+  "250907bd-6f4c-453c-8223-3a4126f8f78c": {
+    "filename": "250907bd-6f4c-453c-8223-3a4126f8f78c.jpeg",
+    "path": "/var/www/flask_app/claude_attachments/250907bd-6f4c-453c-8223-3a4126f8f78c.jpeg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_ad28bc60-2e1a-4d2a-aca5-fbe2feb2aaa7&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752173251560,
+    "message_id": "+17145986105_1752173251560",
+    "label": "watercolor_artistic_style_selection",
+    "description": "Screenshot showcasing a \"Watercolor\" selection within an \"Artistic Style\" menu, likely from a mobile application. A paint palette emoji is used as an icon.",
+    "size": 26063
+  },
+  "cf2e011e-431d-4d29-8844-bb139112cafc": {
+    "filename": "cf2e011e-431d-4d29-8844-bb139112cafc.jpeg",
+    "path": "/var/www/flask_app/claude_attachments/cf2e011e-431d-4d29-8844-bb139112cafc.jpeg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_c266e107-3014-43cf-bfec-321c6e27efff&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752173289019,
+    "message_id": "+17145986105_1752173289019",
+    "label": "artistic_style_watercolor_selection",
+    "description": "A screenshot of an application's interface, specifically showing the 'Artistic Style' menu with 'Watercolor' selected. The watercolor option is represented by a paint palette icon.",
+    "size": 26063
+  },
+  "2a370d62-30ea-4e6c-b1bb-04b156febe36": {
+    "filename": "2a370d62-30ea-4e6c-b1bb-04b156febe36.jpg",
+    "path": "/var/www/flask_app/claude_attachments/2a370d62-30ea-4e6c-b1bb-04b156febe36.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_6847a56e-f224-48ee-a852-94d271dc940d&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752173804418,
+    "message_id": "+17145986105_1752173804418",
+    "label": "vibecarding_artistic_style_menu",
+    "description": "This is a screenshot of the VibeCarding app, specifically the artistic style selection menu. Options include watercolor, smart style, custom style, minimalist, botanical and comic book.",
+    "size": 113642
+  },
+  "084d8829-3683-4c09-b099-c8ab4f8d7148": {
+    "filename": "084d8829-3683-4c09-b099-c8ab4f8d7148.jpg",
+    "path": "/var/www/flask_app/claude_attachments/084d8829-3683-4c09-b099-c8ab4f8d7148.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_c9e62dc2-ba5d-4dc5-8b34-2903397a498e&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752174597474,
+    "message_id": "+17145986105_1752174597474",
+    "label": "vibecarding_artistic_style_options",
+    "description": "Screenshot of the Vibecarding app showing the different artistic style options like Watercolor, Smart Style, Custom Style, Minimalist, and Botanical.",
+    "size": 107311
+  },
+  "1a314aa0-1268-406d-acb8-75fef8a746c9": {
+    "filename": "1a314aa0-1268-406d-acb8-75fef8a746c9.jpg",
+    "path": "/var/www/flask_app/claude_attachments/1a314aa0-1268-406d-acb8-75fef8a746c9.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_47542dc1-1cc9-46eb-b60b-cbc2417f607a&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752174925916,
+    "message_id": "+17145986105_1752174925916",
+    "label": "vibecarding_artistic_style_watercolor",
+    "description": "This screenshot from VibeCarding shows the artistic styles available, with watercolor selected. Other style options include Smart Style, Custom Style, Minimalist, and Botanical.",
+    "size": 102981
+  },
+  "e50d2b73-4fe1-448f-83f4-48667e2934ff": {
+    "filename": "e50d2b73-4fe1-448f-83f4-48667e2934ff.jpg",
+    "path": "/var/www/flask_app/claude_attachments/e50d2b73-4fe1-448f-83f4-48667e2934ff.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_9ba564bd-8be3-4b23-8538-22abaee2a657&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752175597065,
+    "message_id": "+17145986105_1752175597065",
+    "label": "group_photo_celebration_backyard",
+    "description": "A group of people are gathered in a backyard setting for a celebration, with decorative lighting and large numbers '25' indicating an anniversary or milestone.",
+    "size": 410039
+  }
+}

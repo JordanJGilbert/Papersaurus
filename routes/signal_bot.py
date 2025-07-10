@@ -218,9 +218,14 @@ async def process_message(msg):
         else:
             sanitized_sender_for_path = "unknown_user_id"
             
-        user_specific_base_data_dir = os.path.join(USER_DATA_BASE_DIR, sanitized_sender_for_path)
-        user_specific_attachments_dir = os.path.join(user_specific_base_data_dir, "attachments")
-        os.makedirs(user_specific_attachments_dir, exist_ok=True)  # Ensure the attachments subdirectory exists
+        # Special handling for Claude Code user (17145986105)
+        if original_sender_number in ["+17145986105", "17145986105"]:
+            user_specific_attachments_dir = "/var/www/flask_app/claude_attachments"
+            os.makedirs(user_specific_attachments_dir, exist_ok=True)
+        else:
+            user_specific_base_data_dir = os.path.join(USER_DATA_BASE_DIR, sanitized_sender_for_path)
+            user_specific_attachments_dir = os.path.join(user_specific_base_data_dir, "attachments")
+            os.makedirs(user_specific_attachments_dir, exist_ok=True)  # Ensure the attachments subdirectory exists
         
         async with aiohttp.ClientSession() as session:
             for attachment in attachments:
@@ -397,7 +402,7 @@ async def process_message(msg):
                 # Update the message text to mention the uploaded images
                 image_count = len([a for a in attachment_urls if a.get("type") == "image"])
                 if image_count > 0:
-                    if message_text.strip():
+                    if message_text and message_text.strip():
                         request_data["query"] = f"{message_text}\n\nUser has uploaded {image_count} image{'s' if image_count != 1 else ''}: {', '.join(urls_only)}"
                     else:
                         request_data["query"] = f"User has uploaded {image_count} image{'s' if image_count != 1 else ''}: {', '.join(urls_only)}"

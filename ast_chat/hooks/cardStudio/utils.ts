@@ -145,6 +145,14 @@ export async function chatWithAI(userMessage: string, options: {
     attachments = []  // Default to empty array
   } = options;
   
+  console.log("🤖 chatWithAI called with:", {
+    messageLength: userMessage.length,
+    model,
+    hasAttachments: attachments.length > 0,
+    attachmentCount: attachments.length,
+    hasJsonSchema: !!jsonSchema
+  });
+  
   try {
     const response = await fetch('/internal/call_mcp_tool', {
       method: 'POST',
@@ -162,9 +170,15 @@ export async function chatWithAI(userMessage: string, options: {
       })
     });
     
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("chatWithAI error response:", errorText);
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
     
     const data = await response.json();
+    console.log("🤖 chatWithAI response data:", data);
+    
     if (data.error && data.error !== "None" && data.error !== null) {
       throw new Error(data.error);
     }

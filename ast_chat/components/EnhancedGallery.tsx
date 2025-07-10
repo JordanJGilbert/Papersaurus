@@ -116,7 +116,7 @@ const EnhancedGallery: React.FC<EnhancedGalleryProps> = ({
         return [...prev, ...uniqueNewCards];
       });
       
-      setHasMore(newCards.length === itemsPerPage && (!isComplete || search));
+      setHasMore(newCards.length === itemsPerPage && (!isComplete || !!search));
       setCurrentPage(page);
     } catch (error) {
       console.error('Error loading cards:', error);

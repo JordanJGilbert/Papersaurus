@@ -10,6 +10,12 @@ VibeCarding is a modern Next.js application that generates personalized greeting
   - Example: `https://vibecarding.com` NOT `http://localhost:3000`
   - This ensures proper testing of the production environment
   - The site is accessible at vibecarding.com with SSL configured
+- **MOBILE FIRST**: This entire app is prioritizing mobile experience
+  - All UI/UX decisions should favor mobile users
+  - When using MCP tools for testing, **always use mobile view**
+  - Test responsiveness and touch interactions on mobile devices
+  - Optimize for small screens and touch targets
+  - Mobile viewport should be the default testing environment
 
 ### Wizard Architecture
 The app uses a step-based wizard with modular components:
@@ -37,9 +43,47 @@ The app uses a step-based wizard with modular components:
 - Each step validates and marks completion independently
 - Navigation between steps is allowed only after validation
 
+### Mobile-First Design Philosophy
+- **Primary Target**: Mobile users (phones and tablets)
+- **Touch Optimization**: All interactive elements have minimum 44x44px touch targets
+- **Responsive Breakpoints**: Mobile-first CSS with desktop as enhancement
+- **Performance**: Optimized for slower mobile connections
+- **UI Components**: Designed for thumb-friendly navigation
+- **Text Sizes**: Readable on small screens without zooming
+- **Forms**: Mobile-optimized input fields with appropriate keyboards
+- **Modals**: Full-screen on mobile for better usability
+
 ## Recent Updates
 
-### Message Generation UX Enhancements (Latest)
+### Reference Photo Analysis Feature (Latest - January 2025)
+Added intelligent photo analysis capabilities for personalized character creation:
+
+#### New Features:
+- **AI Vision Analysis**: Analyzes uploaded photos to detect all people and their characteristics
+- **Person Selection UI**: Interactive modal to select which people to include in the card
+- **Name Assignment**: Ability to name individuals for better personalization (e.g., "Sarah" instead of "person on left")
+- **Relationship Context**: Optional field to specify relationships (e.g., "daughter", "best friend")
+- **Enhanced Prompts**: Generates detailed character descriptions including:
+  - Physical appearance (hair, clothing, age)
+  - Position in photo (for maintaining relationships)
+  - Distinguishing features
+  - Expressions and mood
+
+#### Technical Implementation:
+- Uses Gemini 2.5 Pro with vision capabilities for photo analysis
+- Structured JSON output with TypeScript interfaces
+- PhotoAnalysisModal component for user interaction
+- Enhanced PromptGenerator with person-specific instructions
+- Maintains backward compatibility (analysis is optional)
+
+#### User Flow:
+1. Upload reference photo in Step 3
+2. AI analyzes photo and detects people
+3. Modal appears showing detected people
+4. User selects who to include and optionally names them
+5. Selected people are incorporated into all card designs
+
+### Message Generation UX Enhancements
 Added comprehensive UX improvements to the message creation interface:
 
 #### New Features:
@@ -104,6 +148,7 @@ QR codes are automatically generated for each card:
 3. **Step 3 - Personalization (Optional)**
    - Artistic style selection
    - Reference photo upload for cartoonification
+   - Photo analysis for person selection and naming (NEW)
    - Smart style recommendations
 
 4. **Step 4 - Email Address**
@@ -111,9 +156,10 @@ QR codes are automatically generated for each card:
    - Validation before proceeding
 
 5. **Step 5 - Draft Selection**
-   - AI generates 4 draft variations
-   - Interactive 3D card preview
+   - AI generates 5 draft variations (updated from 4)
+   - Interactive card preview with hover effects
    - Selection determines final generation
+   - Reference photos automatically incorporated into designs
 
 6. **Step 6 - Final Generation**
    - High-quality 4-panel card generation
@@ -134,6 +180,14 @@ npm run dev
 - Domain: https://vibecarding.com
 - SSL: Configured via Nginx
 
+### Testing Changes in Production
+When testing changes on the production server:
+```bash
+npm run build
+sudo systemctl restart vibecarding.service
+```
+This ensures the Next.js app is rebuilt and the service is restarted with the latest changes.
+
 ### Email Testing
 To test email functionality:
 1. Generate a card through the wizard
@@ -142,10 +196,12 @@ To test email functionality:
 4. Check inbox for professionally formatted email
 
 ## AI Models Used
-- **Message Generation**: Gemini Pro 1.5
-- **Image Generation**: DALL-E 3 for drafts, DALL-E 3 or Ideogram for finals
+- **Message Generation**: Gemini 2.5 Pro
+- **Image Generation**: GPT for drafts and finals
 - **Card Descriptions**: GPT-4 for creative prompts
-- **Prompt Generation**: Gemini 2.0 Flash for combined prompt generation
+- **Prompt Generation**: Gemini 2.5 Pro for combined prompt generation
+- **Photo Analysis**: Gemini 2.5 Pro with vision capabilities (NEW)
+- **IMPORTANT**: Always use `gemini-2.5-pro` for ALL AI-related calls (including brainstorming, suggestions, etc.)
 
 ### AI Chat Helper Function (`chatWithAI`)
 The `chatWithAI` helper function in `/hooks/cardStudio/utils.ts` provides a unified interface for AI interactions:
@@ -153,7 +209,7 @@ The `chatWithAI` helper function in `/hooks/cardStudio/utils.ts` provides a unif
 ```typescript
 chatWithAI(userMessage: string, options: {
   systemPrompt?: string | null;
-  model?: string;              // Default: 'gemini-2.5-pro'
+  model?: string;              // Default: 'gemini-2.5-pro' - ALWAYS USE THIS
   includeThoughts?: boolean;    // Default: false
   jsonSchema?: any;            // JSON Schema for structured output
   attachments?: string[];      // Base64 image attachments
@@ -170,7 +226,7 @@ chatWithAI(userMessage: string, options: {
 ```typescript
 const response = await chatWithAI(prompt, {
   systemPrompt: "You are a greeting card designer",
-  model: 'gemini-2.0-flash',
+  model: 'gemini-2.5-pro',  // ALWAYS use gemini-2.5-pro
   jsonSchema: {
     type: "object",
     properties: {
@@ -285,6 +341,7 @@ The gallery at `/gallery` now includes comprehensive UI enhancements:
 - QR codes point to public URLs at `vibecarding.com/cards/{id}`
 - Email templates are inline in the backend code
 - Frontend and backend must be running for full functionality
+- **Note**: Reference photo analysis feature requires deployment of latest code (January 2025)
 
 ## Future Enhancements
 - Message templates library

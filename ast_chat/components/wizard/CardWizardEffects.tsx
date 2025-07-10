@@ -24,6 +24,46 @@ export function CardWizardEffects({
     cardStudio.checkPendingJobs();
   }, []);
 
+  // Auto-resume to the appropriate step based on saved data
+  useEffect(() => {
+    if (!wizardState.isInitialLoadComplete || !cardForm.isInitialLoadComplete) return;
+    
+    // Only auto-advance if we're on step 1 and have data
+    if (wizardState.currentStep === 1 && wizardState.completedSteps.length === 0) {
+      const formData = cardForm.formData;
+      
+      // Check if user has meaningful progress
+      if (formData.userEmail) {
+        // User has email, advance to at least step 4
+        console.log('🔄 Auto-resuming to email step or beyond');
+        wizardState.markStepCompleted(1);
+        if (formData.finalCardMessage || formData.prompt) {
+          wizardState.markStepCompleted(2);
+        }
+        if (formData.selectedArtisticStyle || formData.referenceImages.length > 0) {
+          wizardState.markStepCompleted(3);
+        }
+        wizardState.markStepCompleted(4);
+        
+        // If they have draft cards, go to step 5
+        if (cardStudio.draftCards.length > 0) {
+          wizardState.goToStep(5);
+        } else {
+          wizardState.goToStep(4);
+        }
+      } else if (formData.finalCardMessage || formData.prompt) {
+        // User has message content, advance to step 2
+        console.log('🔄 Auto-resuming to message step');
+        wizardState.markStepCompleted(1);
+        wizardState.goToStep(2);
+      } else if (formData.selectedType && formData.selectedTone) {
+        // User has completed step 1 but not moved on
+        console.log('🔄 Auto-completing step 1');
+        wizardState.markStepCompleted(1);
+      }
+    }
+  }, [wizardState.isInitialLoadComplete, cardForm.isInitialLoadComplete]);
+
   // Auto-save drafts when user creates draft cards
   useEffect(() => {
     if (cardStudio.draftCards.length > 0 && cardForm.isInitialLoadComplete && !isResumingDraft) {

@@ -25,7 +25,7 @@ from llm_adapters import (
 )
 from email.mime.text import MIMEText
 
-logging.basicConfig(stream=sys.stderr, level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(stream=sys.stderr, level=logging.WARNING, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 mcp = FastMCP("Google Services Server")

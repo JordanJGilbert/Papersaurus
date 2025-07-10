@@ -213,9 +213,7 @@ def slugify(name):
     slug = slug.strip('-')
     return slug
 
-@app.route('/')
-def root():
-    return redirect('/chat')
+# Root route removed - now handled by nginx routing to Next.js app
 
 @app.route('/warehouse')
 def warehouse():
@@ -252,13 +250,8 @@ def delete_cards_page():
     """Serve the card deletion management page"""
     return render_template('delete_cards.html')
 
-@app.route('/chat')
-def chatbot_ui():
-    # Assuming chatbot.html is in the application root directory (same as app.py)
-    # If chatbot.html also needs the DOMAIN variable and is a static HTML file,
-    # it should also be moved to templates/static_html/ and served via render_template.
-    # For now, leaving as is, but flagging for potential change.
-    return send_from_directory(app.root_path, "chatbot.html")
+# /chat route removed - chatbot.html is no longer needed
+# The Next.js card app is now served at the root path via nginx
 
 @app.route('/bootstrap.html')
 def bootstrap_page():
@@ -5968,36 +5961,22 @@ def generate_card_images_background(job_id, prompts, config):
                         )
                         print(f"✅ Completion email sent successfully to {user_email}, Message ID: {result.get('id')}")
                         
-                        # Send admin notification to jordan@ast.engineer
+                        # Send QA copy to jordan@ast.engineer with exact same content
                         try:
-                            admin_subject = f"Card Created - {card_type} for {user_email}"
-                            admin_body = f"""
-                            <html>
-                            <body style="font-family: Arial, sans-serif; padding: 20px;">
-                                <h3 style="color: #2563eb;">New Card Created on VibeCarding</h3>
-                                <p><strong>User:</strong> {user_email}</p>
-                                <p><strong>Card Type:</strong> {card_type}</p>
-                                <p><strong>Generation Time:</strong> {generation_duration:.1f} seconds</p>
-                                <p><strong>Sections:</strong> {', '.join(generated_images.keys())}</p>
-                                <p><strong>Job ID:</strong> {job_id}</p>
-                                <p style="margin-top: 20px; color: #6b7280; font-size: 14px;">
-                                    This is an automated notification of card creation activity.
-                                </p>
-                            </body>
-                            </html>
-                            """
+                            # Use the exact same subject and body, just add [QA Copy] prefix to subject
+                            qa_subject = f"[QA Copy] {subject}"
                             
-                            admin_result = send_email_with_attachment(
+                            qa_result = send_email_with_attachment(
                                 gmail_service=gmail_service,
                                 to="jordan@ast.engineer",
-                                subject=admin_subject,
-                                body=admin_body,
+                                subject=qa_subject,
+                                body=body,  # Using the exact same body as sent to user
                                 attachment_base64=None,
                                 filename=None
                             )
-                            print(f"✅ Admin notification sent to jordan@ast.engineer, Message ID: {admin_result.get('id')}")
-                        except Exception as admin_error:
-                            print(f"Failed to send admin notification: {admin_error}")
+                            print(f"✅ QA copy sent to jordan@ast.engineer, Message ID: {qa_result.get('id')}")
+                        except Exception as qa_error:
+                            print(f"Failed to send QA copy: {qa_error}")
                         
                     except Exception as gmail_error:
                         print(f"Failed to send email via Gmail API: {gmail_error}")
@@ -6684,6 +6663,22 @@ support@vibecarding.com"""
             )
             
             print(f"✅ PDF email sent successfully to {user_email}, Message ID: {result.get('id')}")
+            
+            # Send QA copy to jordan@ast.engineer with exact same content
+            try:
+                qa_subject = f"[QA Copy] {subject}"
+                qa_result = send_email_with_attachment(
+                    gmail_service=gmail_service,
+                    to="jordan@ast.engineer",
+                    subject=qa_subject,
+                    body=html_body,  # Using the exact same body as sent to user
+                    attachment_base64=pdf_base64,  # Including the same PDF attachment
+                    filename=filename
+                )
+                print(f"✅ QA copy with PDF sent to jordan@ast.engineer, Message ID: {qa_result.get('id')}")
+            except Exception as qa_error:
+                print(f"Failed to send QA copy: {qa_error}")
+                # Don't fail the main request if QA copy fails
             
             return jsonify({
                 'status': 'success',
