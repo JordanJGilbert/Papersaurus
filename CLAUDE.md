@@ -3,6 +3,79 @@
 ## Project Overview
 VibeCarding is a modern Next.js application that generates personalized greeting cards using AI. The app recently transitioned from a single-page form to a **step-based wizard interface** for better user experience.
 
+## 🎯 CODING PRINCIPLES - SIMPLICITY FIRST
+
+### Core Philosophy: "Less Code, More Clarity"
+When writing code for this project, follow these principles:
+
+1. **Principle of Least Surprise**
+   - Code should do exactly what it looks like it does
+   - No hidden complexity or "magic"
+   - If it takes more than 10 seconds to understand, it's too complex
+
+2. **Minimal Code**
+   - Every line should have a clear purpose
+   - Remove all unnecessary abstractions
+   - If you can delete code without losing functionality, delete it
+
+3. **Single State Objects**
+   ```typescript
+   // ✅ GOOD - One clear state object
+   const [state, setState] = useState({
+     name: '',
+     email: '',
+     isLoading: false
+   });
+
+   // ❌ BAD - Multiple useState calls
+   const [name, setName] = useState('');
+   const [email, setEmail] = useState('');
+   const [isLoading, setIsLoading] = useState(false);
+   ```
+
+4. **Simple Functions**
+   - Each function does ONE thing
+   - No more than 20-30 lines per function
+   - Clear, descriptive names
+
+5. **No Over-Engineering**
+   - Don't add features "just in case"
+   - No complex error recovery - let users refresh
+   - No elaborate state management - use React state
+
+6. **Example: WebSocket Connection**
+   ```typescript
+   // ✅ GOOD - Simple and clear (50 lines)
+   export function useSimpleWebSocket() {
+     const socket = io(URL);
+     const subscribe = (id) => socket.emit('subscribe', { id });
+     return { socket, subscribe };
+   }
+
+   // ❌ BAD - Over-engineered (200+ lines)
+   // Reconnection logic, stale detection, complex state...
+   ```
+
+7. **File Size Guidelines**
+   - Hooks: Max 150 lines
+   - Components: Max 200 lines
+   - If larger, split into smaller files
+
+8. **State Management**
+   - Use single state objects
+   - Update with spread operator
+   - No Redux, MobX, or complex state libraries
+
+9. **Error Handling**
+   - Simple try/catch
+   - Show toast message
+   - Let user retry
+
+10. **No Premature Optimization**
+    - Make it work first
+    - Make it clean second
+    - Make it fast only if needed
+
 ## Development Patterns
 
 ### Development Notes
