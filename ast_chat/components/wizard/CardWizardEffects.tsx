@@ -94,13 +94,16 @@ export function CardWizardEffects({
     cardStudio.setSelectedTone(formData.selectedTone);
     cardStudio.setToField(formData.toField);
     cardStudio.setFromField(formData.fromField);
+    cardStudio.setRelationshipField(formData.relationshipField);
     cardStudio.setPrompt(formData.prompt);
     cardStudio.setFinalCardMessage(formData.finalCardMessage);
     cardStudio.setIsHandwrittenMessage(formData.isHandwrittenMessage);
     cardStudio.setSelectedArtisticStyle(formData.selectedArtisticStyle);
     cardStudio.setCustomStyleDescription(formData.customStyleDescription);
-    cardStudio.setReferenceImages(formData.referenceImages);
-    cardStudio.setReferenceImageUrls(formData.referenceImageUrls);
+    // Skip syncing reference images from form to cardStudio
+    // This should only flow from cardStudio -> form after uploads
+    // cardStudio.setReferenceImages(formData.referenceImages);
+    // cardStudio.setReferenceImageUrls(formData.referenceImageUrls);
     cardStudio.setImageTransformation(formData.imageTransformation);
     cardStudio.setUserEmail(formData.userEmail);
     cardStudio.setSelectedImageModel(formData.selectedImageModel);
@@ -134,6 +137,21 @@ export function CardWizardEffects({
       wizardState.goToStep(6);
     }
   }, [cardStudio.isGeneratingFinalCard, wizardState]);
+
+  // Sync reference images from cardStudio to form when they change
+  useEffect(() => {
+    if (!cardForm.isInitialLoadComplete) return;
+    
+    // Only sync if cardStudio has images but form doesn't
+    if (cardStudio.referenceImageUrls.length > 0 && 
+        cardForm.formData.referenceImageUrls.length !== cardStudio.referenceImageUrls.length) {
+      
+      cardForm.updateFormData({
+        referenceImages: cardStudio.referenceImages,
+        referenceImageUrls: cardStudio.referenceImageUrls
+      });
+    }
+  }, [cardStudio.referenceImageUrls, cardStudio.referenceImages, cardForm.isInitialLoadComplete]);
 
   return null;
 }

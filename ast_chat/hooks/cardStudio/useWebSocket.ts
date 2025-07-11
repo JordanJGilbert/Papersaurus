@@ -9,6 +9,7 @@ export function useWebSocket() {
   const socketRef = useRef<Socket | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const currentJobRef = useRef<string | null>(null);
+  const subscribedJobsRef = useRef<Set<string>>(new Set()); // Track all subscribed jobs
   const lastJobUpdateRef = useRef<number>(Date.now());
   const connectionStartTimeRef = useRef<number | null>(null);
   const reconnectionAttemptsRef = useRef<number>(0);
@@ -66,10 +67,12 @@ export function useWebSocket() {
         reconnectionAttemptsRef.current = 0;
         hasShownStaleToastRef.current = false;
         
-        // Resubscribe to current job if any
-        if (currentJobRef.current) {
-          console.log('🔄 Resubscribing to job:', currentJobRef.current);
-          socket.emit('subscribe_job', { job_id: currentJobRef.current });
+        // Resubscribe to all subscribed jobs
+        if (subscribedJobsRef.current.size > 0) {
+          console.log('🔄 Resubscribing to jobs:', Array.from(subscribedJobsRef.current));
+          subscribedJobsRef.current.forEach(jobId => {
+            socket.emit('subscribe_job', { job_id: jobId });
+          });
         }
       });
 
@@ -116,7 +119,23 @@ export function useWebSocket() {
   }, []);
 
   const subscribeToJob = useCallback((jobId: string) => {
-    currentJobRef.current = jobId;
+    // For draft jobs, don't unsubscribe from other drafts
+    const isDraftJob = jobId.startsWith('draft-');
+    
+    // Only unsubscribe from previous job if it's not a draft job
+    if (!isDraftJob && currentJobRef.current && currentJobRef.current !== jobId && socketRef.current?.connected) {
+      console.log('🔄 Unsubscribing from previous job:', currentJobRef.current);
+      socketRef.current.emit('unsubscribe_job', { job_id: currentJobRef.current });
+      subscribedJobsRef.current.delete(currentJobRef.current);
+    }
+    
+    // Add to subscribed jobs set
+    subscribedJobsRef.current.add(jobId);
+    
+    if (!isDraftJob) {
+      currentJobRef.current = jobId;
+    }
+    
     if (socketRef.current?.connected) {
       console.log('📡 Subscribing to job updates:', jobId);
       socketRef.current.emit('subscribe_job', { job_id: jobId });
@@ -130,9 +149,23 @@ export function useWebSocket() {
       currentJobRef.current = null;
     }
     
+    // Remove from subscribed jobs set
+    subscribedJobsRef.current.delete(jobId);
+    
     if (socketRef.current?.connected) {
       console.log('📡 Unsubscribing from job updates:', jobId);
       socketRef.current.emit('unsubscribe_job', { job_id: jobId });
+    }
+  }, []);
+
+  const unsubscribeFromAllJobs = useCallback(() => {
+    console.log('🧹 Unsubscribing from all job updates');
+    currentJobRef.current = null;
+    subscribedJobsRef.current.clear();
+    
+    if (socketRef.current?.connected) {
+      // Emit a special event to clear all job subscriptions
+      socketRef.current.emit('unsubscribe_all_jobs', {});
     }
   }, []);
 
@@ -171,6 +204,7 @@ export function useWebSocket() {
     disconnectWebSocket,
     subscribeToJob,
     unsubscribeFromJob,
+    unsubscribeFromAllJobs,
     setJobUpdateHandler,
     currentJobRef,
     lastJobUpdateRef

@@ -63,6 +63,7 @@ export interface MessageConfig {
   theme: string;
   toField?: string;
   fromField?: string;
+  relationshipField?: string;
   photoAnalyses?: PhotoAnalysis[];
 }
 
@@ -206,6 +207,13 @@ Special instructions: ${specialInstructions}`;
   private static readonly QR_CODE_SPACE = `
 - IMPORTANT: Leave the bottom-right corner area (approximately 1 inch square) completely clear and undecorated for QR code placement`.trim();
 
+  // Generate prompts for all card sections with AI (includes images)
+  static async generateCardPromptsWithAI(config: CardConfig): Promise<CardPrompts> {
+    // For now, just return the regular prompts
+    // TODO: Implement AI-powered prompt generation with images
+    return this.generateCardPrompts(config);
+  }
+  
   // Generate prompts for all card sections
   static generateCardPrompts(config: CardConfig): CardPrompts {
     const cardTypeForPrompt = config.customCardType || config.cardType;
@@ -242,6 +250,15 @@ Unique ID: ${uniqueId}`.trim();
     return prompts;
   }
 
+  // Generate prompt for draft cards (front cover only) - returns both prompt and images
+  static generateDraftPromptWithImages(config: DraftConfig): { prompt: string; images: string[] } {
+    const prompt = this.generateDraftPrompt(config);
+    return {
+      prompt,
+      images: config.referenceImageUrls || []
+    };
+  }
+  
   // Generate prompt for draft cards (front cover only)
   static generateDraftPrompt(config: DraftConfig): string {
     const cardTypeForPrompt = config.customCardType || config.cardType;
@@ -293,21 +310,59 @@ Return ONLY the front cover prompt as plain text.`;
     const cardTypeForPrompt = config.customCardType || config.cardType;
     const effectivePrompt = config.theme || `A beautiful ${cardTypeForPrompt} card with ${config.toneDescription} style`;
 
-    // Build photo context if available
-    let photoContext = '';
+    // Build relationship context if available (for message tone/content)
+    let relationshipContext = '';
+    let contextParts = [];
+    
+    // First, prioritize the explicit relationship field from the form
+    if (config.relationshipField && config.relationshipField.trim()) {
+      contextParts.push(`Relationship: ${config.toField || 'the recipient'} is the sender's ${config.relationshipField}`);
+    }
+    
+    // Then, add any additional context from photo analyses
     if (config.photoAnalyses && config.photoAnalyses.length > 0) {
       const selectedPeople = config.photoAnalyses.flatMap(analysis => 
         analysis.selectedPeople || []
       );
       
       if (selectedPeople.length > 0) {
-        const peopleDescriptions = selectedPeople.map(person => {
-          const name = person.name || person.description;
-          return name;
-        }).join(', ');
+        // Get people with age info (but not relationships since we have explicit field)
+        const peopleWithAge = selectedPeople
+          .filter(person => person.apparentAge)
+          .map(person => {
+            const name = person.name || config.toField || 'the recipient';
+            return `${name} (${person.apparentAge} years old)`;
+          });
         
-        photoContext = `\nPhoto Context: The card features ${peopleDescriptions} from the uploaded photo(s).`;
+        if (peopleWithAge.length > 0 && !contextParts.some(part => part.includes('years old'))) {
+          contextParts.push(`Age context: ${peopleWithAge.join(', ')}`);
+        }
+        
+        // Add group relationship if specified
+        const groupRelationships = config.photoAnalyses
+          .filter(a => a.groupRelationship)
+          .map(a => a.groupRelationship);
+        if (groupRelationships.length > 0) {
+          contextParts.push(`Group relationship: ${groupRelationships.join(', ')}`);
+        }
+        
+        // Only include special instructions if they relate to relationships/message content
+        const specialInstructions = config.photoAnalyses
+          .filter(a => a.specialInstructions)
+          .map(a => a.specialInstructions)
+          .filter(instruction => 
+            instruction.toLowerCase().includes('relationship') || 
+            instruction.toLowerCase().includes('message') ||
+            instruction.toLowerCase().includes('tone')
+          );
+        if (specialInstructions.length > 0) {
+          contextParts.push(`Special notes: ${specialInstructions.join('; ')}`);
+        }
       }
+    }
+    
+    if (contextParts.length > 0) {
+      relationshipContext = `\n\nRelationship Context:\n${contextParts.join('\n')}`;
     }
 
     return `Create a ${config.toneDescription} message for a ${cardTypeForPrompt} greeting card.
@@ -315,21 +370,21 @@ Return ONLY the front cover prompt as plain text.`;
 Card Theme/Description: "${effectivePrompt}"
 ${config.toField ? `Recipient: ${config.toField}` : "Recipient: [not specified]"}
 ${config.fromField ? `Sender: ${config.fromField}` : "Sender: [not specified]"}
-Card Tone: ${config.toneLabel} - ${config.toneDescription}${photoContext}
+Card Tone: ${config.toneLabel} - ${config.toneDescription}${relationshipContext}
 
 Instructions:
 - Write a message that is ${config.toneDescription} and feels personal and genuine
-- ${config.toField ? `Address the message to ${config.toField} directly, using their name naturally` : "Write in a way that could be personalized to any recipient"}
+- ${config.toField ? `ALWAYS start with a greeting like "Dear ${config.toField}," or "${config.toField}," or "Hey ${config.toField}," - choose the greeting style based on tone and relationship` : "Start with an appropriate greeting (Dear [Name], Hi [Name], etc.)"}
 - ${config.fromField ? `Write as if ${config.fromField} is personally writing this message` : `Write in a ${config.toneDescription} tone`}
 - Match the ${config.toneDescription} tone and occasion of the ${cardTypeForPrompt} card type
 - Be inspired by the theme: "${effectivePrompt}"
-${photoContext ? '- Reference the people from the photos naturally in your message if appropriate' : ''}
-- Keep it concise but meaningful (2-4 sentences ideal)
+${relationshipContext ? '- Use the relationship context to write an appropriate message (e.g., romantic for boyfriend/girlfriend, professional for coworkers, warm for family)\n- The tone should reflect the nature of the relationship' : ''}
+- Keep the body concise but meaningful (2-4 sentences ideal)
 - Make it feel authentic, not generic
 ${this.SAFETY_REQUIREMENTS}
 ${this.getToneSpecificInstructions(config.tone)}
 - ${config.toField && config.fromField ? `Show the relationship between ${config.fromField} and ${config.toField} through the ${config.toneDescription} message tone` : ""}
-- ${config.fromField ? `End the message with a signature line like "Love, ${config.fromField}" or "- ${config.fromField}" or similar, naturally integrated into the message.` : ""}
+- ${config.fromField ? `ALWAYS end with an appropriate closing and signature. Examples:\n  - Romantic: "With all my love, ${config.fromField}" or "Forever yours, ${config.fromField}"\n  - Friendly: "Best, ${config.fromField}" or "Cheers, ${config.fromField}" or "Your friend, ${config.fromField}"\n  - Family: "Love, ${config.fromField}" or "Hugs, ${config.fromField}"\n  - Professional: "Best regards, ${config.fromField}" or "Sincerely, ${config.fromField}"\n  - Funny: "Your favorite troublemaker, ${config.fromField}" or "Stay awesome, ${config.fromField}"` : "End with an appropriate closing (Best wishes, Warm regards, etc.)"}
 
 Return ONLY the message text that should appear inside the card - no quotes, no explanations, no markdown formatting (no *bold*, _italics_, or other markdown), just the complete ${config.toneDescription} message in plain text.
 

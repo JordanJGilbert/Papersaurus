@@ -160,6 +160,23 @@ def handle_unsubscribe_job(data):
         print(f"Client {request.sid} unsubscribed from job {job_id}")
         emit('unsubscribed', {'job_id': job_id})
 
+@socketio.on('unsubscribe_all_jobs')
+def handle_unsubscribe_all_jobs(data):
+    """Unsubscribe from all job updates"""
+    # Get all rooms for this client (socketio tracks this internally)
+    sid = request.sid
+    
+    # Leave all job rooms
+    rooms_left = []
+    for room in rooms(sid=sid):
+        if room.startswith('job_'):
+            leave_room(room)
+            rooms_left.append(room)
+            print(f"Client {sid} left room {room}")
+    
+    print(f"Client {sid} unsubscribed from all job updates. Left {len(rooms_left)} rooms")
+    emit('unsubscribed_all', {'rooms_left': rooms_left})
+
 @socketio.on('get_job_status')
 def handle_get_job_status(data):
     """Get current status of a job"""

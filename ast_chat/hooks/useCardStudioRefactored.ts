@@ -28,6 +28,7 @@ export function useCardStudio() {
   const [prompt, setPrompt] = useState("");
   const [toField, setToField] = useState("");
   const [fromField, setFromField] = useState("");
+  const [relationshipField, setRelationshipField] = useState("");
   const [selectedType, setSelectedType] = useState<string>("birthday");
   const [customCardType, setCustomCardType] = useState<string>("");
   const [selectedTone, setSelectedTone] = useState<string>("funny");
@@ -106,6 +107,7 @@ export function useCardStudio() {
     prompt,
     toField,
     fromField,
+    relationshipField,
     fileHandling.photoAnalyses
   );
   
@@ -130,6 +132,7 @@ export function useCardStudio() {
     photoAnalyses: fileHandling.photoAnalyses,
     saveJobToStorage: jobManagement.saveJobToStorage,
     subscribeToJob: webSocket.subscribeToJob,
+    unsubscribeFromAllJobs: webSocket.unsubscribeFromAllJobs,
     startElapsedTimeTracking: jobManagement.startElapsedTimeTracking,
     stopElapsedTimeTracking: jobManagement.stopElapsedTimeTracking,
   };
@@ -182,6 +185,19 @@ export function useCardStudio() {
     // Check if this is a draft job
     const isDraftJob = job_id.startsWith('draft-');
     const draftIndex = isDraftJob ? parseInt(job_id.split('-')[1]) : -1;
+    
+    // Filter out updates from wrong job type
+    // If we're in draft mode, only process draft jobs
+    // If we're in final mode, only process non-draft jobs
+    const isInDraftMode = draftGeneration.isDraftMode;
+    if (isInDraftMode && !isDraftJob) {
+      console.log('🚫 Ignoring non-draft job update in draft mode:', job_id);
+      return;
+    }
+    if (!isInDraftMode && isDraftJob) {
+      console.log('🚫 Ignoring draft job update in final mode:', job_id);
+      return;
+    }
     
     console.log('🔄 Processing job update:', { job_id, status, isDraftJob, draftIndex, progress });
     
@@ -296,6 +312,8 @@ export function useCardStudio() {
         });
         
         jobManagement.removeJobFromStorage(job_id);
+        // Unsubscribe from completed draft job
+        webSocket.unsubscribeFromJob(job_id);
       } else {
         // Handle final card completion
         cardGeneration.handleFinalCardCompletion(cardData);
@@ -546,6 +564,8 @@ export function useCardStudio() {
     setToField,
     fromField,
     setFromField,
+    relationshipField,
+    setRelationshipField,
     selectedType,
     setSelectedType,
     customCardType,

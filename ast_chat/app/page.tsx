@@ -7,6 +7,7 @@ import Link from "next/link";
 
 import CardWizard from "@/components/wizard/CardWizard";
 import { ModeToggle } from "@/components/mode-toggle";
+import { ClearStorageButton } from "@/components/clear-storage-button";
 import CriticalResourcePreloader from "@/components/CriticalResourcePreloader";
 import EarlyCardPreloader from "@/components/EarlyCardPreloader";
 
@@ -40,6 +41,7 @@ export default function HomePage() {
                     <Eye className="w-4 h-4" />
                   </Button>
                 </Link>
+                <ClearStorageButton />
                 <ModeToggle />
               </div>
             </div>
@@ -65,7 +67,10 @@ export default function HomePage() {
                   </Button>
                 </Link>
               </div>
-              <ModeToggle />
+              <div className="flex items-center space-x-2">
+                <ClearStorageButton />
+                <ModeToggle />
+              </div>
             </div>
           </div>
         </div>

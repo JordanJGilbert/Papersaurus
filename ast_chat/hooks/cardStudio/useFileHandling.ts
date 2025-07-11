@@ -49,17 +49,10 @@ export function useFileHandling() {
         const newImageIndex = referenceImages.length;
         setReferenceImages(prev => [...prev, file]);
         setReferenceImageUrls(prev => [...prev, result.url]);
-        console.log("🔍 DEBUG: Reference image uploaded successfully:", {
-          fileName: file.name,
-          url: result.url,
-          newImageIndex,
-          totalImages: referenceImages.length + 1
-        });
         toast.success(`Reference image uploaded! ${referenceImages.length + 1} photo${referenceImages.length + 1 > 1 ? 's' : ''} ready for character creation.`);
         
         // Wait a moment for state to update before triggering analysis modal
         setTimeout(() => {
-          console.log("🔍 Opening analysis modal for index:", newImageIndex);
           setPendingAnalysisIndex(newImageIndex);
           setShowAnalysisModal(true);
         }, 100);

@@ -1,0 +1,17 @@
+{
+  "id": "motivatedCitrusFish",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_387a7f13.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_a1959f40.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_eceef4a3.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_1b66db57.png",
+  "generatedPrompts": {
+    "frontCover": "A humorous and lighthearted watercolor illustration for a birthday card front. The scene features cartoon versions of a young East Asian couple, based on the reference photo. In the foreground, a woman with long dark hair, glasses, and a warm smile wears a light blue 'ROCKY MO' sweatshirt. Behind her, a young man with short dark hair and a joyful, wide smile has his arms around her, wearing a tan hoodie. They are comically attempting to balance a giant, teetering stack of presents that reaches almost off the top of the card. A few brightly wrapped gifts are wobbling precariously. The entire illustration is rendered in a soft, flowing watercolor style with visible paper texture, artistic brush strokes, and organic paint bleeds. In the center, in a beautiful, readable handwritten cursive script, the text reads \"Happy Birthday\". Flat 2D artwork.\n\n- Reference photos provided for character creation\n- Characters should only appear on the front cover\n- Transform real people into artistic cartoon/illustrated versions matching the style\n- Maintain recognizable features while adapting to the artistic style",
+    "backCover": "A minimalist and elegant watercolor design for a greeting card back cover. In the top-left corner, a small, delicate sprig of leaves is painted in soft tan and light blue hues, with gentle, organic paint bleeds. The majority of the background is a clean, off-white with visible paper texture. This design leaves the bottom-right area completely clear. Flat 2D artwork in a soft, flowing watercolor style.",
+    "leftInterior": "A subtle and complementary watercolor background for a greeting card's left interior panel. An abstract wash of soft, flowing light blue and tan colors bleeds gently from the top-left corner, fading out towards the center and bottom of the page. The background has a visible paper texture with artistic brush strokes and organic paint bleeds, creating a calm and beautiful space. Flat 2D artwork.",
+    "rightInterior": "A minimal watercolor decoration for the right interior panel of a greeting card, designed to complement text. In the bottom-right corner, a single, small watercolor gift box, tied with a simple ribbon, is painted in a soft tan with a light blue ribbon. The illustration is small, leaving the majority of the panel as a clean, off-white background with a subtle paper texture to ensure the message is the main focus. Flat 2D artwork with soft, flowing colors and artistic brush strokes."
+  },
+  "createdAt": 1752197925.5033126,
+  "expiresAt": 1783733925.5033138,
+  "version": 1
+}

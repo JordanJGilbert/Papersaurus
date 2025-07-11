@@ -1,0 +1,25 @@
+[Unit]
+Description=VibeCarding App (Development)
+After=network.target
+
+[Service]
+User=ec2-user
+Group=ec2-user
+WorkingDirectory=/var/www/flask_app/ast_chat
+EnvironmentFile=/var/www/flask_app/.env
+Environment="PATH=/var/www/flask_app/.venv/bin:/home/ec2-user/.nvm/versions/node/v22.14.0/bin:/usr/local/bin:/usr/bin:/bin"
+Environment=NODE_ENV=development
+Environment=NEXT_TELEMETRY_DISABLED=1
+# Run development server
+ExecStart=/home/ec2-user/.nvm/versions/node/v22.14.0/bin/npm run dev
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=60
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

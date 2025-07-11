@@ -39,20 +39,21 @@ export const createFileUploadWrapper = (
     // After successful upload, sync the form data with cardStudio state
     // For reference images, we need to sync the state immediately
     if (type === 'reference') {
-      // Wait for next tick to ensure cardStudio state is updated
-      await new Promise(resolve => setTimeout(resolve, 0));
+      // Wait a moment to ensure cardStudio state is updated
+      // This needs to be longer to avoid race conditions with CardWizardEffects
+      await new Promise(resolve => setTimeout(resolve, 100));
       
-      // Check if the upload was successful by comparing arrays
-      if (cardStudio.referenceImages.length > prevImages.length) {
-        console.log("🔄 Syncing reference images to form data:", {
-          images: cardStudio.referenceImages.length,
-          urls: cardStudio.referenceImageUrls
-        });
-        updateFormData({
-          referenceImages: cardStudio.referenceImages,
-          referenceImageUrls: cardStudio.referenceImageUrls
-        });
-      }
+      // Force sync the updated state to form data
+      // Get the latest state from cardStudio
+      const currentImages = cardStudio.referenceImages;
+      const currentUrls = cardStudio.referenceImageUrls;
+      
+      
+      // Always update form data with the current state
+      updateFormData({
+        referenceImages: currentImages,
+        referenceImageUrls: currentUrls
+      });
     }
   };
 };

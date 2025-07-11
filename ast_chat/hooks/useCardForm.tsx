@@ -9,6 +9,7 @@ export interface CardFormData {
   selectedTone: string;
   toField: string;
   fromField: string;
+  relationshipField: string;
 
   // Step 2: Content Creation
   prompt: string;
@@ -38,6 +39,7 @@ const defaultFormData: CardFormData = {
   selectedTone: "funny",
   toField: "",
   fromField: "",
+  relationshipField: "",
 
   // Step 2: Content Creation
   prompt: "",

@@ -117,6 +117,7 @@ export default function Step1CardBasics({
   const [analysisResult, setAnalysisResult] = React.useState<any>(null);
   const { preloadAllCards } = useCardCache();
   
+  
   // Preload template cache when component mounts
   useEffect(() => {
     preloadAllCards();
@@ -272,7 +273,7 @@ export default function Step1CardBasics({
             <SelectValue>
               {(() => {
                 const selected = cardTypes.find((type) => type.id === formData.selectedType);
-                if (!selected) return <span className="text-gray-400">Choose card type</span>;
+                if (!selected) return <span className="text-gray-400">Choose card type ✨</span>;
                 const IconComponent = selected.icon;
                 return (
                   <div className="flex items-center gap-2 sm:gap-3">
@@ -395,6 +396,18 @@ export default function Step1CardBasics({
               placeholder="📝 From"
               value={formData.fromField}
               onChange={(e) => updateFormData({ fromField: e.target.value })}
+              className="h-12 sm:h-14 touch-manipulation border-2 hover:border-green-300 dark:hover:border-green-700 transition-colors text-base"
+              style={{ fontSize: '16px' }}
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+              Relationship (Optional)
+            </label>
+            <Input
+              placeholder="💝 e.g., girlfriend, mom, coworker, best friend"
+              value={formData.relationshipField}
+              onChange={(e) => updateFormData({ relationshipField: e.target.value })}
               className="h-12 sm:h-14 touch-manipulation border-2 hover:border-green-300 dark:hover:border-green-700 transition-colors text-base"
               style={{ fontSize: '16px' }}
             />

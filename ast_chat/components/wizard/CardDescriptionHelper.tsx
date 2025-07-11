@@ -122,23 +122,58 @@ export default function CardDescriptionHelper({
         );
         
         if (selectedPeople.length > 0) {
-          const peopleDescriptions = selectedPeople.map(person => {
-            const name = person.name || person.description;
-            const details = [];
-            if (person.appearance) details.push(person.appearance);
-            if (person.age) details.push(`${person.age} years old`);
-            if (person.position) details.push(person.position);
-            if (person.expression) details.push(person.expression);
-            return `${name}: ${details.join(', ')}`;
-          });
+          // Build detailed context similar to message generation
+          let contextParts = [];
           
-          photoContext = `People in photos: ${peopleDescriptions.join('; ')}. `;
+          // Add people descriptions with all their details
+          const peopleDetails = selectedPeople.map(person => {
+            let description = person.name || person.positionDescription || person.description;
+            if (person.relationshipToRecipient) {
+              description += ` (${person.relationshipToRecipient})`;
+            }
+            
+            // Add key characteristics
+            const characteristics = [];
+            if (person.apparentAge) characteristics.push(`${person.apparentAge} years old`);
+            if (person.expression) characteristics.push(person.expression);
+            if (person.distinguishingFeatures) characteristics.push(person.distinguishingFeatures);
+            if (person.clothing) characteristics.push(`wearing ${person.clothing}`);
+            
+            if (characteristics.length > 0) {
+              description += ` - ${characteristics.join(', ')}`;
+            }
+            
+            return description;
+          }).join('; ');
           
-          // Add scene/background info if available
-          const firstAnalysis = photoAnalyses[0];
-          if (firstAnalysis?.backgroundDescription) {
-            photoContext += `Scene: ${firstAnalysis.backgroundDescription}.`;
+          contextParts.push(`People in photo: ${peopleDetails}`);
+          
+          // Add group relationship if specified
+          const groupRelationships = photoAnalyses
+            .filter(a => a.groupRelationship)
+            .map(a => a.groupRelationship);
+          if (groupRelationships.length > 0) {
+            contextParts.push(`Group relationship: ${groupRelationships.join(', ')}`);
           }
+          
+          // Add setting and mood from first analysis
+          const firstAnalysis = photoAnalyses[0];
+          if (firstAnalysis?.analysisResult) {
+            const result = firstAnalysis.analysisResult;
+            if (result.setting) contextParts.push(`Setting: ${result.setting}`);
+            if (result.overallMood) contextParts.push(`Mood: ${result.overallMood}`);
+            if (result.backgroundDescription) contextParts.push(`Background: ${result.backgroundDescription}`);
+          }
+          
+          // Add any special instructions
+          const specialInstructions = photoAnalyses
+            .filter(a => a.specialInstructions)
+            .map(a => a.specialInstructions);
+          if (specialInstructions.length > 0) {
+            contextParts.push(`Special notes: ${specialInstructions.join('; ')}`);
+          }
+          
+          photoContext = contextParts.join('\n');
         }
       }
       

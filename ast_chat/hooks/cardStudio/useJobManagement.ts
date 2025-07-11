@@ -52,10 +52,15 @@ export function useJobManagement() {
 
   // Start elapsed time tracking
   const startElapsedTimeTracking = useCallback((startTime?: number, estimatedTotalSeconds?: number) => {
+    // Always use fresh start time, ignore any old stored values
     const start = startTime || Date.now();
     setGenerationStartTime(start);
+    setCurrentElapsedTime(0); // Reset elapsed time
+    setProgressPercentage(0); // Reset progress
     
     if (typeof window !== 'undefined') {
+      // Clear any old generation time before setting new one
+      localStorage.removeItem('generation-start-time');
       localStorage.setItem('generation-start-time', start.toString());
     }
     
@@ -100,6 +105,28 @@ export function useJobManagement() {
     }
   }, [elapsedTimeInterval]);
 
+  // Clear all job data from localStorage
+  const clearAllJobData = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    
+    console.log('🧹 Clearing all job data from localStorage');
+    
+    // Get all keys
+    const keys = Object.keys(localStorage);
+    
+    // Remove all job-related keys
+    keys.forEach(key => {
+      if (key.startsWith('cardJob_') || key === 'pendingCardJobs' || key === 'generation-start-time') {
+        localStorage.removeItem(key);
+      }
+    });
+    
+    // Reset state
+    setCurrentElapsedTime(0);
+    setProgressPercentage(0);
+    setGenerationStartTime(null);
+  }, []);
+
   // Recovery function - resume WebSocket subscriptions for pending jobs
   const checkPendingJobs = async () => {
     if (typeof window === 'undefined') return [];
@@ -142,6 +169,7 @@ export function useJobManagement() {
     removeJobFromStorage,
     startElapsedTimeTracking,
     stopElapsedTimeTracking,
+    clearAllJobData,
     checkPendingJobs
   };
 }

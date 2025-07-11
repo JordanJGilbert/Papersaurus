@@ -191,14 +191,52 @@ npm run dev
 - Domain: https://vibecarding.com
 - SSL: Configured via Nginx
 
-### Testing Changes in Production
-When testing changes on the production server:
+### Testing Changes - Development vs Production
 
-**For Frontend Changes (Next.js):**
-```bash
-sudo systemctl restart vibecarding.service
+#### 🚀 DEVELOPMENT MODE (RECOMMENDED FOR CLAUDE CODE)
+**The app is currently running in DEVELOPMENT MODE with hot reload enabled!**
+
+**What this means:**
+- ✅ **Instant updates** - Just save any file and changes appear in ~2 seconds
+- ✅ **No manual restarts needed** - Next.js automatically reloads
+- ✅ **No build step** - Skip the 30-60 second build process
+- ✅ **Better debugging** - See errors directly in the browser
+- ✅ **Currently active** - Development server is running NOW
+
+**Current Status:**
 ```
-Note: The service automatically runs `npm run build` before starting, so no separate build step is needed.
+Service: vibecarding-dev.service
+Status: ACTIVE (running)
+Mode: Development with hot reload
+URL: https://vibecarding.com
+```
+
+**No action needed for frontend changes - just save the file!**
+
+#### 🔄 SWITCHING BETWEEN MODES
+
+**To switch to PRODUCTION mode:**
+```bash
+sudo systemctl stop vibecarding-dev.service
+sudo systemctl start vibecarding.service
+```
+
+**To switch back to DEVELOPMENT mode:**
+```bash
+sudo systemctl stop vibecarding.service
+sudo systemctl start vibecarding-dev.service
+```
+
+**To check which mode is running:**
+```bash
+# Check development mode
+sudo systemctl status vibecarding-dev.service
+
+# Check production mode
+sudo systemctl status vibecarding.service
+```
+
+#### 📝 OTHER SERVICES (Still require manual restart)
 
 **For Backend Changes (Flask/app.py):**
 ```bash
@@ -210,11 +248,10 @@ sudo systemctl restart flask_app.service
 sudo systemctl restart mcp_service.service
 ```
 
-**IMPORTANT**: 
-- The VibeCarding service includes `ExecStartPre=npm run build` in its systemd configuration, so it automatically builds before starting
-- Always restart the Flask service when making changes to `app.py` or any backend Python files
-- Always restart the MCP service when making changes to any MCP server files
-- All services run under process managers and won't reflect changes until restarted
+#### ⚡ QUICK REFERENCE
+- **Frontend changes**: Just save the file (development mode handles it)
+- **Backend changes**: Run `sudo systemctl restart flask_app.service`
+- **MCP changes**: Run `sudo systemctl restart mcp_service.service`
 
 ### Email Testing
 To test email functionality:
@@ -270,7 +307,23 @@ const response = await chatWithAI(prompt, {
 
 ## Recent Architecture Improvements
 
-### Code Refactoring for Maintainability (Latest - January 2025)
+### WebSocket and State Management Fixes (January 2025)
+Fixed critical issues with draft generation and image persistence:
+
+#### WebSocket Multi-Subscription Support
+- Modified `useWebSocket` hook to track multiple concurrent job subscriptions using a Set
+- Draft jobs (identified by "draft-" prefix) no longer unsubscribe from other draft jobs
+- All 5 draft completion updates are now properly received and processed
+- Added cleanup to unsubscribe from completed draft jobs
+
+#### Reference Image State Synchronization
+- Fixed race condition in `CardWizardEffects` that was clearing uploaded images
+- Implemented one-way sync: reference images only flow from cardStudio → form data
+- Removed bidirectional sync that was causing images to be cleared
+- Images now persist correctly when navigating between wizard steps
+- Reference photos are properly included in both draft and final generation
+
+### Code Refactoring for Maintainability (January 2025)
 Successfully refactored the two largest files in the codebase into modular, maintainable components:
 
 #### useCardStudio Hook Refactoring
@@ -334,6 +387,13 @@ The `generateFinalFromDraftPromptsCombined()` method generates back cover, left 
 - **95% Progress Bug**: Added multiple fallback mechanisms for completion detection
 - **Reference Image Bleeding**: Explicit prompts prevent characters on non-front pages
 - **Message Generation State**: Fixed synchronization between CardWizard and useCardStudio
+- **WebSocket Draft Updates**: Fixed issue where only one draft completion was received instead of all 5
+  - Added support for multiple concurrent WebSocket subscriptions
+  - Draft jobs no longer unsubscribe from each other
+- **Reference Image Persistence**: Fixed race condition causing uploaded images to disappear
+  - Reference images now only sync from cardStudio → form data (one-way sync)
+  - Images persist properly when navigating between wizard steps
+  - Reference photos are correctly passed to draft and final generation
 
 ## Gallery UI Implementation
 

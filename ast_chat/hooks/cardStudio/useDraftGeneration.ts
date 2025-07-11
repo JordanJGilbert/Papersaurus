@@ -30,6 +30,7 @@ interface DraftGenerationProps {
   // Job management
   saveJobToStorage: (jobId: string, jobData: any) => void;
   subscribeToJob: (jobId: string) => void;
+  unsubscribeFromAllJobs?: () => void;
   startElapsedTimeTracking: (startTime?: number, estimatedTotalSeconds?: number) => void;
   stopElapsedTimeTracking: () => void;
 }
@@ -99,6 +100,11 @@ export function useDraftGeneration(props: DraftGenerationProps) {
     // Stop any existing timers first
     props.stopElapsedTimeTracking();
     
+    // Clear ALL WebSocket subscriptions before starting
+    if (props.unsubscribeFromAllJobs) {
+      props.unsubscribeFromAllJobs();
+    }
+    
     setIsDraftMode(true);
     setIsGenerating(true);
     startElapsedTimeTracking(undefined, 45); // 45 seconds for draft mode
@@ -158,10 +164,12 @@ export function useDraftGeneration(props: DraftGenerationProps) {
             variationIndex: index
           };
 
-          const frontCoverPromptQuery = PromptGenerator.generateDraftPrompt(draftConfig);
+          const { prompt: frontCoverPromptQuery, images } = PromptGenerator.generateDraftPromptWithImages(draftConfig);
+          
+          
           const frontCoverPrompt = await chatWithAI(frontCoverPromptQuery, {
             model: "gemini-2.5-pro",
-            attachments: referenceImageUrls
+            attachments: images
           });
 
           if (!frontCoverPrompt?.trim()) {
