@@ -232,13 +232,19 @@ export function useDraftGeneration(props: DraftGenerationProps) {
 
           console.log(`✅ Draft variation ${index + 1} job started:`, jobId);
           
-          // Don't save draft jobs to storage - only save final cards
-          // saveJobToStorage(jobId, {
-          //   isDraft: true,
-          //   draftIndex: index,
-          //   styleInfo: styleOverride ? { styleName: styleOverride, styleLabel: styleLabel } : undefined,
-          //   frontCoverPrompt: enhancedFrontCoverPrompt
-          // });
+          // Save draft job to storage for recovery
+          saveJobToStorage(jobId, {
+            isDraft: true,
+            draftIndex: index,
+            styleInfo: styleOverride ? { styleName: styleOverride, styleLabel: styleLabel } : undefined,
+            frontCoverPrompt: enhancedFrontCoverPrompt,
+            userEmail,
+            selectedType,
+            selectedTone,
+            toField,
+            fromField,
+            draftCards: []  // Will be updated as drafts complete
+          });
 
           // Subscribe to WebSocket updates
           subscribeToJob(jobId);

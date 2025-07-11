@@ -18,12 +18,18 @@ export function useJobManagement() {
     if (typeof window === 'undefined') return;
     
     try {
-      localStorage.setItem(`cardJob_${jobId}`, JSON.stringify({
+      // Enhanced job data with progress and state
+      const enhancedJobData = {
         ...jobData,
         id: jobId,
         status: 'processing',
-        createdAt: Date.now()
-      }));
+        createdAt: Date.now(),
+        lastProgress: progressPercentage,
+        lastProgressText: generationProgress,
+        elapsedTime: currentElapsedTime
+      };
+      
+      localStorage.setItem(`cardJob_${jobId}`, JSON.stringify(enhancedJobData));
       
       const pendingJobs = JSON.parse(localStorage.getItem('pendingCardJobs') || '[]');
       if (!pendingJobs.includes(jobId)) {
@@ -32,6 +38,26 @@ export function useJobManagement() {
       }
     } catch (error) {
       console.error('Failed to save job to localStorage:', error);
+    }
+  };
+
+  // Update job progress in storage
+  const updateJobProgress = (jobId: string, progress: number, progressText: string) => {
+    if (typeof window === 'undefined') return;
+    
+    try {
+      const jobData = localStorage.getItem(`cardJob_${jobId}`);
+      if (!jobData) return;
+      
+      const job = JSON.parse(jobData);
+      job.lastProgress = progress;
+      job.lastProgressText = progressText;
+      job.elapsedTime = currentElapsedTime;
+      job.lastUpdate = Date.now();
+      
+      localStorage.setItem(`cardJob_${jobId}`, JSON.stringify(job));
+    } catch (error) {
+      console.error('Failed to update job progress:', error);
     }
   };
 
@@ -166,6 +192,7 @@ export function useJobManagement() {
     generationDuration,
     setGenerationDuration,
     saveJobToStorage,
+    updateJobProgress,
     removeJobFromStorage,
     startElapsedTimeTracking,
     stopElapsedTimeTracking,

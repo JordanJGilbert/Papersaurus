@@ -19,9 +19,31 @@ export function CardWizardEffects({
   wizardState,
   isResumingDraft
 }: CardWizardEffectsProps) {
-  // Check for pending jobs on component mount
+  // Check for pending jobs on component mount and advance to appropriate step
   useEffect(() => {
-    cardStudio.checkPendingJobs();
+    const restorePendingJobs = async () => {
+      await cardStudio.checkPendingJobs();
+      
+      // After checking pending jobs, if we're generating drafts, ensure we're on step 5
+      if ((cardStudio.isDraftMode || cardStudio.isGenerating) && !cardStudio.isGeneratingFinalCard) {
+        console.log('🔄 Restoring to Step 5 due to ongoing draft generation');
+        // Mark previous steps as completed
+        if (!wizardState.completedSteps.includes(1)) wizardState.markStepCompleted(1);
+        if (!wizardState.completedSteps.includes(2)) wizardState.markStepCompleted(2);
+        if (!wizardState.completedSteps.includes(3)) wizardState.markStepCompleted(3);
+        if (!wizardState.completedSteps.includes(4)) wizardState.markStepCompleted(4);
+        wizardState.goToStep(5);
+      } else if (cardStudio.isGeneratingFinalCard) {
+        console.log('🔄 Restoring to Step 6 due to ongoing final generation');
+        // Mark all previous steps as completed
+        for (let i = 1; i <= 5; i++) {
+          if (!wizardState.completedSteps.includes(i)) wizardState.markStepCompleted(i);
+        }
+        wizardState.goToStep(6);
+      }
+    };
+    
+    restorePendingJobs();
   }, []);
 
   // Auto-resume to the appropriate step based on saved data
@@ -45,8 +67,8 @@ export function CardWizardEffects({
         }
         wizardState.markStepCompleted(4);
         
-        // If they have draft cards, go to step 5
-        if (cardStudio.draftCards.length > 0) {
+        // If they have draft cards OR draft generation is in progress, go to step 5
+        if (cardStudio.draftCards.length > 0 || cardStudio.isDraftMode || cardStudio.isGenerating) {
           wizardState.goToStep(5);
         } else {
           wizardState.goToStep(4);

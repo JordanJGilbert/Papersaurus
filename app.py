@@ -134,7 +134,7 @@ def handle_subscribe_job(data):
     
     # Send current job status if available
     if job_id in job_storage:
-        job_data = job_storage[job_id]
+        job_data = job_storage.get(job_id)
         emit('job_update', {
             'job_id': job_id,
             'status': job_data.get('status'),
@@ -186,7 +186,7 @@ def handle_get_job_status(data):
         return
     
     if job_id in job_storage:
-        job_data = job_storage[job_id]
+        job_data = job_storage.get(job_id)
         emit('job_status', {
             'job_id': job_id,
             'status': job_data.get('status'),
@@ -5272,9 +5272,86 @@ def send_email_nodejs_style():
             "message": f"Unexpected error: {str(e)}"
         }), 500
 
-# Job tracking storage - simple in-memory store for demo
-# In production, use Redis or database
-job_storage = {}
+# Job tracking storage - file-based persistence for production
+JOB_STORAGE_DIR = "/var/www/flask_app/data/jobs"
+os.makedirs(JOB_STORAGE_DIR, exist_ok=True)
+
+class PersistentJobStorage:
+    """Thread-safe job storage with file persistence"""
+    def __init__(self):
+        self.storage = {}
+        self.lock = threading.Lock()
+        self.load_from_disk()
+    
+    def load_from_disk(self):
+        """Load all jobs from disk into memory"""
+        try:
+            for filename in os.listdir(JOB_STORAGE_DIR):
+                if filename.endswith('.json'):
+                    job_id = filename[:-5]
+                    with open(os.path.join(JOB_STORAGE_DIR, filename), 'r') as f:
+                        self.storage[job_id] = json.load(f)
+            print(f"Loaded {len(self.storage)} jobs from disk")
+            self.cleanup_old_jobs()
+        except Exception as e:
+            print(f"Error loading job storage: {e}")
+    
+    def save_to_disk(self, job_id):
+        """Save a single job to disk"""
+        try:
+            if job_id in self.storage:
+                filename = os.path.join(JOB_STORAGE_DIR, f"{job_id}.json")
+                with open(filename, 'w') as f:
+                    json.dump(self.storage[job_id], f)
+        except Exception as e:
+            print(f"Error saving job {job_id}: {e}")
+    
+    def set(self, job_id, data):
+        """Set job data and persist to disk"""
+        with self.lock:
+            self.storage[job_id] = data
+            self.save_to_disk(job_id)
+    
+    def update(self, job_id, updates):
+        """Update job data and persist to disk"""
+        with self.lock:
+            if job_id in self.storage:
+                self.storage[job_id].update(updates)
+                self.save_to_disk(job_id)
+    
+    def get(self, job_id, default=None):
+        """Get job data"""
+        return self.storage.get(job_id, default)
+    
+    def __contains__(self, job_id):
+        """Check if job exists"""
+        return job_id in self.storage
+    
+    def delete(self, job_id):
+        """Delete job from memory and disk"""
+        with self.lock:
+            if job_id in self.storage:
+                del self.storage[job_id]
+                try:
+                    os.remove(os.path.join(JOB_STORAGE_DIR, f"{job_id}.json"))
+                except:
+                    pass
+    
+    def cleanup_old_jobs(self):
+        """Clean up jobs older than 6 hours"""
+        current_time = time.time()
+        jobs_to_delete = []
+        for job_id, job_data in self.storage.items():
+            created_at = job_data.get('createdAt', 0)
+            if current_time - created_at > 21600:  # 6 hours
+                jobs_to_delete.append(job_id)
+        
+        for job_id in jobs_to_delete:
+            self.delete(job_id)
+            print(f"Cleaned up old job: {job_id}")
+
+# Initialize persistent job storage
+job_storage = PersistentJobStorage()
 
 @app.route('/api/job-status/<job_id>', methods=['GET'])
 def get_job_status(job_id):
@@ -5286,7 +5363,7 @@ def get_job_status(job_id):
                 "message": "Job not found"
             }), 404
         
-        job_data = job_storage[job_id]
+        job_data = job_storage.get(job_id)
         return jsonify({
             "status": job_data.get("status", "unknown"),
             "cardData": job_data.get("cardData"),
@@ -5319,13 +5396,13 @@ def store_job_result():
             }), 400
         
         # Store job result
-        job_storage[job_id] = {
+        job_storage.set(job_id, {
             "status": status,
             "cardData": card_data,
             "error": error,
             "completedAt": time.time(),
             "createdAt": job_storage.get(job_id, {}).get("createdAt", time.time())
-        }
+        })
         
         return jsonify({
             "status": "success",
@@ -5354,11 +5431,11 @@ def create_job():
             }), 400
         
         # Store job as processing
-        job_storage[job_id] = {
+        job_storage.set(job_id, {
             "status": "processing",
             "jobData": job_data,
             "createdAt": time.time()
-        }
+        })
         
         return jsonify({
             "status": "success",
@@ -5513,13 +5590,13 @@ def generate_card_async():
             }), 400
         
         # Store job as processing
-        job_storage[job_id] = {
+        job_storage.set(job_id, {
             "status": "processing",
             "prompts": prompts,
             "config": config,
             "createdAt": time.time(),
             "progress": "Starting generation..."
-        }
+        })
         
         # Start background image generation
         threading.Thread(target=generate_card_images_background, args=(job_id, prompts, config)).start()
@@ -5543,7 +5620,9 @@ def generate_card_images_background(job_id, prompts, config):
         
         # Update job status and emit to WebSocket
         if job_id in job_storage:
-            job_storage[job_id]["progress"] = "Generating images..."
+            job_data = job_storage.get(job_id)
+            job_data["progress"] = "Generating images..."
+            job_storage.update(job_id, job_data)
             socketio.emit('job_update', {
                 'job_id': job_id,
                 'status': 'processing',
@@ -5563,7 +5642,9 @@ def generate_card_images_background(job_id, prompts, config):
         
         # Update progress and emit to WebSocket
         if job_id in job_storage:
-            job_storage[job_id]["progress"] = "Generating all card images in parallel..."
+            job_data = job_storage.get(job_id)
+            job_data["progress"] = "Generating all card images in parallel..."
+            job_storage.update(job_id, job_data)
             socketio.emit('job_update', {
                 'job_id': job_id,
                 'status': 'processing',
@@ -5683,7 +5764,9 @@ def generate_card_images_background(job_id, prompts, config):
                     
                     # Update progress
                     if job_id in job_storage:
-                        job_storage[job_id]["progress"] = f"Generating {section.replace('Cover', ' Cover').replace('Interior', ' Interior')} (fallback)..."
+                        job_data = job_storage.get(job_id)
+                        job_data["progress"] = f"Generating {section.replace('Cover', ' Cover').replace('Interior', ' Interior')} (fallback)..."
+                        job_storage.update(job_id, job_data)
                     
                     # Single prompt call as fallback
                     # Use same quality logic as main generation
@@ -5739,7 +5822,7 @@ def generate_card_images_background(job_id, prompts, config):
             # Mark as failed and emit to WebSocket
             error_message = f"Failed to generate sections: {', '.join(missing_sections)}"
             if job_id in job_storage:
-                job_storage[job_id].update({
+                job_storage.update(job_id, {
                     "status": "failed",
                     "error": error_message,
                     "completedAt": time.time()
@@ -5754,7 +5837,7 @@ def generate_card_images_background(job_id, prompts, config):
             return
         
         # Calculate generation time
-        start_time = job_storage[job_id]["createdAt"]
+        start_time = job_storage.get(job_id)["createdAt"]
         end_time = time.time()
         generation_duration = end_time - start_time
         print(f"⏱️ Job {job_id} generation time: {generation_duration:.2f} seconds")
@@ -5767,7 +5850,7 @@ def generate_card_images_background(job_id, prompts, config):
             "backCover": generated_images.get("backCover", ""),
             "leftPage": generated_images.get("leftInterior", ""),
             "rightPage": generated_images.get("rightInterior", ""),
-            "createdAt": job_storage[job_id]["createdAt"],
+            "createdAt": job_storage.get(job_id)["createdAt"],
             "generatedPrompts": prompts,
             "generationTimeSeconds": generation_duration
         }
@@ -5779,7 +5862,7 @@ def generate_card_images_background(job_id, prompts, config):
                 
                 # Update progress for WebSocket
                 if job_id in job_storage:
-                    job_storage[job_id].update({
+                    job_storage.update(job_id, {
                         "progress": "Adding QR code to your card..."
                     })
                     socketio.emit('job_update', {
@@ -5853,7 +5936,7 @@ def generate_card_images_background(job_id, prompts, config):
         
         # Mark job as completed and emit to WebSocket
         if job_id in job_storage:
-            job_storage[job_id].update({
+            job_storage.update(job_id, {
                 "status": "completed",
                 "cardData": card_data,
                 "completedAt": time.time(),
@@ -6019,7 +6102,7 @@ def generate_card_images_background(job_id, prompts, config):
         print(f"Error in background generation for job {job_id}: {e}")
         # Mark job as failed and emit to WebSocket
         if job_id in job_storage:
-            job_storage[job_id].update({
+            job_storage.update(job_id, {
                 "status": "failed",
                 "error": str(e),
                 "completedAt": time.time()

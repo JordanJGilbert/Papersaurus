@@ -57,8 +57,12 @@ export default function Step5Review({
     setIsReady(true);
   }, []);
 
-  // Show loading state only if generating and no draft cards available yet
-  if (isGenerating && draftCards.length === 0) {
+  // Check if we have pending jobs in localStorage (for page refresh scenario)
+  const hasPendingJobs = typeof window !== 'undefined' && 
+    JSON.parse(localStorage.getItem('pendingCardJobs') || '[]').length > 0;
+  
+  // Show loading state if generating OR if we have pending jobs and no draft cards yet
+  if ((isGenerating || hasPendingJobs) && draftCards.length === 0) {
     return (
       <div className="space-y-6">
         {/* Generation Progress */}
@@ -127,20 +131,26 @@ export default function Step5Review({
     );
   }
 
+  // Check if we should show draft selection vs generation
+  const showDraftSelection = !isGenerating && !hasPendingJobs && draftCards.length === 0;
+  
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center space-y-2">
-        <h3 className="text-xl font-bold text-gray-900 dark:text-white">
-          Ready to Create Your Card?
-        </h3>
-        <p className="text-gray-600 dark:text-gray-400">
-          Choose how you'd like to generate your personalized greeting card
-        </p>
-      </div>
+      {/* Header - only show if not generating */}
+      {showDraftSelection && (
+        <div className="text-center space-y-2">
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+            Ready to Create Your Card?
+          </h3>
+          <p className="text-gray-600 dark:text-gray-400">
+            Choose how you'd like to generate your personalized greeting card
+          </p>
+        </div>
+      )}
 
-      {/* Draft Mode Description */}
-      <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800">
+      {/* Draft Mode Description - only show when not generating */}
+      {showDraftSelection && (
+        <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800">
         <div className="flex items-start gap-3">
           <div className="w-6 h-6 bg-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
             <span className="text-white text-sm">🎨</span>
@@ -158,9 +168,10 @@ export default function Step5Review({
           </div>
         </div>
       </div>
+      )}
 
-      {/* Generation Buttons - Only show when no draft cards exist */}
-      {draftCards.length === 0 && (
+      {/* Generation Buttons - Only show when no draft cards exist and not generating */}
+      {showDraftSelection && draftCards.length === 0 && (
         <div className="space-y-4">
           {/* Draft Mode Button */}
           <button
@@ -321,6 +332,24 @@ export default function Step5Review({
               <div className="text-center bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 mt-4">
                 <p className="text-sm font-medium text-purple-900 dark:text-purple-100">
                   ✓ Design {selectedDraftIndex + 1} selected - ready to generate complete card!
+                </p>
+              </div>
+            )}
+            
+            {/* Regenerate button */}
+            {!isGenerating && draftCards.length === 5 && (
+              <div className="text-center mt-4">
+                <Button
+                  variant="outline"
+                  onClick={onGenerateDraftCards}
+                  disabled={isGeneratingFinalCard}
+                  className="h-10 px-4 text-sm"
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Regenerate New Designs
+                </Button>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  Not happy with these? Generate 5 new variations
                 </p>
               </div>
             )}

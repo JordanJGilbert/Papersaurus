@@ -197,9 +197,18 @@ When testing changes on the production server:
 
 **For Frontend Changes (Next.js):**
 ```bash
+# For development (hot reload, no build needed):
+sudo systemctl restart vibecarding-dev.service
+
+# For production (with automatic build):
 sudo systemctl restart vibecarding.service
 ```
-Note: The service automatically runs `npm run build` before starting, so no separate build step is needed.
+
+**Available Frontend Services:**
+- `vibecarding-dev.service` - Development server with hot reload (port 3000)
+- `vibecarding.service` - Production server with automatic build (port 3000)
+
+Note: Only run one frontend service at a time. The production service automatically runs `npm run build` before starting.
 
 **For Backend Changes (Flask/app.py):**
 ```bash
@@ -335,6 +344,24 @@ The `generateFinalFromDraftPromptsCombined()` method generates back cover, left 
 - **95% Progress Bug**: Added multiple fallback mechanisms for completion detection
 - **Reference Image Bleeding**: Explicit prompts prevent characters on non-front pages
 - **Message Generation State**: Fixed synchronization between CardWizard and useCardStudio
+- **WebSocket Draft Updates**: Fixed issue where only one draft completion was received instead of all 5
+  - Added support for multiple concurrent WebSocket subscriptions
+  - Draft jobs no longer unsubscribe from each other
+- **Reference Image Persistence**: Fixed race condition causing uploaded images to disappear
+  - Reference images now only sync from cardStudio → form data (one-way sync)
+  - Images persist properly when navigating between wizard steps
+  - Reference photos are correctly passed to draft and final generation
+- **Job Persistence Across Server Restarts** (January 2025)
+  - Implemented file-based job storage in Flask backend (`/data/jobs/`)
+  - Jobs now survive Flask server restarts
+  - Auto-cleanup of jobs older than 6 hours
+  - Thread-safe PersistentJobStorage class
+- **Page Refresh During Generation** (January 2025)
+  - Fixed runtime error: `draftGeneration.setIsGeneratingDrafts` → `setIsGenerating`
+  - Step5Review now checks localStorage for pending jobs on mount
+  - Proper UI state restoration showing generation progress instead of draft selection
+  - Frontend gracefully handles missing backend jobs with clear user messages
+  - Stale job cleanup (>5 minutes) on page load
 
 ## Gallery UI Implementation
 

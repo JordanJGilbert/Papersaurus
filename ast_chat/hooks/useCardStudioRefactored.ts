@@ -214,12 +214,18 @@ export function useCardStudio() {
         cardGeneration.setProgressPercentage(percent);
         draftGeneration.setProgressPercentage(percent);
         console.log(`📊 Progress update: ${percent}% - ${progress}`);
+        
+        // Save progress to localStorage for recovery
+        jobManagement.updateJobProgress(job_id, percent, progress);
       } else if (progress.toLowerCase().includes('complete')) {
         // If progress indicates completion but no percentage, set to 100%
         jobManagement.setProgressPercentage(100);
         cardGeneration.setProgressPercentage(100);
         draftGeneration.setProgressPercentage(100);
         console.log(`📊 Progress update: 100% - ${progress}`);
+        
+        // Save completion state
+        jobManagement.updateJobProgress(job_id, 100, progress);
       }
     }
     
@@ -531,22 +537,106 @@ export function useCardStudio() {
   const checkPendingJobs = useCallback(async () => {
     const pendingJobs = await jobManagement.checkPendingJobs();
     
+    if (pendingJobs.length === 0) return;
+    
+    console.log('🔄 Found pending jobs to restore:', pendingJobs);
+    
     for (const { jobId, job } of pendingJobs) {
-      // Restore the loading state and resubscribe
-      cardGeneration.setIsGenerating(true);
-      jobManagement.setCurrentJobId(jobId);
-      cardGeneration.setGenerationProgress("Resuming card generation...");
+      // Check if job is stale (older than 5 minutes without completion)
+      const jobAge = Date.now() - (job.createdAt || Date.now());
+      const isStale = jobAge > 5 * 60 * 1000 && job.status !== 'completed';
       
-      // Start elapsed time tracking from when job was originally created
-      const jobStartTime = job.createdAt ? new Date(job.createdAt).getTime() : Date.now();
+      if (isStale) {
+        console.log(`🧹 Cleaning up stale job: ${jobId} (age: ${Math.round(jobAge / 1000)}s)`);
+        jobManagement.removeJobFromStorage(jobId);
+        continue;
+      }
+      
+      // Determine job type
+      const isDraftJob = jobId.startsWith('draft-');
+      
+      // Restore progress and state
+      if (job.lastProgress !== undefined) {
+        jobManagement.setProgressPercentage(job.lastProgress);
+        cardGeneration.setProgressPercentage(job.lastProgress);
+        draftGeneration.setProgressPercentage(job.lastProgress);
+      }
+      
+      if (job.lastProgressText) {
+        jobManagement.setGenerationProgress(job.lastProgressText);
+        cardGeneration.setGenerationProgress(job.lastProgressText);
+        draftGeneration.setGenerationProgress(job.lastProgressText);
+      }
+      
+      // Restore appropriate generation state
+      if (isDraftJob) {
+        // Restore draft generation state
+        draftGeneration.setIsDraftMode(true);
+        draftGeneration.setIsGenerating(true);
+        cardGeneration.setIsGenerating(true);
+        
+        // If we have partial draft cards in the job data, restore them
+        if (job.draftCards && Array.isArray(job.draftCards)) {
+          draftGeneration.setDraftCards(job.draftCards);
+        }
+      } else {
+        // Restore final card generation state
+        cardGeneration.setIsGenerating(true);
+        draftGeneration.setIsGeneratingFinalCard(true);
+        
+        // If we have a selected draft, restore it
+        if (job.selectedDraftIndex !== undefined) {
+          draftGeneration.setSelectedDraftIndex(job.selectedDraftIndex);
+        }
+      }
+      
+      jobManagement.setCurrentJobId(jobId);
+      
+      // Calculate elapsed time since job started
+      const jobStartTime = job.createdAt || Date.now();
+      const elapsedSinceStart = (Date.now() - jobStartTime) / 1000;
+      
+      // Start elapsed time tracking from the correct point
       jobManagement.startElapsedTimeTracking(jobStartTime);
       
-      toast.info("🔄 Resuming card generation where you left off...");
-      
-      // Subscribe to WebSocket for resumed job
+      // Subscribe to the job updates
       webSocket.subscribeToJob(jobId);
+      
+      // Verify job exists on backend
+      try {
+        const response = await fetch(`${BACKEND_API_BASE_URL}/api/job-status/${jobId}`);
+        const result = await response.json();
+        
+        if (result.status === 'not_found') {
+          // Job doesn't exist on backend, clean up and notify user
+          console.log(`⚠️ Job ${jobId} not found on backend, cleaning up...`);
+          jobManagement.removeJobFromStorage(jobId);
+          
+          // Reset generation state
+          if (isDraftJob) {
+            draftGeneration.setIsGenerating(false);
+          } else {
+            cardGeneration.setIsGenerating(false);
+            draftGeneration.setIsGeneratingFinalCard(false);
+          }
+          
+          // Show helpful message to user
+          toast.error(
+            `Previous ${isDraftJob ? 'draft' : 'card'} generation expired. Please start a new one.`,
+            { duration: 5000 }
+          );
+          continue;
+        } else {
+          // Job exists, show resuming message
+          toast.info(`Resuming ${isDraftJob ? 'draft' : 'card'} generation...`);
+        }
+      } catch (error) {
+        console.error('Failed to verify job status:', error);
+        // Continue anyway, WebSocket will handle it
+        toast.info(`Attempting to resume ${isDraftJob ? 'draft' : 'card'} generation...`);
+      }
     }
-  }, [jobManagement, cardGeneration, webSocket]);
+  }, [jobManagement, cardGeneration, draftGeneration, webSocket]);
 
   // Check for pending jobs on component mount
   useEffect(() => {
