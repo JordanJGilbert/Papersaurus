@@ -75,9 +75,11 @@ const wizardSteps: WizardStep[] = [
 export default function CardWizard() {
   // Use hooks for form data and wizard state persistence
   const cardForm = useCardForm();
-  const wizardState = useWizardState();
   const cardHistory = useCardHistory();
   const cardStudio = useCardStudio();
+  
+  // Extract wizard state from cardForm
+  const { wizardState, updateWizardState } = cardForm;
   
   // History modal state
   const [showHistoryModal, setShowHistoryModal] = useState(false);

@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+// Tabs removed - draft sessions no longer supported
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
@@ -36,35 +36,33 @@ export default function CardHistoryModal({
   onLoadCard 
 }: CardHistoryModalProps) {
   const { 
-    history, 
-    isLoading, 
-    deleteDraftSession, 
-    deleteCompletedCard,
-    resumeDraftSession,
+    cardHistory,
+    draftSessions,
     clearHistory 
   } = useCardHistory();
+  
+  // These features are no longer available in simplified version
+  const isLoading = false;
+  const history = {
+    completedCards: cardHistory,
+    draftSessions: draftSessions
+  };
 
-  const [activeTab, setActiveTab] = useState<'completed' | 'drafts'>('completed');
+  // Removed tabs since draft sessions are no longer supported
 
   const handleResumeDraft = (sessionId: string) => {
-    const session = resumeDraftSession(sessionId);
-    if (session) {
-      onResumeDraft?.(sessionId);
-      onClose();
-      toast.success('Draft session resumed!');
-    } else {
-      toast.error('Failed to resume draft session');
-    }
+    // Draft sessions are no longer supported in simplified version
+    toast.info('Draft sessions are no longer supported. Please start a new card.');
   };
 
   const handleDeleteDraft = (sessionId: string) => {
-    deleteDraftSession(sessionId);
-    toast.success('Draft session deleted');
+    // Draft deletion not supported in simplified version
+    toast.info('Draft management has been simplified.');
   };
 
   const handleDeleteCard = (cardId: string) => {
-    deleteCompletedCard(cardId);
-    toast.success('Card deleted from history');
+    // Individual card deletion not supported in simplified version
+    toast.info('Card history is automatically managed.');
   };
 
   const handleClearAll = () => {
@@ -85,7 +83,7 @@ export default function CardHistoryModal({
     }
   };
 
-  const formatDate = (date: Date) => {
+  const formatDate = (date: string | Date) => {
     return new Date(date).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -94,7 +92,7 @@ export default function CardHistoryModal({
     });
   };
 
-  const getRelativeTime = (date: Date) => {
+  const getRelativeTime = (date: string | Date) => {
     const now = new Date();
     const diffInHours = Math.floor((now.getTime() - new Date(date).getTime()) / (1000 * 60 * 60));
     
@@ -110,27 +108,14 @@ export default function CardHistoryModal({
         <DialogHeader className="p-6 pb-4">
           <DialogTitle className="text-xl font-bold">Your Card History</DialogTitle>
           <DialogDescription>
-            View your completed cards and resume draft sessions
+            View your recently generated cards
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'completed' | 'drafts')} className="flex-1">
-          <div className="px-6">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="completed" className="flex items-center gap-2">
-                <FileText className="w-4 h-4" />
-                Completed Cards ({history.completedCards.length})
-              </TabsTrigger>
-              <TabsTrigger value="drafts" className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                Draft Sessions ({history.draftSessions.length})
-              </TabsTrigger>
-            </TabsList>
-          </div>
-
+        <div className="flex-1">
           <div className="px-6 pb-6">
-            {/* Completed Cards Tab */}
-            <TabsContent value="completed" className="mt-4">
+            {/* Completed Cards */}
+            <div className="mt-4">
               <ScrollArea className="h-96">
                 {history.completedCards.length === 0 ? (
                   <div className="text-center py-8">
@@ -149,7 +134,7 @@ export default function CardHistoryModal({
                             {/* Card Preview */}
                             <div className="flex-shrink-0">
                               <img 
-                                src={card.frontCover} 
+                                src={card.thumbnailUrl || '/placeholder-card.png'} 
                                 alt="Card preview" 
                                 className="w-20 h-28 object-cover rounded-lg border shadow-sm"
                               />
@@ -159,13 +144,12 @@ export default function CardHistoryModal({
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start justify-between mb-2">
                                 <h3 className="font-semibold text-gray-900 dark:text-white truncate">
-                                  {card.prompt.substring(0, 50)}
-                                  {card.prompt.length > 50 && '...'}
+                                  {card.type} Card {card.recipient ? `for ${card.recipient}` : ''}
                                 </h3>
                                 <div className="flex items-center gap-2 ml-2">
                                   <Badge variant="secondary" className="text-xs">
                                     <Calendar className="w-3 h-3 mr-1" />
-                                    {formatDate(card.createdAt)}
+                                    {formatDate(card.date)}
                                   </Badge>
                                 </div>
                               </div>
@@ -173,12 +157,12 @@ export default function CardHistoryModal({
                               <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400 mb-3">
                                 <span className="flex items-center gap-1">
                                   <Clock className="w-4 h-4" />
-                                  {getRelativeTime(card.createdAt)}
+                                  {getRelativeTime(card.date)}
                                 </span>
-                                {card.styleInfo && (
+                                {card.tone && (
                                   <span className="flex items-center gap-1">
                                     <Palette className="w-4 h-4" />
-                                    {card.styleInfo.styleLabel}
+                                    {card.tone}
                                   </span>
                                 )}
                               </div>
@@ -225,124 +209,14 @@ export default function CardHistoryModal({
                   </div>
                 )}
               </ScrollArea>
-            </TabsContent>
-
-            {/* Draft Sessions Tab */}
-            <TabsContent value="drafts" className="mt-4">
-              <ScrollArea className="h-96">
-                {history.draftSessions.length === 0 ? (
-                  <div className="text-center py-8">
-                    <Clock className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-500 dark:text-gray-400">No draft sessions</p>
-                    <p className="text-sm text-gray-400 dark:text-gray-500">
-                      Create draft cards to see them here!
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {history.draftSessions.map((session) => (
-                      <Card key={session.id} className="hover:shadow-md transition-shadow">
-                        <CardContent className="p-4">
-                          <div className="flex items-start gap-4">
-                            {/* Draft Preview */}
-                            <div className="flex-shrink-0">
-                              {(() => {
-                                const validDrafts = session.draftCards.filter(Boolean);
-                                const firstDraft = validDrafts[0];
-                                
-                                if (firstDraft) {
-                                  return (
-                                    <div className="relative">
-                                      <img 
-                                        src={firstDraft.frontCover} 
-                                        alt="Draft preview" 
-                                        className="w-20 h-28 object-cover rounded-lg border shadow-sm"
-                                      />
-                                      {validDrafts.length > 1 && (
-                                        <Badge 
-                                          variant="secondary" 
-                                          className="absolute -top-2 -right-2 text-xs bg-purple-600 text-white"
-                                        >
-                                          {validDrafts.length}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                  );
-                                } else {
-                                  return (
-                                    <div className="w-20 h-28 bg-gray-100 dark:bg-gray-800 rounded-lg border flex items-center justify-center">
-                                      <Clock className="w-6 h-6 text-gray-400" />
-                                    </div>
-                                  );
-                                }
-                              })()}
-                            </div>
-                            
-                            {/* Session Details */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-start justify-between mb-2">
-                                <h3 className="font-semibold text-gray-900 dark:text-white truncate">
-                                  {session.title}
-                                </h3>
-                                <div className="flex items-center gap-2 ml-2">
-                                  <Badge variant="outline" className="text-xs">
-                                    {session.draftCards.filter(Boolean).length} drafts
-                                  </Badge>
-                                </div>
-                              </div>
-                              
-                              <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400 mb-3">
-                                <span className="flex items-center gap-1">
-                                  <Clock className="w-4 h-4" />
-                                  {getRelativeTime(session.lastModified)}
-                                </span>
-                                {session.selectedDraftIndex >= 0 && (
-                                  <span className="flex items-center gap-1">
-                                    <Badge variant="secondary" className="text-xs">
-                                      Draft {session.selectedDraftIndex + 1} selected
-                                    </Badge>
-                                  </span>
-                                )}
-                              </div>
-                              
-                              {/* Actions */}
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  variant="default"
-                                  size="sm"
-                                  onClick={() => handleResumeDraft(session.id)}
-                                  className="flex items-center gap-1 bg-purple-600 hover:bg-purple-700"
-                                >
-                                  <Play className="w-4 h-4" />
-                                  Resume
-                                </Button>
-                                
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleDeleteDraft(session.id)}
-                                  className="flex items-center gap-1 text-red-600 hover:text-red-700"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                  Delete
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </TabsContent>
+            </div>
           </div>
-        </Tabs>
+        </div>
 
         {/* Footer Actions */}
         <div className="border-t p-4 flex items-center justify-between bg-gray-50 dark:bg-gray-800">
           <div className="text-sm text-gray-600 dark:text-gray-400">
-            {history.completedCards.length} completed • {history.draftSessions.length} drafts
+            {history.completedCards.length} recent cards
           </div>
           <div className="flex items-center gap-2">
             <Button

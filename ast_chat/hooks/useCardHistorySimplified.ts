@@ -16,7 +16,8 @@ export interface CardHistoryItem {
 
 export function useCardHistory() {
   const [cardHistory, setCardHistory] = useState<CardHistoryItem[]>([]);
-  const [draftSessions, setDraftSessions] = useState<any[]>([]);
+  // Draft sessions no longer supported in simplified version
+  const draftSessions: any[] = [];
 
   // Load recent cards on mount
   useEffect(() => {
@@ -53,7 +54,6 @@ export function useCardHistory() {
   const clearHistory = () => {
     storage.clearAll();
     setCardHistory([]);
-    setDraftSessions([]);
   };
 
   // For compatibility - these functions don't do anything in simplified version

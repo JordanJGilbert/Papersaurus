@@ -104,20 +104,7 @@ export function useDraftGeneration(props: DraftGenerationProps) {
       props.unsubscribeFromAllJobs();
     }
     
-    // Clear all old draft jobs from localStorage before starting new generation
-    if (typeof window !== 'undefined') {
-      console.log('🧹 Clearing old draft jobs before starting new generation');
-      const keys = Object.keys(localStorage);
-      keys.forEach(key => {
-        if (key.startsWith('cardJob_draft-')) {
-          localStorage.removeItem(key);
-        }
-      });
-      // Also clear from pending jobs list
-      const pendingJobs = JSON.parse(localStorage.getItem('pendingCardJobs') || '[]');
-      const filteredJobs = pendingJobs.filter((id: string) => !id.startsWith('draft-'));
-      localStorage.setItem('pendingCardJobs', JSON.stringify(filteredJobs));
-    }
+    // No longer need to clear old draft jobs - storage manager handles this automatically
     
     setIsDraftMode(true);
     setIsGenerating(true);

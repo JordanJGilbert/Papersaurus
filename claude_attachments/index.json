@@ -383,5 +383,16 @@
     "label": "vibecarding_image_generation_screen",
     "description": "This screenshot shows the VibeCarding app during the image generation process. It shows a progress bar and generation tips for users.",
     "size": 124608
+  },
+  "f8fa896e-7bd2-484e-9d95-0b414ee0c46f": {
+    "filename": "f8fa896e-7bd2-484e-9d95-0b414ee0c46f.jpg",
+    "path": "/var/www/flask_app/claude_attachments/f8fa896e-7bd2-484e-9d95-0b414ee0c46f.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_68c4d323-28ce-4584-9a6a-c414372fc8ff&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752327042853,
+    "message_id": "+17145986105_1752327042853",
+    "label": "vibecarding_card_history_view",
+    "description": "Screenshot of the VibeCarding app's card history view, showing completed and draft cards, including 'Japan Trip (funny)' and 'Birthday (funny)' cards.",
+    "size": 125595
   }
 }
