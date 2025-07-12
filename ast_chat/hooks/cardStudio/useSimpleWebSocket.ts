@@ -46,6 +46,14 @@ export function useSimpleWebSocket() {
       socketRef.current.emit('unsubscribe_job', { job_id: jobId });
     }
   }, []);
+  
+  // Unsubscribe from all jobs
+  const unsubscribeAll = useCallback(() => {
+    if (socketRef.current?.connected) {
+      console.log(`📡 Unsubscribing from all jobs`);
+      socketRef.current.emit('unsubscribe_all_jobs');
+    }
+  }, []);
 
   // Listen for updates
   const onUpdate = useCallback((callback: (data: any) => void) => {
@@ -59,6 +67,7 @@ export function useSimpleWebSocket() {
     isConnected,
     subscribe,
     unsubscribe,
+    unsubscribeAll,
     onUpdate
   };
 }

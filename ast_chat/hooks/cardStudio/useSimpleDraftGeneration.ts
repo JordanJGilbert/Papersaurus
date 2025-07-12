@@ -22,7 +22,7 @@ export function useSimpleDraftGeneration() {
     progress: ''
   });
 
-  const { subscribe, unsubscribe, onUpdate, isConnected } = useSimpleWebSocket();
+  const { subscribe, unsubscribe, unsubscribeAll, onUpdate, isConnected } = useSimpleWebSocket();
   const timer = useSimpleTimer();
   const activeJobsRef = useRef<Set<string>>(new Set());
 
@@ -30,6 +30,13 @@ export function useSimpleDraftGeneration() {
   useEffect(() => {
     onUpdate((data) => {
       console.log('📦 Update:', data);
+      
+      // Only process updates for current active jobs
+      const jobId = data.job_id;
+      if (!jobId || !activeJobsRef.current.has(jobId)) {
+        console.log(`🚫 Ignoring update from non-active job: ${jobId}`);
+        return;
+      }
       
       if (data.status === 'completed' && data.result) {
         // Draft completed
@@ -40,11 +47,8 @@ export function useSimpleDraftGeneration() {
         }));
         
         // Unsubscribe from completed job
-        const jobId = data.job_id;
-        if (jobId) {
-          unsubscribe(jobId);
-          activeJobsRef.current.delete(jobId);
-        }
+        unsubscribe(jobId);
+        activeJobsRef.current.delete(jobId);
         
         // Check if all done
         if (activeJobsRef.current.size === 0) {
@@ -76,9 +80,10 @@ export function useSimpleDraftGeneration() {
       progress: 'Starting draft generation...'
     });
     
-    // Clear any active jobs
+    // Clear any active jobs and unsubscribe from all
     activeJobsRef.current.forEach(jobId => unsubscribe(jobId));
     activeJobsRef.current.clear();
+    unsubscribeAll(); // Ensure we're not listening to any old jobs
     
     timer.start();
 
@@ -121,7 +126,7 @@ export function useSimpleDraftGeneration() {
       }));
       toast.error('Failed to generate drafts');
     }
-  }, [subscribe, unsubscribe, timer]);
+  }, [subscribe, unsubscribe, unsubscribeAll, timer]);
 
   // Select a draft
   const selectDraft = useCallback((index: number) => {
@@ -136,6 +141,7 @@ export function useSimpleDraftGeneration() {
     // Unsubscribe from all active jobs
     activeJobsRef.current.forEach(jobId => unsubscribe(jobId));
     activeJobsRef.current.clear();
+    unsubscribeAll(); // Ensure complete cleanup
     
     timer.reset();
     
@@ -145,7 +151,7 @@ export function useSimpleDraftGeneration() {
       selectedDraftIndex: -1,
       progress: ''
     });
-  }, [unsubscribe, timer]);
+  }, [unsubscribe, unsubscribeAll, timer]);
 
   return {
     ...state,
