@@ -40,7 +40,7 @@ const getInspirationChips = (cardType: string, tone: string): string[] => {
 // AI brainstorming prompts
 const getBrainstormPrompt = (cardType: string, tone: string, recipient?: string, photoContext?: string) => {
   const recipientText = recipient ? `for ${recipient}` : '';
-  const photoText = photoContext ? `\n\nIMPORTANT: The user has uploaded reference photos with the following context:\n${photoContext}\n\nIncorporate these specific people and elements into your suggestions.` : '';
+  const photoText = photoContext ? `\n\n${photoContext}. Include these specific people in creative and imaginative ways. IMPORTANT: Only feature the people mentioned above - do not add any additional people, babies, children, or characters unless explicitly requested.` : '';
   
   return `Generate 4 creative and specific card description ideas for a ${tone} ${cardType} card ${recipientText}.${photoText}
   Each idea should be 20-30 words long and paint a vivid picture with specific visual elements, themes, scenes, and artistic details.
@@ -114,7 +114,7 @@ export default function CardDescriptionHelper({
     setShowSuggestions(true);
     
     try {
-      // Build photo context from analyses
+      // Build simplified photo context (same as message generation)
       let photoContext = '';
       if (photoAnalyses && photoAnalyses.length > 0) {
         const selectedPeople = photoAnalyses.flatMap(analysis => 
@@ -122,58 +122,44 @@ export default function CardDescriptionHelper({
         );
         
         if (selectedPeople.length > 0) {
-          // Build detailed context similar to message generation
-          let contextParts = [];
-          
-          // Add people descriptions with all their details
-          const peopleDetails = selectedPeople.map(person => {
-            let description = person.name || person.positionDescription || person.description;
-            if (person.relationshipToRecipient) {
-              description += ` (${person.relationshipToRecipient})`;
-            }
+          // Build simple context with just names, relationships, and ages
+          const peopleDescriptions = selectedPeople.map(person => {
+            // Use name if available, otherwise use a simplified position
+            let description = person.name;
             
-            // Add key characteristics
-            const characteristics = [];
-            if (person.apparentAge) characteristics.push(`${person.apparentAge} years old`);
-            if (person.expression) characteristics.push(person.expression);
-            if (person.distinguishingFeatures) characteristics.push(person.distinguishingFeatures);
-            if (person.clothing) characteristics.push(`wearing ${person.clothing}`);
-            
-            if (characteristics.length > 0) {
-              description += ` - ${characteristics.join(', ')}`;
+            if (!description) {
+              // Simplify position description for unnamed people
+              if (person.gender && person.apparentAge) {
+                description = `a ${person.gender.toLowerCase()} (${person.apparentAge})`;
+              } else {
+                description = person.positionDescription || 'someone';
+              }
+            } else {
+              // For named people, add relationship and age in parentheses
+              const details = [];
+              if (person.relationshipToRecipient) {
+                details.push(person.relationshipToRecipient);
+              }
+              if (person.apparentAge) {
+                details.push(person.apparentAge);
+              }
+              
+              if (details.length > 0) {
+                description += ` (${details.join(', ')})`;
+              }
             }
             
             return description;
-          }).join('; ');
+          });
           
-          contextParts.push(`People in photo: ${peopleDetails}`);
-          
-          // Add group relationship if specified
-          const groupRelationships = photoAnalyses
-            .filter(a => a.groupRelationship)
-            .map(a => a.groupRelationship);
-          if (groupRelationships.length > 0) {
-            contextParts.push(`Group relationship: ${groupRelationships.join(', ')}`);
+          if (peopleDescriptions.length === 1) {
+            photoContext = `The card should include ${peopleDescriptions[0]}`;
+          } else if (peopleDescriptions.length === 2) {
+            photoContext = `The card should include ${peopleDescriptions[0]} and ${peopleDescriptions[1]}`;
+          } else {
+            const lastPerson = peopleDescriptions.pop();
+            photoContext = `The card should include ${peopleDescriptions.join(', ')}, and ${lastPerson}`;
           }
-          
-          // Add setting and mood from first analysis
-          const firstAnalysis = photoAnalyses[0];
-          if (firstAnalysis?.analysisResult) {
-            const result = firstAnalysis.analysisResult;
-            if (result.setting) contextParts.push(`Setting: ${result.setting}`);
-            if (result.overallMood) contextParts.push(`Mood: ${result.overallMood}`);
-            if (result.backgroundDescription) contextParts.push(`Background: ${result.backgroundDescription}`);
-          }
-          
-          // Add any special instructions
-          const specialInstructions = photoAnalyses
-            .filter(a => a.specialInstructions)
-            .map(a => a.specialInstructions);
-          if (specialInstructions.length > 0) {
-            contextParts.push(`Special notes: ${specialInstructions.join('; ')}`);
-          }
-          
-          photoContext = contextParts.join('\n');
         }
       }
       

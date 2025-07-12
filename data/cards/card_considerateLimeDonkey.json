@@ -1,0 +1,17 @@
+{
+  "id": "considerateLimeDonkey",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_064e9569.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_7b713e8c.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_d01fbf49.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_57c49ddc.png",
+  "generatedPrompts": {
+    "frontCover": "A charming and humorous watercolor illustration of a single, giant slice of cartoon pizza, styled as a superhero. The pizza slice is wearing a flowing red cape made of marinara sauce and a mask made of black olives over its \"eyes\" (which are two pepperoni slices). It's flexing one of its crusty \"arms\" with a determined, funny expression. Floating around the pizza superhero are smaller, whimsical cartoon-style toppings like a smiling mushroom and a giddy green pepper. In the center of the design, the words \"happy birthday\" are elegantly written in a beautiful, readable, flowing handwritten cursive script. The entire design is in a soft, flowing watercolor style, with visible artistic brush strokes, organic paint bleeds, and a subtle paper texture, creating a flat 2D artwork perfect for printing.",
+    "backCover": "A minimalist and artistic design for the back of a greeting card. A very simple, small, and whimsical cartoon-style smiling green pepper and a single smiling mushroom are placed in the upper-left corner. The style is a soft, flowing watercolor painting, with visible artistic brush strokes, organic paint bleeds, and a subtle paper texture. The background is a clean, solid off-white. The overall design is flat 2D artwork, very sparse, leaving the majority of the card blank, with the bottom-right corner completely empty.",
+    "leftInterior": "A subtle and artistic full-bleed background for the left interior of a greeting card. Abstract watercolor splashes in soft, warm tones of red, orange, and yellow blend gently across the page. The design features a decorative border along the bottom edge composed of whimsical, simple cartoon-style toppings like green peppers, mushrooms, and black olives, all rendered in a soft watercolor style. The illustration is flat 2D artwork, with visible artistic brush strokes, organic paint bleeds, and a subtle paper texture, creating a beautiful yet understated backdrop.",
+    "rightInterior": "A minimalist and elegant design for the right interior of a greeting card, intended to leave ample space for a handwritten message. The background is a clean, solid off-white with a very subtle paper texture. A simple, decorative watercolor border runs along the top and bottom edges, featuring abstract, soft washes of red and green paint. This border is light and does not distract from the central blank area. The overall aesthetic is flat 2D artwork in a watercolor painting style, with soft flowing colors and artistic brush strokes."
+  },
+  "createdAt": 1752255467.2135026,
+  "expiresAt": 1783791467.2135036,
+  "version": 1
+}

@@ -1,0 +1,17 @@
+{
+  "id": "trueMagentaCavy",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_a56d42d6.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_96d9e5d8.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_165669d2.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_ffa5cba0.png",
+  "generatedPrompts": {
+    "frontCover": "A charming cartoon slice of cherry pie with big googly eyes and a wide, mischievous grin, holding a single lit birthday candle in one of its flaky crust \"hands\". The pie slice is dramatically leaning away from a cartoon fork that is swooping in from the side, as if trying to take a bite. The text \"happy birthday\" is written in a beautiful, flowing, and readable handwritten cursive script in the center of the card. The entire scene is a flat 2D watercolor painting with soft, blended colors, visible artistic brush strokes, a subtle paper texture, and organic paint bleeds along the edges of the figures.",
+    "backCover": "A minimalist and abstract watercolor splotch in a soft cherry red color, located in the top-left corner of the card. The design is flat 2D, featuring delicate, organic paint bleeds and visible artistic brush strokes against a soft cream background with a subtle paper texture. The bottom-right corner is intentionally left clear and empty.",
+    "leftInterior": "A full-bleed, light watercolor wash background with subtle paper texture. An abstract border of softly blended cherry red and pie crust brown watercolor paint flows along the top and bottom edges of the panel, featuring visible artistic brush strokes and organic paint bleeds. The center of the panel is a lighter, creamy white to keep the design gentle and unobtrusive.",
+    "rightInterior": "A simple and elegant full-bleed background in a very light, creamy off-white color with a subtle paper texture. A small, single, abstract watercolor splotch in a soft pie crust brown is placed in the bottom-left corner, featuring organic paint bleeds and visible brush strokes. The majority of the panel is clear, providing ample open space for a handwritten message."
+  },
+  "createdAt": 1752257236.8156846,
+  "expiresAt": 1783793236.815685,
+  "version": 1
+}

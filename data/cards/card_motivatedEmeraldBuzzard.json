@@ -1,0 +1,17 @@
+{
+  "id": "motivatedEmeraldBuzzard",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_788cf346.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_581ef5e5.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_0330e5e0.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_d20fbfe8.png",
+  "generatedPrompts": {
+    "frontCover": "A vibrant birthday card featuring colorful balloons floating against a sunny sky, with 'Happy Birthday John!' in festive lettering",
+    "backCover": "Simple elegant design with small birthday cake icon and 'Made with love' text",
+    "leftInterior": "Decorative border with party streamers and confetti",
+    "rightInterior": "Happy Birthday! Hope your day is amazing! - Jane"
+  },
+  "createdAt": 1752252009.051563,
+  "expiresAt": 1783788009.0515635,
+  "version": 1
+}

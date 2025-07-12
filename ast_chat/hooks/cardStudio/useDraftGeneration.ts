@@ -31,15 +31,14 @@ interface DraftGenerationProps {
   saveJobToStorage: (jobId: string, jobData: any) => void;
   subscribeToJob: (jobId: string) => void;
   unsubscribeFromAllJobs?: () => void;
-  startElapsedTimeTracking: (startTime?: number, estimatedTotalSeconds?: number) => void;
+  startElapsedTimeTracking: (jobType?: 'draft' | 'final') => void;
   stopElapsedTimeTracking: () => void;
 }
 
 export function useDraftGeneration(props: DraftGenerationProps) {
   // Draft mode state
   const [isDraftMode, setIsDraftMode] = useState<boolean>(false);
-  const [draftCards, setDraftCards] = useState<GeneratedCard[]>([]);
-  const [draftIndexMapping, setDraftIndexMapping] = useState<number[]>([]);
+  const [draftCards, setDraftCards] = useState<(GeneratedCard | null)[]>([]);
   const [selectedDraftIndex, setSelectedDraftIndex] = useState<number>(-1);
   const [isGeneratingFinalCard, setIsGeneratingFinalCard] = useState<boolean>(false);
   const [previewingDraftIndex, setPreviewingDraftIndex] = useState<number>(-1);
@@ -47,7 +46,6 @@ export function useDraftGeneration(props: DraftGenerationProps) {
   const [draftCompletionCount, setDraftCompletionCount] = useState<number>(0);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState("");
-  const [progressPercentage, setProgressPercentage] = useState(0);
   const [generatedCard, setGeneratedCard] = useState<GeneratedCard | null>(null);
   const [generatedCards, setGeneratedCards] = useState<GeneratedCard[]>([]);
   const [isCardCompleted, setIsCardCompleted] = useState(false);
@@ -105,13 +103,26 @@ export function useDraftGeneration(props: DraftGenerationProps) {
       props.unsubscribeFromAllJobs();
     }
     
+    // Clear all old draft jobs from localStorage before starting new generation
+    if (typeof window !== 'undefined') {
+      console.log('🧹 Clearing old draft jobs before starting new generation');
+      const keys = Object.keys(localStorage);
+      keys.forEach(key => {
+        if (key.startsWith('cardJob_draft-')) {
+          localStorage.removeItem(key);
+        }
+      });
+      // Also clear from pending jobs list
+      const pendingJobs = JSON.parse(localStorage.getItem('pendingCardJobs') || '[]');
+      const filteredJobs = pendingJobs.filter((id: string) => !id.startsWith('draft-'));
+      localStorage.setItem('pendingCardJobs', JSON.stringify(filteredJobs));
+    }
+    
     setIsDraftMode(true);
     setIsGenerating(true);
-    startElapsedTimeTracking(undefined, 45); // 45 seconds for draft mode
+    startElapsedTimeTracking('draft');
     setGenerationProgress("🎨 Creating 5 front cover variations for you to choose from...");
-    setProgressPercentage(0);
-    setDraftCards([]);
-    setDraftIndexMapping([]);
+    setDraftCards([null, null, null, null, null]); // Initialize with 5 empty slots
     setSelectedDraftIndex(-1);
     setDraftCompletionShown(false);
     setDraftCompletionCount(0);
@@ -120,6 +131,7 @@ export function useDraftGeneration(props: DraftGenerationProps) {
     setGeneratedCard(null);
     setGeneratedCards([]);
     setIsCardCompleted(false);
+    
 
     try {
       console.log("🚀 Starting draft mode generation with 5 variations");
@@ -280,8 +292,9 @@ export function useDraftGeneration(props: DraftGenerationProps) {
       return;
     }
     
-    if (displayIndex < 0 || displayIndex >= draftCards.length || !draftCards[displayIndex]) {
-      toast.error("Invalid draft selection");
+    const selectedDraft = draftCards[displayIndex];
+    if (!selectedDraft) {
+      toast.error("Please wait for the draft to complete before selecting");
       return;
     }
 
@@ -305,23 +318,16 @@ export function useDraftGeneration(props: DraftGenerationProps) {
       subscribeToJob
     } = props;
 
-    // Get the original draft index from the mapping
-    const originalDraftIndex = draftIndexMapping[displayIndex];
-    if (originalDraftIndex === undefined) {
-      toast.error("Could not find original draft data");
-      return;
-    }
-
     // Stop any existing timers first
     props.stopElapsedTimeTracking();
     
     setIsGeneratingFinalCard(true);
+    setIsDraftMode(false); // Switch out of draft mode for final generation
     setSelectedDraftIndex(displayIndex);
-    startElapsedTimeTracking(undefined, 120);
+    startElapsedTimeTracking('final');
     setGenerationProgress("🎨 Creating high-quality version of your selected design...");
 
     try {
-      const selectedDraft = draftCards[displayIndex];
       const jobId = uuidv4();
       
       // Generate the missing prompts
@@ -427,17 +433,15 @@ export function useDraftGeneration(props: DraftGenerationProps) {
       toast.error("Failed to generate final card. Please try again.");
       setIsGeneratingFinalCard(false);
       setGenerationProgress("");
-      props.stopElapsedTimeTracking();
+      props.stopElapsedTimeTracking(); // Clear time-based progress on error
     }
-  }, [draftCards, draftIndexMapping, isGeneratingFinalCard, props]);
+  }, [draftCards, isGeneratingFinalCard, props]);
 
   return {
     isDraftMode,
     setIsDraftMode,
     draftCards,
     setDraftCards,
-    draftIndexMapping,
-    setDraftIndexMapping,
     selectedDraftIndex,
     setSelectedDraftIndex,
     isGeneratingFinalCard,
@@ -454,8 +458,6 @@ export function useDraftGeneration(props: DraftGenerationProps) {
     setIsGenerating,
     generationProgress,
     setGenerationProgress,
-    progressPercentage,
-    setProgressPercentage,
     generatedCard,
     setGeneratedCard,
     generatedCards,

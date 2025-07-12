@@ -1,0 +1,17 @@
+{
+  "id": "energeticFlamingoBald",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_70675029.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_398ac7c5.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_c7c24e72.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_c66d64bf.png",
+  "generatedPrompts": {
+    "frontCover": "A charming cartoon slice of cherry pie with big googly eyes and a wide, mischievous grin, holding a single lit birthday candle in one of its flaky crust \"hands\". The pie slice is dramatically leaning away from a cartoon fork that is swooping in from the side, as if trying to take a bite. The text \"happy birthday\" is written in a beautiful, flowing, and readable handwritten cursive script in the center of the card. The entire scene is a flat 2D watercolor painting with soft, blended colors, visible artistic brush strokes, a subtle paper texture, and organic paint bleeds along the edges of the figures.",
+    "backCover": "A minimal and simple flat 2D watercolor painting of a single, perfectly rendered, ripe red cherry with a green stem, positioned in the upper-left quadrant. The style features soft, flowing colors, visible artistic brush strokes, a subtle paper texture, and organic paint bleeds. The design is very sparse with a plain off-white background, leaving the bottom-right corner completely empty.",
+    "leftInterior": "A subtle and decorative flat 2D watercolor painting of a beautiful lattice pie crust pattern. The pattern is a gentle golden-brown and covers the entire panel as a soft, full-bleed background. The style features soft, flowing colors, visible artistic brush strokes, a subtle paper texture, and organic paint bleeds along the lattice lines, creating an abstract and elegant effect.",
+    "rightInterior": "A minimal decorative frame for a handwritten message. The design features a delicate watercolor wash of soft cherry red and creamy white tones bleeding into each other along the top and bottom edges of the panel, with a clean, plain off-white center. A few small, scattered red watercolor dots, resembling cherry juice splatters, are placed in the corners. The style is flat 2D with soft colors, visible brush strokes, a subtle paper texture, and organic paint bleeds. The central area is clear and primed for writing."
+  },
+  "createdAt": 1752256349.7108881,
+  "expiresAt": 1783792349.7108889,
+  "version": 1
+}

@@ -381,6 +381,11 @@ async def process_message(msg):
         
         print("attachment_urls: ", attachment_urls)
     
+    # Special handling for Claude Code user (17145986105) - if attachment, just save and return
+    if original_sender_number in ["+17145986105", "17145986105"] and attachments:
+        print(f"Claude Code user sent attachment - saved to claude_attachments folder, returning")
+        return True
+    
     # Indicate to the user that we're processing their message
     await send_typing_indicator(sender, True)
     

@@ -1,0 +1,17 @@
+{
+  "id": "brilliantAzureCattle",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_c2be7ac8.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_be7fcb18.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_a3468e16.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_9868a498.png",
+  "generatedPrompts": {
+    "frontCover": "A charming cartoon-style highland cow wearing a ridiculously small, colorful party hat that is tilted precariously on its shaggy head. The cow has a slightly bewildered but happy expression, with one eye peeking out from under its long, messy fringe. It's holding a single, unlit birthday candle in its mouth like a blade of grass. The text \"happy birthday\" is written in the center in a beautiful, readable, handwritten cursive script. The entire scene is a flat 2D watercolor painting, featuring soft, flowing colors, artistic brush strokes, and organic paint bleeds on a textured paper background. The overall style is humorous, lighthearted, and endearing.",
+    "backCover": "A minimalist and abstract watercolor accent in the top-left corner. The design features a simple, small cluster of colorful, abstract splotches reminiscent of confetti, using the soft, earthy tones from the front cover\u2014shades of warm brown, ochre, and muted orange. The watercolor has soft, flowing colors, artistic brush strokes, and organic paint bleeds on a textured paper background, leaving the majority of the card, especially the bottom-right, clean and empty. Flat 2D artwork.",
+    "leftInterior": "A subtle and artistic full-bleed watercolor background with a decorative border. The design features abstract, soft-focus splotches of color, reminiscent of a muted, deconstructed party streamer or confetti, flowing down the left and right sides of the panel. The colors are drawn from the front cover palette: soft browns, ochre, gentle oranges, and hints of muted party colors like teal and magenta, all blended seamlessly. The center of the panel is lighter, creating an elegant frame. The entire image is a flat 2D watercolor painting with soft flowing colors, artistic brush strokes, and organic paint bleeds on a textured paper background.",
+    "rightInterior": "A very minimal watercolor background designed to leave ample space for a handwritten message. The entire panel is a clean, textured paper background with a simple, delicate watercolor wash of a light, warm tan color bleeding softly from the top and bottom edges towards the center. In the bottom-right corner, there is a small, subtle cluster of colorful, abstract watercolor dots, like fallen confetti, using the front cover's palette of muted ochre, brown, and teal. The design is flat 2D, with soft colors and organic paint bleeds, ensuring the majority of the space is clear and ready for writing."
+  },
+  "createdAt": 1752251359.7314904,
+  "expiresAt": 1783787359.7314913,
+  "version": 1
+}

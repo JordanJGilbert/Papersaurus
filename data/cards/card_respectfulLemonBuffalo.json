@@ -1,0 +1,17 @@
+{
+  "id": "respectfulLemonBuffalo",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_371ded97.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_d292fcc4.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_46f9c781.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_27ce029b.png",
+  "generatedPrompts": {
+    "frontCover": "A charming watercolor painting of a very round, fluffy cat wearing a tiny, lopsided party hat, looking slightly bewildered as it attempts to balance a giant, precariously stacked pile of colorful wrapped gifts on its back. The cat has a comically serious expression, with wide eyes. The text \"another birthday?!\" is written below the cat in a beautiful, readable handwritten cursive script. The style is lighthearted and humorous, with soft flowing colors, artistic brush strokes, and organic paint bleeds on a textured paper background. Flat 2D artwork.",
+    "backCover": "A minimalist watercolor accent in the top-left corner. A small, simple, and elegant abstract splash of soft, flowing colors, including muted teal, soft coral, and a hint of pastel yellow, with visible brush strokes and organic paint bleeds on a textured paper background. The design is very sparse, leaving the majority of the back cover clean white. Flat 2D artwork.",
+    "leftInterior": "A subtle and decorative watercolor wash covering the top third of the panel. The wash features a gentle blend of the soft flowing colors from the front cover, such as muted teal, pastel yellow, and soft coral, fading softly down into the clean white textured paper background. A few abstract, colorful polka dots and confetti shapes are lightly scattered within the color wash. Flat 2D artwork.",
+    "rightInterior": "A clean, textured paper background with a simple and minimalist decorative watercolor border along the top and bottom edges only. The border is a thin, delicate wash of muted teal and soft coral, with a few tiny, scattered confetti-like paint splatters. The majority of the space is left open and clear for a handwritten message. Flat 2D artwork."
+  },
+  "createdAt": 1752237099.5296752,
+  "expiresAt": 1783773099.5296757,
+  "version": 1
+}

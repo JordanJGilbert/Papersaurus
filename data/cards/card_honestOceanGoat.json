@@ -1,0 +1,17 @@
+{
+  "id": "honestOceanGoat",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_06057f07.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_f64f3bb8.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_9bea048b.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_1ad318d7.png",
+  "generatedPrompts": {
+    "frontCover": "A humorous and lighthearted watercolor painting of a young East Asian couple taking a funny, distorted selfie, perfect for a birthday card front cover. The man is in the upper right, his face close to the camera with a huge, wide-eyed, goofy grin, he has short black textured hair and wears a solid maroon t-shirt. The woman is in the lower left, looking up at the camera with a happy, amused smile, she has shoulder-length dark brown hair and wears round glasses and a light yellow floral top. The perspective is a fisheye selfie lens effect, exaggerating their features for comedic effect. The background is a simple, soft wash of pastel colors. In the center, the words \"Happy Birthday\" are written in a beautiful, readable handwritten cursive script. The entire image is in a flat 2D watercolor style, with soft flowing colors, visible artistic brush strokes, a subtle paper texture, and organic paint bleeds along the edges. --ar 5:7 --seed 2024 --v 6.0 --style raw\n\n- Reference photos provided for character creation\n- Characters should only appear on the front cover\n- Transform real people into artistic cartoon/illustrated versions matching the style\n- Maintain recognizable features while adapting to the artistic style",
+    "backCover": "A very minimal and simple watercolor wash in the upper left corner, blending soft pastel shades of maroon and light yellow. The majority of the background is a plain, off-white with a subtle paper texture. The design is abstract, with soft flowing colors, visible artistic brush strokes, and organic paint bleeds, occupying no more than 20% of the upper left area. The bottom right corner is completely clear. Flat 2D artwork for printing. --ar 5:7 --v 6.0 --style raw",
+    "leftInterior": "A subtle and beautiful abstract watercolor design, with soft flowing colors blending pastel shades of maroon and light yellow. The artwork gracefully sweeps from the bottom left corner up towards the top right, creating a gentle diagonal movement. The design is composed of visible artistic brush strokes, a subtle paper texture, and organic paint bleeds along the edges, covering about 40% of the panel and leaving ample white space. Flat 2D artwork, full bleed. --ar 5:7 --v 6.0 --style raw",
+    "rightInterior": "A minimal decorative watercolor element in the bottom right corner, featuring a simple, abstract splash of soft maroon and light yellow. The design is very small and unobtrusive, intended to leave the majority of the panel as a clean, off-white writing area with a subtle paper texture. The watercolor style includes soft flowing colors, visible artistic brush strokes, and organic paint bleeds, occupying no more than 20% of the space. Flat 2D artwork, full bleed. --ar 5:7 --v 6.0 --style raw"
+  },
+  "createdAt": 1752201956.7619407,
+  "expiresAt": 1783737956.7619414,
+  "version": 1
+}

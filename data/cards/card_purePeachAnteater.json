@@ -1,0 +1,17 @@
+{
+  "id": "purePeachAnteater",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_dd47e8c0.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_00dd544f.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_e13151a7.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_d51fd2d8.png",
+  "generatedPrompts": {
+    "frontCover": "A charming cartoon raccoon wearing a tiny, lopsided party hat, looking slightly guilty with its paws covered in cake frosting, cheekily peeking over the top of a giant, beautifully decorated birthday cupcake that is missing a large bite. The text \"happy birthday\" is written in a beautiful, readable handwritten cursive script across the middle of the cupcake. The entire scene is rendered in a delightful watercolor painting style, featuring soft, flowing colors, visible artistic brush strokes, a subtle paper texture background, and organic paint bleeds at the edges. Flat 2D artwork. --ar 5:7",
+    "backCover": "A minimalist and abstract watercolor wash in soft, flowing colors of cream, warm brown, and pastel blue, with visible artistic brush strokes and organic paint bleeds at the edges, creating a subtle texture. A single, small, isolated paint splatter in vibrant turquoise is placed in the upper-left corner. The background has a delicate paper texture. The design is very sparse, with the bottom half of the image remaining mostly clean with a light cream wash, leaving ample clear space. Flat 2D artwork. --ar 5:7",
+    "leftInterior": "A beautiful and subtle abstract watercolor background with a full bleed. Soft, flowing washes of cream, warm brown, pastel blue, and touches of turquoise blend together seamlessly across the page, creating a gentle, dreamy atmosphere. The composition is decorated with a cascade of small, colorful watercolor confetti shapes and a few delicate, looping party streamers floating down from the top left corner, adding a quiet festive touch. The artwork has visible artistic brush strokes, organic paint bleeds, and a paper texture. Flat 2D artwork. --ar 5:7",
+    "rightInterior": "A minimalist and clean background primarily in a soft cream watercolor wash with a visible paper texture, providing maximum space for a handwritten message. A simple, elegant border composed of small, delicate watercolor paint splatters in pastel blue, warm brown, and vibrant turquoise frames the very edges of the page, bleeding off organically. The center of the card is almost entirely clear, ensuring legibility. Flat 2D artwork. --ar 5:7"
+  },
+  "createdAt": 1752264710.149555,
+  "expiresAt": 1783800710.1495557,
+  "version": 1
+}

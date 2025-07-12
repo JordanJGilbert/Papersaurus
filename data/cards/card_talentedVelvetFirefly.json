@@ -1,0 +1,17 @@
+{
+  "id": "talentedVelvetFirefly",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_bba62089.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_53500ba4.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_6949ed99.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_3061c082.png",
+  "generatedPrompts": {
+    "frontCover": "A charming cartoon watercolor of a slightly frazzled but happy sloth wearing a tiny party hat, precariously balancing a teetering stack of colorful, clumsily wrapped birthday presents. The sloth is hanging upside down from a tree branch, smiling cheekily at the viewer. Below the sloth, in the center of the card, the text \"happy belated-ish birthday\" is written in a beautiful, readable, flowing handwritten cursive script. The style is a flat 2D watercolor painting with soft, flowing colors, visible artistic brush strokes, a subtle paper texture background, and organic paint bleeds around the edges of the sloth and gifts.",
+    "backCover": "A minimalist and sparse design for the back of a greeting card. A single, small, charmingly lopsided party hat, rendered in a simple flat 2D watercolor painting style, sits in the upper-left quadrant. The hat uses soft, flowing colors, with visible artistic brush strokes and organic paint bleeds at its edges. The background is a plain, subtle paper texture, leaving the bottom-right area completely empty for branding or a QR code. The overall composition is very clean, with about 20% visual decoration, maintaining a cohesive aesthetic with the front cover.",
+    "leftInterior": "A subtle and decorative background for the left interior of a greeting card. A cascade of colorful, abstract watercolor confetti shapes and delicate streamers gently falls from the top-left corner towards the bottom-right. The style is a flat 2D watercolor painting, characterized by soft flowing colors, visible artistic brush strokes, and a subtle paper texture. The elements have organic paint bleeds at their edges, creating a soft, artistic effect. The design is purely decorative with no text, covering about 40% of the panel, providing a gentle, festive atmosphere without overwhelming the space.",
+    "rightInterior": "A minimalist decorative frame for the right interior panel of a greeting card, designed to leave ample open space for a handwritten message. A simple, elegant border of abstract watercolor splotches and soft-colored dots frames the top and bottom edges of the panel. The style is a flat 2D watercolor painting with soft flowing colors, artistic brush strokes, and a subtle paper texture background. The decorative elements have organic paint bleeds, occupying only about 20% of the total area and ensuring the central space is clear, clean, and ready for writing."
+  },
+  "createdAt": 1752250952.972688,
+  "expiresAt": 1783786952.9726887,
+  "version": 1
+}

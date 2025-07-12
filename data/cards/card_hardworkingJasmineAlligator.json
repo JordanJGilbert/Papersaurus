@@ -1,0 +1,17 @@
+{
+  "id": "hardworkingJasmineAlligator",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_3b37014c.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_0c3454ab.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_9746159d.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_d3ae6218.png",
+  "generatedPrompts": {
+    "frontCover": "A charming cartoon sloth wearing a tiny, crooked party hat, hanging upside-down from a tree branch and struggling comically to reach a slice of birthday cake that is dangling just out of its grasp from a string tied to the same branch. The sloth has a look of mild, humorous frustration on its face. Below the sloth, centered on the card, the words \"happy belated-ish birthday\" are written in a beautiful, flowing, and readable handwritten cursive script. The entire scene is a flat 2D watercolor painting, featuring soft, pastel colors, visible artistic brush strokes, a subtle paper texture, and organic paint bleeds around the edges of the sloth and cake, giving it a whimsical and handcrafted feel.",
+    "backCover": "A minimal and abstract arrangement of pastel-colored watercolor splotches, reminiscent of party confetti, clustered in the top-left corner on a soft cream background with a visible paper texture. The design is very sparse, with soft flowing colors and organic paint bleeds at the edges of the splotches, leaving the rest of the space, especially the bottom-right corner, completely empty. Flat 2D artwork.",
+    "leftInterior": "A soft and subtle watercolor wash of pastel greens, blues, and yellows blending gently across a background with a visible paper texture. A delicate, abstract pattern of tropical leaves and swirling vines is lightly painted in the corners, with visible artistic brush strokes and organic paint bleeds. The overall effect is gentle and decorative, without any central subject. Flat 2D artwork.",
+    "rightInterior": "A clean, soft cream background with a subtle paper texture, designed to leave ample space for a handwritten message. The decoration is minimal, confined to a simple, elegant watercolor border along the top edge, featuring a soft wash of pastel colors that bleeds gently downwards. The design has visible artistic brush strokes, creating a handcrafted feel without distracting from the writing area. Flat 2D artwork."
+  },
+  "createdAt": 1752250060.746975,
+  "expiresAt": 1783786060.7469757,
+  "version": 1
+}

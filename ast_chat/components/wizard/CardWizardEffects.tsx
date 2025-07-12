@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { CardFormData } from "@/hooks/useCardForm";
 import { GeneratedCard } from "@/hooks/cardStudio/constants";
 
@@ -25,16 +25,24 @@ export function CardWizardEffects({
       await cardStudio.checkPendingJobs();
       
       // After checking pending jobs, if we're generating drafts, ensure we're on step 5
-      if ((cardStudio.isDraftMode || cardStudio.isGenerating) && !cardStudio.isGeneratingFinalCard) {
-        console.log('🔄 Restoring to Step 5 due to ongoing draft generation');
+      // Only navigate if we have actual draft cards or a valid draft generation in progress
+      if ((cardStudio.isDraftMode || cardStudio.isGenerating) && 
+          !cardStudio.isGeneratingFinalCard && 
+          (cardStudio.draftCards.length > 0 || cardStudio.generationProgress)) {
+        console.log('🔄 Restoring to Step 5 due to ongoing draft generation', {
+          isDraftMode: cardStudio.isDraftMode,
+          isGenerating: cardStudio.isGenerating,
+          draftCards: cardStudio.draftCards.length,
+          generationProgress: cardStudio.generationProgress
+        });
         // Mark previous steps as completed
         if (!wizardState.completedSteps.includes(1)) wizardState.markStepCompleted(1);
         if (!wizardState.completedSteps.includes(2)) wizardState.markStepCompleted(2);
         if (!wizardState.completedSteps.includes(3)) wizardState.markStepCompleted(3);
         if (!wizardState.completedSteps.includes(4)) wizardState.markStepCompleted(4);
         wizardState.goToStep(5);
-      } else if (cardStudio.isGeneratingFinalCard) {
-        console.log('🔄 Restoring to Step 6 due to ongoing final generation');
+      } else if (cardStudio.isGeneratingFinalCard || cardStudio.isCardCompleted) {
+        console.log('🔄 Restoring to Step 6 due to ongoing final generation or completed card');
         // Mark all previous steps as completed
         for (let i = 1; i <= 5; i++) {
           if (!wizardState.completedSteps.includes(i)) wizardState.markStepCompleted(i);
@@ -86,23 +94,84 @@ export function CardWizardEffects({
     }
   }, [wizardState.isInitialLoadComplete, cardForm.isInitialLoadComplete]);
 
-  // Auto-save drafts when user creates draft cards
+  // Navigate to Step 5 when draft cards are loaded
   useEffect(() => {
-    if (cardStudio.draftCards.length > 0 && cardForm.isInitialLoadComplete && !isResumingDraft) {
-      cardHistory.saveDraftSession(
-        cardForm.formData,
-        cardStudio.draftCards,
-        cardStudio.selectedDraftIndex
-      );
+    if (cardStudio.draftCards.length > 0 && wizardState.currentStep < 5) {
+      console.log('📋 Draft cards loaded, navigating to Step 5');
+      // Mark previous steps as completed
+      for (let i = 1; i <= 4; i++) {
+        if (!wizardState.completedSteps.includes(i)) {
+          wizardState.markStepCompleted(i);
+        }
+      }
+      wizardState.goToStep(5);
     }
-  }, [cardStudio.draftCards, cardStudio.selectedDraftIndex, cardForm.formData, cardForm.isInitialLoadComplete, isResumingDraft]);
+  }, [cardStudio.draftCards.length]);
 
-  // Auto-save completed cards
+  // Auto-save drafts when user creates draft cards
+  // Track the current session ID to update the same session
+  const [currentDraftSessionId, setCurrentDraftSessionId] = useState<string | null>(null);
+  const [lastSavedDraftCount, setLastSavedDraftCount] = useState<number>(0);
+  
+  useEffect(() => {
+    // Only save if we have draft cards and not resuming
+    if (cardStudio.draftCards.length > 0 && cardForm.isInitialLoadComplete && !isResumingDraft) {
+      // Count non-null draft cards
+      const validDrafts = cardStudio.draftCards.filter(card => card !== null).length;
+      
+      // Only save when:
+      // 1. All 5 drafts are complete (validDrafts === 5)
+      // 2. This is the first draft and we haven't saved yet (validDrafts === 1 && !currentDraftSessionId)
+      // 3. User selected a draft (selectedDraftIndex >= 0)
+      const shouldSave = (
+        (validDrafts === 5 && lastSavedDraftCount < 5) || // All drafts complete
+        (validDrafts === 1 && !currentDraftSessionId) || // First draft
+        (cardStudio.selectedDraftIndex >= 0 && validDrafts > lastSavedDraftCount) // User selected
+      );
+      
+      if (shouldSave && validDrafts > 0) {
+        // Save or update the session with the same ID
+        const sessionId = cardHistory.saveDraftSession(
+          cardForm.formData,
+          cardStudio.draftCards,
+          cardStudio.selectedDraftIndex,
+          currentDraftSessionId || undefined // Use existing session ID if available
+        );
+        
+        // Store the session ID for future updates
+        if (!currentDraftSessionId) {
+          setCurrentDraftSessionId(sessionId);
+        }
+        
+        // Update the last saved count
+        setLastSavedDraftCount(validDrafts);
+        
+        console.log(`💾 Draft session saved: ${validDrafts}/5 drafts complete`);
+      }
+    }
+  }, [cardStudio.draftCards, cardStudio.selectedDraftIndex, cardForm.formData, cardForm.isInitialLoadComplete, isResumingDraft, currentDraftSessionId, lastSavedDraftCount]);
+  
+  // Reset session ID when drafts are cleared
+  useEffect(() => {
+    const validDrafts = cardStudio.draftCards.filter(card => card !== null).length;
+    if (validDrafts === 0) {
+      setCurrentDraftSessionId(null);
+      setLastSavedDraftCount(0);
+    }
+  }, [cardStudio.draftCards]);
+
+  // Auto-save completed cards and ensure we're on Step 6
   useEffect(() => {
     if (cardStudio.generatedCard && cardStudio.isCardCompleted) {
       cardHistory.addCompletedCard(cardStudio.generatedCard);
+      
+      // Ensure we're on Step 6 to see the completed card
+      if (wizardState.currentStep !== 6) {
+        console.log('📍 Card completed but not on Step 6, navigating there now...');
+        wizardState.goToStep(6);
+      }
     }
-  }, [cardStudio.generatedCard, cardStudio.isCardCompleted]);
+  }, [cardStudio.generatedCard, cardStudio.isCardCompleted, wizardState.currentStep]);
 
   // Sync form data with cardStudio when form data changes
   useEffect(() => {

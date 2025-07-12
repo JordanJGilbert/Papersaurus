@@ -131,6 +131,9 @@ export interface GeneratedCard {
   backCover: string;       // Portrait image - back of the card
   leftPage: string;        // Portrait image - left interior (decorative art)
   rightPage: string;       // Portrait image - right interior (message area)
+  // Aliases for backward compatibility with different naming conventions
+  leftInterior?: string;   // Alias for leftPage
+  rightInterior?: string;  // Alias for rightPage
   createdAt: Date;
   shareUrl?: string;       // Shareable URL for the card
   // Store the actual prompts sent to image generation

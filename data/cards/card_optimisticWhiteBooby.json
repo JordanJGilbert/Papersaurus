@@ -1,0 +1,17 @@
+{
+  "id": "optimisticWhiteBooby",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_28fe15ba.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_8e3534ac.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_26cad6d0.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_90702892.png",
+  "generatedPrompts": {
+    "frontCover": "Greeting card front for Sarah's birthday. In a dreamy fantasy anime style, two whimsical cartoon characters, based on the people in image 5e39a395-d270-4ca7-a120-4124d3c71909, are featured in a magical, enchanted forest setting. The characters must be highly accurate illustrated versions of the people in the photo, maintaining their exact individual features, hairstyles, clothing (without any logos/text), body proportions, and relative positions. The scene is humorous and lighthearted: the characters are comically attempting to balance a giant, wobbly stack of brightly colored, magical cupcakes that threatens to topple over. Sparkles, glowing butterflies, and mischievous pixies flit around them. The background is a detailed nature scene with oversized, glowing mushrooms and softly-lit, pastel-colored foliage, creating a fairy-tale atmosphere. Flat 2D artwork. In the center, the text \"Happy Birthday, Sarah!\" is written in a beautiful, readable handwritten cursive script.\n\n- Reference photos provided for character creation\n- Characters should only appear on the front cover\n- Transform real people into artistic cartoon/illustrated versions matching the style\n- Maintain recognizable features while adapting to the artistic style",
+    "backCover": "Back of a greeting card. Flat 2D artwork in a dreamy fantasy anime style. An extremely minimalist and simple design. A single, small, glowing pastel butterfly is positioned in the upper-left corner. The background is a solid, soft, muted pastel lavender color, providing ample clear space. The design is very sparse, leaving the bottom-right corner completely empty.",
+    "leftInterior": "Left interior panel of a greeting card. A subtle, decorative background in a dreamy fantasy anime style. Flat 2D artwork. A beautiful, enchanting forest floor scene fills the panel. Softly-lit, pastel-colored foliage and oversized, gently glowing mushrooms frame the bottom edge and the left side of the panel. A few faint, magical sparkles are scattered delicately in the upper right, creating a sense of wonder. The design is peaceful and magical, with no characters or text.",
+    "rightInterior": "Right interior panel of a greeting card, designed to hold a written message. Flat 2D artwork in a dreamy fantasy anime style. The background is a very soft, solid pastel blue. A minimalist decorative border element features a few small, glowing mushrooms and a sprig of whimsical foliage tucked neatly into the bottom-left corner. This leaves the majority of the panel as a clean, open space for a handwritten message. The overall feel is gentle and uncluttered."
+  },
+  "createdAt": 1752279204.5020716,
+  "expiresAt": 1783815204.5020723,
+  "version": 1
+}

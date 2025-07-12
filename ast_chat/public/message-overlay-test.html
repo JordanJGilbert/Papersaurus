@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Card Message CSS Overlay Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f0f0f0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #333;
+        }
+
+        .demo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin-bottom: 50px;
+        }
+
+        /* Base card container */
+        .card-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1 / 1.4; /* Standard greeting card ratio */
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .card-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Message overlay base */
+        .message-overlay {
+            position: absolute;
+            padding: 20px;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        /* Demo 1: Classic centered overlay with backdrop */
+        .demo-1 .message-overlay {
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 8px;
+            min-width: 80%;
+            max-width: 90%;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+
+        .demo-1 .message-text {
+            color: #333;
+            font-size: 18px;
+            line-height: 1.6;
+            font-family: 'Georgia', serif;
+        }
+
+        /* Demo 2: Bottom overlay with gradient */
+        .demo-2 .message-overlay {
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+            padding: 40px 20px 20px;
+        }
+
+        .demo-2 .message-text {
+            color: white;
+            font-size: 20px;
+            line-height: 1.5;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            font-weight: 300;
+        }
+
+        /* Demo 3: Text outline for any background */
+        .demo-3 .message-overlay {
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+        }
+
+        .demo-3 .message-text {
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 
+                -2px -2px 0 #000,
+                2px -2px 0 #000,
+                -2px 2px 0 #000,
+                2px 2px 0 #000,
+                0 0 10px rgba(0,0,0,0.5);
+            line-height: 1.4;
+        }
+
+        /* Demo 4: Handwritten style */
+        .demo-4 .message-overlay {
+            top: 60%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-2deg);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 15px 25px;
+            border-radius: 4px;
+        }
+
+        .demo-4 .message-text {
+            font-family: 'Caveat', cursive;
+            color: #1a237e;
+            font-size: 28px;
+            line-height: 1.6;
+            letter-spacing: 0.02em;
+            font-weight: 700;
+            transform: rotate(-1.5deg);
+            text-shadow: 0.5px 0.5px 0 rgba(26,35,126,0.2);
+        }
+
+        /* Demo 5: Split layout for interior pages */
+        .demo-5 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .demo-5 .left-panel {
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 560"><rect fill="%23f8f8f8" width="400" height="560"/><text x="200" y="280" text-anchor="middle" font-size="20" fill="%23ccc">Left Interior</text></svg>');
+            background-size: cover;
+            position: relative;
+        }
+
+        .demo-5 .right-panel {
+            background: white;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+        }
+
+        .demo-5 .message-text {
+            color: #333;
+            font-size: 16px;
+            line-height: 1.8;
+            font-family: 'Georgia', serif;
+            text-align: left;
+        }
+
+        /* Controls section */
+        .controls {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        .demo-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        /* Editable overlay */
+        .editable-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 8px;
+            min-width: 80%;
+            max-width: 90%;
+            cursor: text;
+        }
+
+        .editable-text {
+            color: #333;
+            font-size: 18px;
+            line-height: 1.6;
+            font-family: 'Georgia', serif;
+            outline: none;
+            min-height: 50px;
+        }
+
+        .editable-text:focus {
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 4px;
+            padding: 5px;
+        }
+
+        /* Font options */
+        .font-serif { font-family: 'Georgia', serif; }
+        .font-sans { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+        .font-script { font-family: 'Dancing Script', cursive; }
+        .font-handwritten { font-family: 'Kalam', cursive; }
+        .font-caveat { font-family: 'Caveat', cursive; }
+        .font-indie { font-family: 'Indie Flower', cursive; }
+        .font-shadows { font-family: 'Shadows Into Light', cursive; }
+        .font-amatic { font-family: 'Amatic SC', cursive; }
+        .font-marker { font-family: 'Permanent Marker', cursive; }
+        .font-satisfy { font-family: 'Satisfy', cursive; }
+        .font-patrick { font-family: 'Patrick Hand', cursive; }
+        .font-architect { font-family: 'Architects Daughter', cursive; }
+        .font-reenie { font-family: 'Reenie Beanie', cursive; }
+        
+        /* Realistic handwriting effects */
+        .handwriting-effect {
+            transform: rotate(-1deg);
+            letter-spacing: 0.02em;
+            word-spacing: 0.1em;
+            line-height: 1.8;
+        }
+        
+        .handwriting-effect-2 {
+            transform: rotate(0.5deg);
+            letter-spacing: -0.01em;
+            word-spacing: 0.15em;
+            line-height: 1.9;
+        }
+        
+        .handwriting-effect-3 {
+            transform: rotate(-0.3deg);
+            letter-spacing: 0.03em;
+            word-spacing: 0.2em;
+            line-height: 2;
+        }
+        
+        /* Ink variations */
+        .ink-light {
+            opacity: 0.85;
+            filter: contrast(0.9);
+        }
+        
+        .ink-heavy {
+            text-shadow: 0.5px 0.5px 0 rgba(0,0,0,0.3);
+            filter: contrast(1.1);
+        }
+        
+        .ink-blue {
+            color: #1a237e;
+            opacity: 0.9;
+        }
+        
+        .ink-black {
+            color: #1a1a1a;
+            opacity: 0.95;
+        }
+
+        /* Add Google Fonts - More handwriting options */
+        @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400;700&family=Kalam:wght@300;400;700&family=Caveat:wght@400;700&family=Indie+Flower&family=Shadows+Into+Light&family=Amatic+SC:wght@400;700&family=Permanent+Marker&family=Satisfy&family=Patrick+Hand&family=Architects+Daughter&family=Reenie+Beanie&display=swap');
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Card Message CSS Overlay Testing</h1>
+        
+        <div class="demo-grid">
+            <!-- Demo 1: Classic Overlay -->
+            <div>
+                <div class="demo-title">1. Classic Backdrop Overlay</div>
+                <div class="card-container demo-1">
+                    <img class="card-image" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 560'><defs><linearGradient id='bg1' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' style='stop-color:%23ff6b6b'/><stop offset='100%' style='stop-color:%234ecdc4'/></linearGradient></defs><rect fill='url(%23bg1)' width='400' height='560'/></svg>" alt="Demo card">
+                    <div class="message-overlay">
+                        <p class="message-text">Wishing you a day filled with love, laughter, and all your favorite things!</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Demo 2: Gradient Overlay -->
+            <div>
+                <div class="demo-title">2. Bottom Gradient Overlay</div>
+                <div class="card-container demo-2">
+                    <img class="card-image" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 560'><defs><linearGradient id='bg2' x1='0%' y1='0%' x2='0%' y2='100%'><stop offset='0%' style='stop-color:%23667eea'/><stop offset='100%' style='stop-color:%23764ba2'/></linearGradient></defs><rect fill='url(%23bg2)' width='400' height='560'/></svg>" alt="Demo card">
+                    <div class="message-overlay">
+                        <p class="message-text">May your special day be as wonderful as you are!</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Demo 3: Text Outline -->
+            <div>
+                <div class="demo-title">3. Text Outline (Works on Any BG)</div>
+                <div class="card-container demo-3">
+                    <img class="card-image" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 560'><pattern id='p' width='40' height='40' patternUnits='userSpaceOnUse'><rect width='40' height='40' fill='%23ffd93d'/><circle cx='20' cy='20' r='15' fill='%236bcf7f'/></pattern><rect fill='url(%23p)' width='400' height='560'/></svg>" alt="Demo card">
+                    <div class="message-overlay">
+                        <p class="message-text">Happy Birthday!</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Demo 4: Handwritten Style -->
+            <div>
+                <div class="demo-title">4. Handwritten Style</div>
+                <div class="card-container demo-4">
+                    <img class="card-image" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 560'><rect fill='%23f5f5dc' width='400' height='560'/><path d='M50 100 Q 200 150 350 100' stroke='%23ddd' stroke-width='1' fill='none'/><path d='M50 200 Q 200 250 350 200' stroke='%23ddd' stroke-width='1' fill='none'/><path d='M50 300 Q 200 350 350 300' stroke='%23ddd' stroke-width='1' fill='none'/></svg>" alt="Demo card">
+                    <div class="message-overlay">
+                        <p class="message-text">Thinking of you today and always ❤️</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Demo 5: Interior Layout -->
+            <div>
+                <div class="demo-title">5. Card Interior Layout</div>
+                <div class="card-container demo-5">
+                    <div class="left-panel"></div>
+                    <div class="right-panel">
+                        <p class="message-text">
+                            Dear Sarah,<br><br>
+                            On your special day, I wanted to take a moment to tell you how much you mean to me. Your kindness, humor, and friendship have brightened so many of my days.<br><br>
+                            Here's to another year of adventures and memories together!<br><br>
+                            With love,<br>
+                            Emily
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Demo 6: Editable Live Example -->
+            <div>
+                <div class="demo-title">6. Live Editable Message</div>
+                <div class="card-container">
+                    <img class="card-image" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 560'><defs><radialGradient id='bg6'><stop offset='0%' style='stop-color:%23ffeaa7'/><stop offset='100%' style='stop-color:%23dfe6e9'/></radialGradient></defs><rect fill='url(%23bg6)' width='400' height='560'/></svg>" alt="Demo card">
+                    <div class="editable-overlay">
+                        <div class="editable-text" contenteditable="true">Click here to edit this message!</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Demo 7: Realistic Blue Pen -->
+            <div>
+                <div class="demo-title">7. Realistic Blue Pen</div>
+                <div class="card-container">
+                    <img class="card-image" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 560'><rect fill='%23fefefe' width='400' height='560'/><g stroke='%23e0e0e0' stroke-width='1' fill='none'><line x1='40' y1='80' x2='360' y2='80'/><line x1='40' y1='120' x2='360' y2='120'/><line x1='40' y1='160' x2='360' y2='160'/><line x1='40' y1='200' x2='360' y2='200'/><line x1='40' y1='240' x2='360' y2='240'/><line x1='40' y1='280' x2='360' y2='280'/><line x1='40' y1='320' x2='360' y2='320'/><line x1='40' y1='360' x2='360' y2='360'/><line x1='40' y1='400' x2='360' y2='400'/></g></svg>" alt="Demo card">
+                    <div class="message-overlay" style="top: 45%; transform: translate(-50%, -50%) rotate(-0.8deg); left: 50%; background: none;">
+                        <p class="message-text font-caveat ink-blue handwriting-effect" style="font-size: 32px; line-height: 1.4;">
+                            Dear Mom,<br>
+                            Thank you for always<br>
+                            being there for me!<br>
+                            Love, Sarah ❤
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Demo 8: Pencil on Paper -->
+            <div>
+                <div class="demo-title">8. Pencil Writing</div>
+                <div class="card-container">
+                    <img class="card-image" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 560'><rect fill='%23f9f9f9' width='400' height='560'/><pattern id='paper' x='0' y='0' width='100' height='100' patternUnits='userSpaceOnUse'><rect width='100' height='1' fill='%23ddd' opacity='0.5'/></pattern><rect width='400' height='560' fill='url(%23paper)'/></svg>" alt="Demo card">
+                    <div class="message-overlay" style="top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(0.5deg); background: none;">
+                        <p class="message-text font-architect" style="font-size: 26px; color: #555; opacity: 0.8; letter-spacing: 0.05em;">
+                            Wishing you joy,<br>
+                            laughter, and all<br>
+                            the happiness your<br>
+                            heart can hold!
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Demo 9: Marker on Card -->
+            <div>
+                <div class="demo-title">9. Marker Style</div>
+                <div class="card-container">
+                    <img class="card-image" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 560'><defs><linearGradient id='bg9' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' style='stop-color:%23ffeaa7'/><stop offset='100%' style='stop-color:%23fab1a0'/></linearGradient></defs><rect fill='url(%23bg9)' width='400' height='560'/></svg>" alt="Demo card">
+                    <div class="message-overlay" style="top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-2deg); background: rgba(255,255,255,0.7); padding: 25px; border-radius: 10px;">
+                        <p class="message-text font-marker" style="font-size: 28px; color: #d63031; text-transform: uppercase; letter-spacing: 0.1em;">
+                            HAPPY<br>
+                            BIRTHDAY<br>
+                            SUPERSTAR!
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Interactive Controls -->
+        <div class="controls">
+            <h2 style="margin-bottom: 20px;">Interactive Message Editor</h2>
+            
+            <div class="control-group">
+                <label for="message-input">Message Text:</label>
+                <textarea id="message-input" placeholder="Enter your message here...">May your birthday be filled with sunshine, smiles, and lots of cake!</textarea>
+            </div>
+
+            <div class="control-group">
+                <label for="font-select">Font Style:</label>
+                <select id="font-select">
+                    <option value="font-serif">Serif (Georgia)</option>
+                    <option value="font-sans">Sans-serif (System)</option>
+                    <option value="font-script">Script (Dancing Script)</option>
+                    <option value="font-handwritten">Handwritten (Kalam)</option>
+                    <option value="font-caveat ink-blue handwriting-effect">Realistic Pen - Blue (Caveat)</option>
+                    <option value="font-indie ink-black handwriting-effect-2">Casual Print (Indie Flower)</option>
+                    <option value="font-patrick ink-heavy">Neat Handwriting (Patrick Hand)</option>
+                    <option value="font-architect ink-light handwriting-effect-3">Architect Style (Architects Daughter)</option>
+                    <option value="font-reenie ink-black">Quick Notes (Reenie Beanie)</option>
+                    <option value="font-shadows ink-blue">Light Touch (Shadows Into Light)</option>
+                    <option value="font-amatic ink-heavy">Bold Casual (Amatic SC)</option>
+                    <option value="font-marker">Marker Style (Permanent Marker)</option>
+                    <option value="font-satisfy ink-blue handwriting-effect">Elegant Script (Satisfy)</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label for="size-select">Font Size:</label>
+                <select id="size-select">
+                    <option value="16">Small (16px)</option>
+                    <option value="20" selected>Medium (20px)</option>
+                    <option value="24">Large (24px)</option>
+                    <option value="28">Extra Large (28px)</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label for="bg-opacity">Background Opacity:</label>
+                <input type="range" id="bg-opacity" min="0" max="100" value="95">
+                <span id="opacity-value">95%</span>
+            </div>
+
+            <button onclick="applyChanges()">Apply Changes</button>
+            <button onclick="downloadAsImage()">Download as Image</button>
+            <button onclick="togglePrintView()">Toggle Print View</button>
+        </div>
+    </div>
+
+    <script>
+        // Apply changes to the editable demo
+        function applyChanges() {
+            const message = document.getElementById('message-input').value;
+            const font = document.getElementById('font-select').value;
+            const size = document.getElementById('size-select').value;
+            const opacity = document.getElementById('bg-opacity').value;
+            
+            const editableText = document.querySelector('.editable-text');
+            const editableOverlay = document.querySelector('.editable-overlay');
+            
+            editableText.textContent = message;
+            editableText.className = 'editable-text ' + font;
+            editableText.style.fontSize = size + 'px';
+            editableOverlay.style.background = `rgba(255, 255, 255, ${opacity / 100})`;
+        }
+
+        // Update opacity display
+        document.getElementById('bg-opacity').addEventListener('input', function(e) {
+            document.getElementById('opacity-value').textContent = e.target.value + '%';
+        });
+
+        // Download functionality (simplified for demo)
+        function downloadAsImage() {
+            alert('In a real implementation, this would use html2canvas or similar to capture the card with the CSS overlay as an image.');
+        }
+
+        // Print view toggle
+        function togglePrintView() {
+            document.body.classList.toggle('print-view');
+            alert('In production, this would show a print-optimized view with proper dimensions and margins.');
+        }
+
+        // Make editable text save on blur
+        document.querySelector('.editable-text').addEventListener('blur', function() {
+            document.getElementById('message-input').value = this.textContent;
+        });
+
+        // Initialize
+        applyChanges();
+    </script>
+</body>
+</html>

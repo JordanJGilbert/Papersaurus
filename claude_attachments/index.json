@@ -141,5 +141,170 @@
     "label": "couple_at_outdoor_festival",
     "description": "A smiling couple takes a selfie at an outdoor event, possibly a festival, with food stalls and a crowd in the background, under bright sunlight.",
     "size": 273950
+  },
+  "da46186f-17ea-4cf5-818a-20cbb694d092": {
+    "filename": "da46186f-17ea-4cf5-818a-20cbb694d092.jpg",
+    "path": "/var/www/flask_app/claude_attachments/da46186f-17ea-4cf5-818a-20cbb694d092.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_be12a84a-6725-4253-992c-bd96c088b44e&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752199792183,
+    "message_id": "+17145986105_1752199792183",
+    "label": "vibecarding_runtime_error_screenshot",
+    "description": "A screenshot showing an unhandled runtime error on vibecarding.com. The error is a TypeError indicating that 'draftGeneration.setIsGeneratingDrafts' is not a function.",
+    "size": 123605
+  },
+  "e3ca5fd4-a81d-45e1-9279-1897c1b9acff": {
+    "filename": "e3ca5fd4-a81d-45e1-9279-1897c1b9acff.jpg",
+    "path": "/var/www/flask_app/claude_attachments/e3ca5fd4-a81d-45e1-9279-1897c1b9acff.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_90c4e3dd-3410-4235-8a23-900aaaa5df4c&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752200819125,
+    "message_id": "+17145986105_1752200819125",
+    "label": "vibecarding_draft_mode_selection",
+    "description": "A screenshot from the VibeCarding app displaying the draft selection screen, where users can choose to generate 5 design variations or create 5 front cover options.",
+    "size": 127001
+  },
+  "98eed2ac-6fc7-4a54-ab8d-d3233a9d88c7": {
+    "filename": "98eed2ac-6fc7-4a54-ab8d-d3233a9d88c7.jpeg",
+    "path": "/var/www/flask_app/claude_attachments/98eed2ac-6fc7-4a54-ab8d-d3233a9d88c7.jpeg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_d49b30b3-392c-4e0c-b568-824c8d26b198&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752248144202,
+    "message_id": "+17145986105_1752248144202",
+    "label": "vibecarding_card_generation_screen",
+    "description": "This image shows the card generation screen of the VibeCarding app, indicating that it's generating all card images in parallel. The screen also displays estimated completion time and generation tips.",
+    "size": 154517
+  },
+  "816e7e17-f0b2-4816-8a80-99b736786ee7": {
+    "filename": "816e7e17-f0b2-4816-8a80-99b736786ee7.jpg",
+    "path": "/var/www/flask_app/claude_attachments/816e7e17-f0b2-4816-8a80-99b736786ee7.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_fa730503-ac6d-41c1-990c-a986d60b0bd6&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752255404874,
+    "message_id": "+17145986105_1752255404874",
+    "label": "vibecarding_card_generation_process",
+    "description": "Screenshot of the Vibecarding card generation process on a mobile device, showing progress and completion status along with tips for the user during the generation process.",
+    "size": 114725
+  },
+  "9cdd8524-5816-4b36-9a4e-bc7e99f445fe": {
+    "filename": "9cdd8524-5816-4b36-9a4e-bc7e99f445fe.jpg",
+    "path": "/var/www/flask_app/claude_attachments/9cdd8524-5816-4b36-9a4e-bc7e99f445fe.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_154a8d8b-3838-4c21-b67a-e1e1ce25177d&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752256296762,
+    "message_id": "+17145986105_1752256296762",
+    "label": "card_generation_complete_message",
+    "description": "Screenshot of a message indicating that a card generation process is complete, with a wait message providing details on generation time, leaving the page, and email updates.",
+    "size": 126118
+  },
+  "df32997a-389c-4e5c-a6bd-8ac1fd904f4d": {
+    "filename": "df32997a-389c-4e5c-a6bd-8ac1fd904f4d.jpg",
+    "path": "/var/www/flask_app/claude_attachments/df32997a-389c-4e5c-a6bd-8ac1fd904f4d.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_c8e05dc8-bd46-4b41-b8ba-8c8655128597&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752257286931,
+    "message_id": "+17145986105_1752257286931",
+    "label": "vibecarding_draft_selection_design",
+    "description": "Screenshot of the VibeCarding app, showing the draft selection screen where users can choose from design variations to generate a high-quality card.",
+    "size": 116013
+  },
+  "b8f780d2-455d-485c-adc6-c5482facf590": {
+    "filename": "b8f780d2-455d-485c-adc6-c5482facf590.png",
+    "path": "/var/www/flask_app/claude_attachments/b8f780d2-455d-485c-adc6-c5482facf590.png",
+    "url": "https://vibecarding.com/serve_image?key=attachment_70ddca96-8c45-4b3a-9068-56021a774596&type=image/png",
+    "mime_type": "image/png",
+    "timestamp": 1752262841666,
+    "message_id": "+17145986105_1752262841666",
+    "label": "vibecarding_draft_selection_screen",
+    "description": "Screenshot of the draft selection screen on Vibecarding, showing low quality design previews being generated for user selection.",
+    "size": 151161
+  },
+  "a48c2641-644e-4812-8cd4-b07e48acf72d": {
+    "filename": "a48c2641-644e-4812-8cd4-b07e48acf72d.jpg",
+    "path": "/var/www/flask_app/claude_attachments/a48c2641-644e-4812-8cd4-b07e48acf72d.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_c9e2e269-12f2-483c-8d80-821b0bbb44bc&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752263605166,
+    "message_id": "+17145986105_1752263605166",
+    "label": "vibecarding_card_generation_complete",
+    "description": "Screenshot of the card generation process on Vibecarding, showing the final generation stage is complete and it took 33 seconds.",
+    "size": 148267
+  },
+  "f444bb1b-2d5b-46e1-aa7a-c2948f859eff": {
+    "filename": "f444bb1b-2d5b-46e1-aa7a-c2948f859eff.png",
+    "path": "/var/www/flask_app/claude_attachments/f444bb1b-2d5b-46e1-aa7a-c2948f859eff.png",
+    "url": "https://vibecarding.com/serve_image?key=attachment_2644d34c-89e6-4d11-b346-ba5fe8771ccc&type=image/png",
+    "mime_type": "image/png",
+    "timestamp": 1752265953633,
+    "message_id": "+17145986105_1752265953633",
+    "label": "card_basics_creation_interface",
+    "description": "A screenshot showing the card creation interface, specifically detailing the card type, tone, and personalized fields such as \"To\", \"From\", and \"Relationship\".",
+    "size": 155166
+  },
+  "dc2aae07-c015-489d-8490-f3c04237c143": {
+    "filename": "dc2aae07-c015-489d-8490-f3c04237c143.png",
+    "path": "/var/www/flask_app/claude_attachments/dc2aae07-c015-489d-8490-f3c04237c143.png",
+    "url": "https://vibecarding.com/serve_image?key=attachment_fc354745-ec25-49cf-817d-f34b6d61907e&type=image/png",
+    "mime_type": "image/png",
+    "timestamp": 1752267218836,
+    "message_id": "+17145986105_1752267218836",
+    "label": "vibecarding_card_basics_form",
+    "description": "Screenshot of the Vibecarding 'Card Basics' form, showing options for card type, tone, personalization, and relationship. The form is populated with example data.",
+    "size": 155166
+  },
+  "71f0a9fb-aee1-4034-9db7-dc0534c0b66d": {
+    "filename": "71f0a9fb-aee1-4034-9db7-dc0534c0b66d.png",
+    "path": "/var/www/flask_app/claude_attachments/71f0a9fb-aee1-4034-9db7-dc0534c0b66d.png",
+    "url": "https://vibecarding.com/serve_image?key=attachment_c7ccd01a-afca-44e7-b0be-f71b2c8ad853&type=image/png",
+    "mime_type": "image/png",
+    "timestamp": 1752267243198,
+    "message_id": "+17145986105_1752267243198",
+    "label": "card_basics_step_1",
+    "description": "The image shows the 'Current Step' in a tutorial which indicates the user is on step 1 of 6: Card Basics.",
+    "size": 14594
+  },
+  "7bd0ee3e-9bc2-4c49-a63c-ebee9f30dfc0": {
+    "filename": "7bd0ee3e-9bc2-4c49-a63c-ebee9f30dfc0.png",
+    "path": "/var/www/flask_app/claude_attachments/7bd0ee3e-9bc2-4c49-a63c-ebee9f30dfc0.png",
+    "url": "https://vibecarding.com/serve_image?key=attachment_53600d1e-3388-4484-8499-0fd7025d93f2&type=image/png",
+    "mime_type": "image/png",
+    "timestamp": 1752267491313,
+    "message_id": "+17145986105_1752267491313",
+    "label": "card_basics_step_one",
+    "description": "This image shows the progress in a tutorial on card basics. The user is on step 1 of 6.",
+    "size": 14594
+  },
+  "167a13ce-5c27-4b06-ba08-299659731f48": {
+    "filename": "167a13ce-5c27-4b06-ba08-299659731f48.jpg",
+    "path": "/var/www/flask_app/claude_attachments/167a13ce-5c27-4b06-ba08-299659731f48.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_7162fb8c-8d4c-43fe-a952-c47cb1cb78c6&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752274493802,
+    "message_id": "+17145986105_1752274493802",
+    "label": "cartoon_character_creator_interface",
+    "description": "This image shows a section of a cartoon character creator, where users can upload photos of themselves to be turned into cartoon characters. The interface also includes an area for character style instructions.",
+    "size": 106829
+  },
+  "6d74eb50-b0eb-433f-ad74-fb6e88a00a26": {
+    "filename": "6d74eb50-b0eb-433f-ad74-fb6e88a00a26.jpg",
+    "path": "/var/www/flask_app/claude_attachments/6d74eb50-b0eb-433f-ad74-fb6e88a00a26.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_16c51b33-f901-4a68-b4b4-e5095cb159af&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752276552024,
+    "message_id": "+17145986105_1752276552024",
+    "label": "birthday_queen_and_jester_card",
+    "description": "A birthday card features a queen on a throne and a smiling jester with text saying 'Another Year of Ruling' and 'Happy Birthday Lao Lao from Jordan'.",
+    "size": 70580
+  },
+  "5cf6c6de-fc2e-4b07-ac4a-a91225508d0a": {
+    "filename": "5cf6c6de-fc2e-4b07-ac4a-a91225508d0a.png",
+    "path": "/var/www/flask_app/claude_attachments/5cf6c6de-fc2e-4b07-ac4a-a91225508d0a.png",
+    "url": "https://vibecarding.com/serve_image?key=attachment_578f9d1c-6283-4e4d-ade0-5198af0b1a0d&type=image/png",
+    "mime_type": "image/png",
+    "timestamp": 1752279278265,
+    "message_id": "+17145986105_1752279278265",
+    "label": "vibecarding_card_history_drafts",
+    "description": "A screenshot showing a user's 'Card History' screen on Vibecarding, displaying a list of draft cards including birthday and thank-you designs.",
+    "size": 118875
   }
 }

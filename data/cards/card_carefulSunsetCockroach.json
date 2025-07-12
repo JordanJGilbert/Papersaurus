@@ -1,0 +1,17 @@
+{
+  "id": "carefulSunsetCockroach",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_a2dcf3b9.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_5cae740b.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_6b55b73f.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_28b41b85.png",
+  "generatedPrompts": {
+    "frontCover": "A beautiful and humorous birthday card front, watercolor painting style. A funny scene featuring two young people, Jordan and their partner, attempting to bake a birthday cake for their Lao Lao. The kitchen is in a state of chaos, with flour dust everywhere and icing splattered on their faces and clothes, but they are laughing joyfully.\n\nIn the center, a 20-25 year old East Asian woman with long, straight black hair and thin-rimmed glasses, wearing a light blue crewneck sweatshirt with 'ROCKY MOUNTAIN' logo, holds a mixing bowl, smiling warmly. Standing behind her, a 20-25 year old Southeast Asian man with short, textured black hair, wearing a tan hoodie and maroon sweatpants, has his arms around her, smiling broadly as he helps stir the batter, accidentally flicking some onto her nose.\n\nThe words \"Happy Birthday\" are written in a beautiful, readable handwritten cursive script in the safe center area of the composition.\n\nThe artwork is a flat 2D illustration in a soft, flowing watercolor style with visible artistic brushstrokes, paper texture, and organic paint bleeds. The overall tone is lighthearted and full of love. --ar 5:7 --style raw --s 150 --v 6.0 --seed 2783\n\n- Reference photos provided for character creation\n- Characters should only appear on the front cover\n- Transform real people into artistic cartoon/illustrated versions matching the style\n- Maintain recognizable features while adapting to the artistic style",
+    "backCover": "A minimalist and elegant back cover for a greeting card. A simple, artistic logo featuring a small, stylized mountain range and a mixing spoon crossed, located in the top center. The logo is rendered in a soft tan and light blue color palette. The entire background is a light, off-white watercolor texture with subtle, organic paint bleeds, consistent with a soft flowing watercolor style. The bottom right corner is clear of any design elements. --ar 5:7 --style raw --s 100 --v 6.0",
+    "leftInterior": "A beautiful, decorative background for the left interior of a greeting card. A full-bleed watercolor painting of abstract, soft-focus splotches and gentle swirls of light blue, tan, and maroon, blending together seamlessly. The artwork has visible artistic brushstrokes, paper texture, and organic paint bleeds, creating a dreamy and artistic atmosphere. The composition is subtle and does not distract, serving as a complementary backdrop. --ar 5:7 --style raw --s 150 --v 6.0",
+    "rightInterior": "A clean and elegant design for the right interior of a greeting card, focusing on message legibility. The background is a very pale, off-white watercolor paper texture. A minimalist decorative border along the top and bottom edges features a delicate wash of soft light blue and tan watercolor paint, with subtle, organic paint bleeds. The central area, where the text will be placed, is mostly clear to ensure readability. --ar 5:7 --style raw --s 100 --v 6.0"
+  },
+  "createdAt": 1752263657.5367873,
+  "expiresAt": 1783799657.5367877,
+  "version": 1
+}

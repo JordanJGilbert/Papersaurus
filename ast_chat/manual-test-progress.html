@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VibeCarding Progress Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #1976D2;
+        }
+        .log {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            margin: 2px 0;
+            padding: 2px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .error {
+            color: #d32f2f;
+        }
+        .success {
+            color: #388e3c;
+        }
+        .info {
+            color: #1976d2;
+        }
+    </style>
+</head>
+<body>
+    <h1>VibeCarding Progress Test</h1>
+    
+    <div class="test-card">
+        <h2>Draft Generation Test</h2>
+        <div class="progress-bar">
+            <div id="draft-progress" class="progress-fill" style="width: 0%">0%</div>
+        </div>
+        <div>
+            <button onclick="startDraftTest()">Start Draft Generation</button>
+            <button onclick="stopDraftTest()">Stop</button>
+            <button onclick="completeDraftTest()">Simulate Completion</button>
+        </div>
+        <div id="draft-status">Status: Idle</div>
+        <div id="draft-log" class="log"></div>
+    </div>
+    
+    <div class="test-card">
+        <h2>Final Card Generation Test</h2>
+        <div class="progress-bar">
+            <div id="final-progress" class="progress-fill" style="width: 0%">0%</div>
+        </div>
+        <div>
+            <button onclick="startFinalTest()">Start Final Generation</button>
+            <button onclick="stopFinalTest()">Stop</button>
+            <button onclick="completeFinalTest()">Simulate Completion</button>
+        </div>
+        <div id="final-status">Status: Idle</div>
+        <div id="final-log" class="log"></div>
+    </div>
+    
+    <div class="test-card">
+        <h2>LocalStorage Inspector</h2>
+        <button onclick="checkLocalStorage()">Check LocalStorage</button>
+        <button onclick="clearLocalStorage()">Clear LocalStorage</button>
+        <div id="storage-log" class="log"></div>
+    </div>
+
+    <script>
+        let draftInterval = null;
+        let finalInterval = null;
+        let draftStartTime = null;
+        let finalStartTime = null;
+        
+        function log(elementId, message, type = 'info') {
+            const logEl = document.getElementById(elementId);
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logEl.insertBefore(entry, logEl.firstChild);
+        }
+        
+        function updateProgress(elementId, percentage) {
+            const el = document.getElementById(elementId);
+            el.style.width = percentage + '%';
+            el.textContent = Math.round(percentage) + '%';
+        }
+        
+        // Draft Generation Test
+        function startDraftTest() {
+            if (draftInterval) return;
+            
+            draftStartTime = Date.now();
+            let progress = 0;
+            
+            log('draft-log', 'Starting draft generation (2.2% per second)', 'info');
+            document.getElementById('draft-status').textContent = 'Status: Generating...';
+            
+            draftInterval = setInterval(() => {
+                progress = Math.min(95, progress + 2.2);
+                updateProgress('draft-progress', progress);
+                
+                const elapsed = Math.floor((Date.now() - draftStartTime) / 1000);
+                log('draft-log', `Progress: ${progress.toFixed(1)}% (${elapsed}s elapsed)`, 'info');
+                
+                if (progress >= 95) {
+                    log('draft-log', 'Progress capped at 95% - waiting for completion', 'info');
+                    clearInterval(draftInterval);
+                    draftInterval = null;
+                }
+            }, 1000);
+        }
+        
+        function stopDraftTest() {
+            if (draftInterval) {
+                clearInterval(draftInterval);
+                draftInterval = null;
+                log('draft-log', 'Draft generation stopped', 'error');
+                document.getElementById('draft-status').textContent = 'Status: Stopped';
+            }
+        }
+        
+        function completeDraftTest() {
+            stopDraftTest();
+            updateProgress('draft-progress', 100);
+            log('draft-log', 'Draft generation completed!', 'success');
+            document.getElementById('draft-status').textContent = 'Status: Completed';
+            
+            // Simulate saving to localStorage
+            const mockDrafts = Array(5).fill(null).map((_, i) => ({
+                id: `draft-${i}`,
+                frontCover: `mock-image-${i}`,
+                createdAt: new Date().toISOString()
+            }));
+            localStorage.setItem('draftCards', JSON.stringify(mockDrafts));
+            log('draft-log', 'Saved 5 draft cards to localStorage', 'success');
+        }
+        
+        // Final Card Generation Test
+        function startFinalTest() {
+            if (finalInterval) return;
+            
+            finalStartTime = Date.now();
+            let progress = 0;
+            
+            log('final-log', 'Starting final card generation (1.1% per second)', 'info');
+            document.getElementById('final-status').textContent = 'Status: Generating...';
+            
+            finalInterval = setInterval(() => {
+                progress = Math.min(95, progress + 1.1);
+                updateProgress('final-progress', progress);
+                
+                const elapsed = Math.floor((Date.now() - finalStartTime) / 1000);
+                log('final-log', `Progress: ${progress.toFixed(1)}% (${elapsed}s elapsed)`, 'info');
+                
+                if (progress >= 95) {
+                    log('final-log', 'Progress capped at 95% - waiting for completion', 'info');
+                    clearInterval(finalInterval);
+                    finalInterval = null;
+                }
+            }, 1000);
+        }
+        
+        function stopFinalTest() {
+            if (finalInterval) {
+                clearInterval(finalInterval);
+                finalInterval = null;
+                log('final-log', 'Final generation stopped', 'error');
+                document.getElementById('final-status').textContent = 'Status: Stopped';
+            }
+        }
+        
+        function completeFinalTest() {
+            stopFinalTest();
+            updateProgress('final-progress', 100);
+            log('final-log', 'Final card generation completed!', 'success');
+            document.getElementById('final-status').textContent = 'Status: Completed';
+            
+            // Simulate saving to localStorage
+            const mockCard = {
+                id: 'card-123',
+                frontCover: 'mock-front',
+                backCover: 'mock-back',
+                leftPage: 'mock-left',
+                rightPage: 'mock-right',
+                createdAt: new Date().toISOString(),
+                isFinalCard: true,
+                completedAt: Date.now()
+            };
+            localStorage.setItem('lastCompletedCard', JSON.stringify(mockCard));
+            log('final-log', 'Saved completed card to localStorage', 'success');
+        }
+        
+        // LocalStorage Inspector
+        function checkLocalStorage() {
+            log('storage-log', '=== LocalStorage Contents ===', 'info');
+            
+            const keys = ['cardFormData', 'draftCards', 'pendingJobs', 'lastCompletedCard', 'cardHistory'];
+            
+            keys.forEach(key => {
+                const value = localStorage.getItem(key);
+                if (value) {
+                    try {
+                        const parsed = JSON.parse(value);
+                        log('storage-log', `${key}: ${JSON.stringify(parsed, null, 2).substring(0, 100)}...`, 'success');
+                    } catch {
+                        log('storage-log', `${key}: ${value.substring(0, 50)}...`, 'info');
+                    }
+                } else {
+                    log('storage-log', `${key}: (not set)`, 'error');
+                }
+            });
+        }
+        
+        function clearLocalStorage() {
+            localStorage.clear();
+            log('storage-log', 'LocalStorage cleared', 'success');
+        }
+        
+        // Initial check
+        checkLocalStorage();
+    </script>
+</body>
+</html>

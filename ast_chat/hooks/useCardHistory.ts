@@ -24,7 +24,7 @@ interface GeneratedCard {
 interface DraftSession {
   id: string;
   formData: any; // Form data at time of draft creation
-  draftCards: GeneratedCard[];
+  draftCards: (GeneratedCard | null)[];
   selectedDraftIndex: number;
   createdAt: Date;
   lastModified: Date;
@@ -111,15 +111,15 @@ export const useCardHistory = () => {
   // Save draft session
   const saveDraftSession = useCallback((
     formData: any, 
-    draftCards: GeneratedCard[], 
+    draftCards: (GeneratedCard | null)[], 
     selectedDraftIndex: number = -1,
     sessionId?: string
   ) => {
     const now = new Date();
     const id = sessionId || generateSessionId();
     
-    // Generate title from form data
-    const title = generateDraftTitle(formData);
+    // Generate title from form data and draft cards
+    const title = generateDraftTitle(formData, draftCards);
     
     const draftSession: DraftSession = {
       id,
@@ -233,13 +233,20 @@ const generateSessionId = () => {
   return `draft_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 };
 
-const generateDraftTitle = (formData: any): string => {
+const generateDraftTitle = (formData: any, draftCards?: (GeneratedCard | null)[]): string => {
   const cardType = formData.selectedType === 'custom' ? 
     formData.customCardType : 
     formData.selectedType;
   
   const tone = formData.selectedTone;
   const timestamp = new Date().toLocaleString();
+  
+  // Add draft completion status if available
+  let completionStatus = '';
+  if (draftCards) {
+    const validDrafts = draftCards.filter(card => card !== null).length;
+    completionStatus = ` - ${validDrafts} drafts`;
+  }
   
   if (cardType && tone) {
     return `${cardType} (${tone}) - ${timestamp}`;

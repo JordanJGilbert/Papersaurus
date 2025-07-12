@@ -1,0 +1,17 @@
+{
+  "id": "cleanPeacockBuffalo",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_d45f8965.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_69a52450.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_318e169a.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_740d28f5.png",
+  "generatedPrompts": {
+    "frontCover": "A charming cartoon-style watercolor painting of a very old, very slow tortoise wearing a festive party hat with a single, unlit candle on top. The tortoise is comically struggling, straining with all its might to blow out the tiny candle, its cheeks puffed out, eyes squeezed shut in effort. Below the tortoise, the phrase \"happy belated birthday\" is elegantly scripted in a beautiful, readable handwritten cursive font. The entire scene is rendered in a lighthearted watercolor style with soft, flowing colors of green, brown, and festive reds and yellows, featuring artistic brush strokes, visible paper texture, and organic paint bleeds, on a clean white background. Flat 2D artwork.",
+    "backCover": "A minimal and artistic logo spot in the top center. The design features a simple, stylized abstract shape reminiscent of a slow, graceful snail shell, rendered in a soft brown watercolor with visible paper texture and organic paint bleeds. The rest of the panel is a clean, plain white background, leaving ample empty space, especially in the bottom-right corner. Flat 2D artwork.",
+    "leftInterior": "A subtle and decorative watercolor wash background. Soft, flowing colors of muted green, gentle brown, and pale yellow blend seamlessly from the top down, creating a calm, atmospheric effect with artistic brush strokes and visible paper texture. The design is purely abstract and atmospheric, with no distinct shapes or figures, providing a beautiful but unobtrusive backdrop. Flat 2D artwork.",
+    "rightInterior": "A mostly plain white background optimized for handwriting. A very minimal decorative watercolor border element accents the top-left and bottom-right corners. These small accents feature a delicate wash of soft red and pale yellow watercolor with organic paint bleeds and subtle brush strokes, framing the large central blank space without overwhelming it. Flat 2D artwork."
+  },
+  "createdAt": 1752206667.508329,
+  "expiresAt": 1783742667.5083296,
+  "version": 1
+}

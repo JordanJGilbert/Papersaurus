@@ -9,7 +9,7 @@ import { CardFormData } from "@/hooks/useCardForm";
 import { 
   Wrench, Cake, ThumbsUp, Heart, Trophy, TreePine, Stethoscope, 
   CloudRain, GraduationCap, Baby, Church, Gift, Home, MessageCircle, Eye,
-  Image, Sparkles, Upload, X, Wand2
+  Image, Sparkles, Upload, X, Wand2, Users
 } from "lucide-react";
 import TemplateGallery from "../TemplateGallery";
 import { useCardCache } from "@/hooks/useCardCache";
@@ -56,6 +56,7 @@ interface Step1Props {
   savePhotoAnalysis?: (analysis: PhotoAnalysis) => void;
   skipPhotoAnalysis?: () => void;
   setShowAnalysisModal?: (show: boolean) => void;
+  triggerPhotoAnalysis?: (index: number) => void;
   // Direct URLs from cardStudio for immediate access
   referenceImageUrlsFromStudio?: string[];
 }
@@ -111,6 +112,7 @@ export default function Step1CardBasics({
   savePhotoAnalysis,
   skipPhotoAnalysis,
   setShowAnalysisModal,
+  triggerPhotoAnalysis,
   referenceImageUrlsFromStudio = []
 }: Step1Props) {
   const [showTemplateGallery, setShowTemplateGallery] = useState(false);
@@ -236,20 +238,30 @@ export default function Step1CardBasics({
 
   // Trigger photo analysis when modal opens
   React.useEffect(() => {
-    if (showAnalysisModal && pendingAnalysisIndex !== null && analyzePhoto) {
-      const imageUrls = referenceImageUrlsFromStudio.length > 0 ? referenceImageUrlsFromStudio : formData.referenceImageUrls;
-      const imageUrl = imageUrls[pendingAnalysisIndex];
-      if (imageUrl && !analysisResult) {
-        setAnalysisResult(null);
-        analyzePhoto(imageUrl, pendingAnalysisIndex).then(result => {
-          setAnalysisResult(result);
-        }).catch(error => {
-          console.error("Error analyzing photo:", error);
-          toast.error("Failed to analyze photo");
-        });
+    if (showAnalysisModal && pendingAnalysisIndex !== null) {
+      // Check if we already have analysis data for this image
+      const existingAnalysis = photoAnalyses[pendingAnalysisIndex];
+      
+      if (existingAnalysis && existingAnalysis.analyzed && !existingAnalysis.analysisFailed) {
+        // Use existing analysis data
+        console.log("📊 Using pre-analyzed data for image", pendingAnalysisIndex);
+        setAnalysisResult(existingAnalysis.analysisResult);
+      } else if (analyzePhoto) {
+        // No existing analysis, perform new analysis
+        const imageUrls = referenceImageUrlsFromStudio.length > 0 ? referenceImageUrlsFromStudio : formData.referenceImageUrls;
+        const imageUrl = imageUrls[pendingAnalysisIndex];
+        if (imageUrl && !analysisResult) {
+          setAnalysisResult(null);
+          analyzePhoto(imageUrl, pendingAnalysisIndex).then(result => {
+            setAnalysisResult(result);
+          }).catch(error => {
+            console.error("Error analyzing photo:", error);
+            toast.error("Failed to analyze photo");
+          });
+        }
       }
     }
-  }, [showAnalysisModal, pendingAnalysisIndex, analyzePhoto, formData.referenceImageUrls, referenceImageUrlsFromStudio, analysisResult]);
+  }, [showAnalysisModal, pendingAnalysisIndex, analyzePhoto, formData.referenceImageUrls, referenceImageUrlsFromStudio, analysisResult, photoAnalyses]);
 
   return (
     <div className="space-y-4 sm:space-y-6 w-full">
@@ -402,10 +414,10 @@ export default function Step1CardBasics({
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-              Relationship (Optional)
+              {formData.toField ? `${formData.toField} is your...` : 'Relationship (Optional)'}
             </label>
             <Input
-              placeholder="💝 e.g., girlfriend, mom, coworker, best friend"
+              placeholder={formData.toField ? "friend, parent, significant other, coworker" : "💝 e.g., friend, parent, significant other"}
               value={formData.relationshipField}
               onChange={(e) => updateFormData({ relationshipField: e.target.value })}
               className="h-12 sm:h-14 touch-manipulation border-2 hover:border-green-300 dark:hover:border-green-700 transition-colors text-base"
@@ -475,6 +487,21 @@ export default function Step1CardBasics({
                       </div>
                     ))}
                   </div>
+                  
+                  {/* Customize people button */}
+                  {triggerPhotoAnalysis && (referenceImageUrlsFromStudio.length > 0 || formData.referenceImageUrls.length > 0) && (
+                    <div className="flex justify-center">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => triggerPhotoAnalysis(0)}
+                        className="flex items-center gap-2"
+                      >
+                        <Users className="w-4 h-4" />
+                        <span>Customize people</span>
+                      </Button>
+                    </div>
+                  )}
                   
                   {/* Add more photos button */}
                   {formData.referenceImageUrls.length < 4 && (
@@ -552,6 +579,7 @@ export default function Step1CardBasics({
           imageIndex={pendingAnalysisIndex}
           isAnalyzing={isAnalyzing || false}
           analysisResult={analysisResult}
+          existingAnalysis={photoAnalyses[pendingAnalysisIndex]}
           onSave={(analysis) => {
             savePhotoAnalysis?.(analysis);
             setAnalysisResult(null);

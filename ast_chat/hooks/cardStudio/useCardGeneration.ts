@@ -31,14 +31,13 @@ interface CardGenerationProps {
   saveJobToStorage: (jobId: string, jobData: any) => void;
   removeJobFromStorage: (jobId: string) => void;
   subscribeToJob: (jobId: string) => void;
-  startElapsedTimeTracking: (startTime?: number, estimatedTotalSeconds?: number) => void;
+  startElapsedTimeTracking: (jobType?: 'draft' | 'final') => void;
   stopElapsedTimeTracking: () => void;
   setCurrentJobId: (id: string | null) => void;
   
   // Draft state setters
   setIsDraftMode: (value: boolean) => void;
-  setDraftCards: (value: GeneratedCard[]) => void;
-  setDraftIndexMapping: (value: number[]) => void;
+  setDraftCards: (value: any) => void;
   setSelectedDraftIndex: (value: number) => void;
   setIsGeneratingFinalCard: (value: boolean) => void;
   setPreviewingDraftIndex: (value: number) => void;
@@ -53,7 +52,6 @@ export function useCardGeneration(props: CardGenerationProps) {
   const [selectedCardIndex, setSelectedCardIndex] = useState<number>(0);
   const [isCardCompleted, setIsCardCompleted] = useState<boolean>(false);
   const [generationProgress, setGenerationProgress] = useState<string>("");
-  const [progressPercentage, setProgressPercentage] = useState<number>(0);
   const [currentCardId, setCurrentCardId] = useState<string | null>(null);
   const [generationDuration, setGenerationDuration] = useState<number | null>(null);
 
@@ -61,6 +59,11 @@ export function useCardGeneration(props: CardGenerationProps) {
   const handleFinalCardCompletion = useCallback(async (cardData: any) => {
     console.log('🎯 handleFinalCardCompletion called with cardData:', cardData);
     console.log('🎯 Current userEmail state:', props.userEmail);
+    console.log('🎯 Current states:', {
+      isGenerating,
+      isCardCompleted,
+      generatedCard: generatedCard ? 'Present' : 'None'
+    });
     let cardWithQR = { ...cardData };
     
     // Ensure the card has a valid createdAt date
@@ -92,7 +95,10 @@ export function useCardGeneration(props: CardGenerationProps) {
     props.setIsDraftMode(false);
     props.setDraftCompletionShown(false);
     props.setDraftCompletionCount(0);
-    setGenerationProgress("");
+    
+    console.log('🎯 Card states updated - isCardCompleted:', true, 'generatedCard:', cardWithQR);
+    // Don't clear the progress message here - it will be set by the WebSocket handler
+    // setGenerationProgress("");
     
     // Scroll to card preview
     scrollToCardPreview();
@@ -105,9 +111,11 @@ export function useCardGeneration(props: CardGenerationProps) {
     // Stop elapsed time tracking
     props.stopElapsedTimeTracking();
     
-    // Set progress to 100%
-    setProgressPercentage(100);
-    setGenerationProgress("Card generation complete!");
+    // Set final progress after all states are updated
+    // Use a timeout to ensure React has processed all state updates
+    setTimeout(() => {
+      setGenerationProgress("Generation complete! (100%)");
+    }, 100);
     
     toast.success("🎉 Your card is ready!");
     
@@ -122,7 +130,11 @@ export function useCardGeneration(props: CardGenerationProps) {
     console.log('📧 Email sending disabled - backend handles email notifications');
     
     console.log('✅ Final card completion process finished successfully');
-  }, [props]);
+    console.log('✅ Final states:', {
+      isCardCompleted: true,
+      generatedCard: cardWithQR
+    });
+  }, [props, isGenerating, isCardCompleted, generatedCard]);
 
   // Main card generation function
   const handleGenerateCardAsync = useCallback(async () => {
@@ -149,7 +161,6 @@ export function useCardGeneration(props: CardGenerationProps) {
       setCurrentJobId,
       setIsDraftMode,
       setDraftCards,
-      setDraftIndexMapping,
       setSelectedDraftIndex,
       setIsGeneratingFinalCard,
       setPreviewingDraftIndex,
@@ -183,8 +194,7 @@ export function useCardGeneration(props: CardGenerationProps) {
 
     // Clear all draft mode states to prevent UI conflicts
     setIsDraftMode(false);
-    setDraftCards([]);
-    setDraftIndexMapping([]);
+    setDraftCards([null, null, null, null, null]);
     setSelectedDraftIndex(-1);
     setIsGeneratingFinalCard(false);
     setPreviewingDraftIndex(-1);
@@ -202,9 +212,8 @@ export function useCardGeneration(props: CardGenerationProps) {
     props.stopElapsedTimeTracking();
     
     setIsGenerating(true);
-    startElapsedTimeTracking(undefined, 120);
+    startElapsedTimeTracking('final');
     setGenerationProgress("Creating your personalized card...");
-    setProgressPercentage(0);
 
     try {
       // Create job tracking
@@ -406,8 +415,6 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags.`;
     setIsCardCompleted,
     generationProgress,
     setGenerationProgress,
-    progressPercentage,
-    setProgressPercentage,
     currentCardId,
     setCurrentCardId,
     generationDuration,

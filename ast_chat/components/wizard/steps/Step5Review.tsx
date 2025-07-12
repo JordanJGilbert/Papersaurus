@@ -57,12 +57,22 @@ export default function Step5Review({
     setIsReady(true);
   }, []);
 
-  // Check if we have pending jobs in localStorage (for page refresh scenario)
-  const hasPendingJobs = typeof window !== 'undefined' && 
-    JSON.parse(localStorage.getItem('pendingCardJobs') || '[]').length > 0;
+  // Simple state - no complex job checking needed
+  // The parent component (useCardStudio) handles loading saved drafts
   
-  // Show loading state if generating OR if we have pending jobs and no draft cards yet
-  if ((isGenerating || hasPendingJobs) && draftCards.length === 0) {
+  // Simple mount log
+  useEffect(() => {
+    console.log('🔄 Step5Review mounted with:', {
+      isGenerating,
+      draftCardsLength: draftCards.length,
+      isDraftMode
+    });
+  }, []);
+  
+  // Show loading state only if actively generating and no draft cards yet
+  const shouldShowLoading = isGenerating && draftCards.length === 0;
+  
+  if (shouldShowLoading) {
     return (
       <div className="space-y-6">
         {/* Generation Progress */}
@@ -132,7 +142,7 @@ export default function Step5Review({
   }
 
   // Check if we should show draft selection vs generation
-  const showDraftSelection = !isGenerating && !hasPendingJobs && draftCards.length === 0;
+  const showDraftSelection = !isGenerating && draftCards.length === 0;
   
   return (
     <div className="space-y-6">
@@ -254,7 +264,7 @@ export default function Step5Review({
             <div className="flex overflow-x-auto gap-3 pb-4 -mx-4 px-4 snap-x snap-mandatory touch-pan-x">
               {Array.from({ length: 5 }, (_, displayIndex) => {
                 const card = draftCards[displayIndex];
-                const isLoading = displayIndex >= draftCards.length;
+                const isLoading = !card;
                 
                 return (
                   <div
@@ -337,7 +347,7 @@ export default function Step5Review({
             )}
             
             {/* Regenerate button */}
-            {!isGenerating && draftCards.length === 5 && (
+            {!isGenerating && draftCards.filter(Boolean).length === 5 && (
               <div className="text-center mt-4">
                 <Button
                   variant="outline"

@@ -117,30 +117,31 @@ export class PromptGenerator {
 - Maintain recognizable features while adapting to the artistic style`.trim();
 
   private static readonly TEXT_LEGIBILITY_REQUIREMENTS = `
-- EXACT TEXT REPRODUCTION: The message text must be reproduced EXACTLY as written - every word, punctuation mark, and character must be perfect
-- PUT TEXT IN QUOTES: Always enclose the message text in double quotes to make it clear this is literal text to be rendered exactly
-- CRYSTAL CLEAR LEGIBILITY: The handwriting must be extremely readable - prioritize clarity over artistic flourishes
-- NO SPELLING ERRORS: Every word must be spelled correctly exactly as provided
-- PROPER SPACING: Use appropriate letter spacing, word spacing, and line spacing for easy reading
-- CONTRAST: Ensure high contrast between text and background for maximum readability
-- SIZE: Make text large enough to read easily - avoid cramped or tiny text
-- COMPLETE MESSAGE: Include the ENTIRE message text - do not truncate, abbreviate, or omit any part
-- Use beautiful, clearly readable handwritten cursive script that feels elegant and personal
-- Position the message text in the optimal location for readability (center area, avoid top/bottom 10%)`.trim();
+- Reproduce every word exactly as written
+- Use elegant, clearly readable handwritten script
+- Ensure high contrast between text and background
+- Make text large and well-spaced for easy reading
+- Center the message in the optimal reading area`.trim();
 
   private static getEnhancedReferencePhotoInstructions(photoAnalyses?: PhotoAnalysis[]): string {
     // If no photo analyses, use basic instructions
     if (!photoAnalyses || photoAnalyses.length === 0) {
       return `
-CRITICAL CHARACTER REFERENCE INSTRUCTIONS:
-- The attached photos show the exact people/characters to include
-- Create cartoon/illustrated versions of these specific individuals
-- Capture their unique features, hair, clothing style
-- Do NOT create generic characters - use the reference photos
-- Match their appearance while adapting to the artistic style`.trim();
+REFERENCE PHOTO INSTRUCTIONS:
+- Transform the people in the attached reference photos into cartoon/illustrated versions
+- Characters MUST HIGHLY resemble the people in the reference photos
+- Keep the SAME clothing they're wearing (omit any text/logos on clothing)
+- CRITICAL ACCURACY RULES:
+  - Each person MUST retain their INDIVIDUAL characteristics
+  - If Person A wears glasses and Person B does not, ONLY Person A should have glasses
+  - Do NOT transfer features between people (glasses, hairstyles, clothing, etc.)
+  - Each person's unique features must be preserved separately
+- Maintain exact hairstyles, facial features, and body proportions
+- ONLY include the people shown in the reference photos
+- Do NOT add any additional people, children, or characters unless explicitly requested in the card description`.trim();
     }
 
-    // Build detailed instructions from photo analyses
+    // Build simplified instructions when we have analysis
     const analyzedPhotos = photoAnalyses.filter(a => a.analyzed && !a.analysisFailed);
     if (analyzedPhotos.length === 0) {
       return this.getEnhancedReferencePhotoInstructions(); // Fallback to basic
@@ -150,37 +151,25 @@ CRITICAL CHARACTER REFERENCE INSTRUCTIONS:
     const totalExcluded = analyzedPhotos.reduce((sum, a) => sum + a.excludedCount, 0);
     
     let instructions = `
-CRITICAL CHARACTER REFERENCE INSTRUCTIONS:
-- Create cartoon/illustrated versions of EXACTLY ${allSelectedPeople.length} specific ${allSelectedPeople.length === 1 ? 'person' : 'people'}:`;
+REFERENCE PHOTO INSTRUCTIONS:
+- Transform the ${allSelectedPeople.length} ${allSelectedPeople.length === 1 ? 'person' : 'people'} from the attached photos into cartoon/illustrated versions`;
 
-    // Add details for each person
-    allSelectedPeople.forEach((person, idx) => {
-      instructions += `
-
-Person ${idx + 1}: ${person.name || person.positionDescription}
-- Position: ${person.positionDescription}
-- Appearance: ${person.description}
-- Age: ${person.apparentAge}
-- Hair: ${person.hairColor} ${person.hairStyle}
-- Clothing: ${person.clothing}
-- Expression: Keep their ${person.expression} expression`;
-      
-      if (person.distinguishingFeatures) {
-        instructions += `
-- Features: ${person.distinguishingFeatures}`;
-      }
-      
-      if (person.relationshipToRecipient) {
-        instructions += `
-- Relationship: ${person.relationshipToRecipient}`;
-      }
-    });
+    // Only include names if they were provided by the user
+    const namedPeople = allSelectedPeople.filter(p => p.name && p.name.trim() !== '');
+    if (namedPeople.length > 0) {
+      instructions += `\n- People to include:`;
+      namedPeople.forEach((person, idx) => {
+        let nameInfo = `\n  - ${person.name}`;
+        if (person.relationshipToRecipient) {
+          nameInfo += ` (${person.relationshipToRecipient})`;
+        }
+        instructions += nameInfo;
+      });
+    }
 
     // Add exclusion note if needed
     if (totalExcluded > 0) {
-      instructions += `
-
-IMPORTANT: ${totalExcluded} other ${totalExcluded === 1 ? 'person was' : 'people were'} in the reference photos but should NOT be included in the card.`;
+      instructions += `\n- Note: ${totalExcluded} ${totalExcluded === 1 ? 'person' : 'people'} in the photos should be excluded`;
     }
 
     // Add any special instructions
@@ -190,16 +179,20 @@ IMPORTANT: ${totalExcluded} other ${totalExcluded === 1 ? 'person was' : 'people
       .join(' ');
     
     if (specialInstructions) {
-      instructions += `
-
-Special instructions: ${specialInstructions}`;
+      instructions += `\n- ${specialInstructions}`;
     }
 
     instructions += `
-
-- Match their exact appearance while adapting to the artistic style
-- Keep their relative positions if they appear together
-- Maintain their expressions and mood`;
+- Characters MUST HIGHLY resemble the people in the reference photos
+- Keep the SAME clothing they're wearing (omit any text/logos on clothing)
+- CRITICAL ACCURACY RULES:
+  - Each person MUST retain their INDIVIDUAL characteristics
+  - If Person A wears glasses and Person B does not, ONLY Person A should have glasses
+  - Do NOT transfer features between people (glasses, hairstyles, clothing, etc.)
+  - Each person's unique features must be preserved separately
+- Maintain exact hairstyles, facial features, body proportions, and relative positions
+- ONLY include these specific people - do NOT add any additional characters
+- Exception: Only add extra characters if explicitly requested in the card description`;
 
     return instructions.trim();
   }
@@ -223,13 +216,10 @@ Special instructions: ${specialInstructions}`;
     // Generate unique UUID for this card generation to ensure variety
     const uniqueId = uuidv4();
 
-    // Build base prompt context
+    // Build base prompt context (not currently used, but kept for reference)
     const baseContext = `
 Theme: "${effectivePrompt}"
 Style: ${config.artisticStyle?.label || "Default"}
-${config.toField ? `To: ${config.toField}` : ""}
-${config.fromField ? `From: ${config.fromField}` : ""}
-${!config.isFrontBackOnly && config.message ? `Message: "${config.message}"` : ""}
 ${config.referenceImageUrls?.length ? `Reference Photos: ${config.referenceImageUrls.length} photo(s) provided for character creation` : ""}
 Unique ID: ${uniqueId}`.trim();
 
@@ -282,23 +272,23 @@ Unique ID: ${uniqueId}`.trim();
       }
     }
 
-    let prompt = `You are an expert AI greeting card designer. Create a front cover prompt for a ${cardTypeForPrompt} greeting card.
+    let prompt = `You are an expert AI greeting card designer. Create a front cover prompt for a ${cardTypeForPrompt} greeting card${config.toField ? ` for ${config.toField}` : ''}.
 
 Theme: "${effectivePrompt}"
 Style: ${config.artisticStyle?.label || "Default"}
 Tone: ${config.toneLabel} - ${config.toneDescription}
-${config.toField ? `To: ${config.toField}` : ""}
-${config.fromField ? `From: ${config.fromField}` : ""}
 ${config.referenceImageUrls?.length ? `Reference Photos: I have attached ${config.referenceImageUrls.length} reference photo${config.referenceImageUrls.length > 1 ? 's' : ''} for character creation.` : ""}
 Unique ID: ${uniqueId}
 
 Front Cover Requirements:
-- Include "${cardTypeForPrompt}" greeting text positioned safely in center area (avoid top/bottom 10%)
+- Include appropriate greeting text for a ${cardTypeForPrompt} card${config.toField ? ` (can optionally include "${config.toField}" in the greeting)` : ''}
+- Position text safely in center area (avoid top/bottom 10%)
 - Use beautiful, readable handwritten cursive script
 - ${config.referenceImageUrls?.length ? this.getEnhancedReferencePhotoInstructions(config.photoAnalyses) : 'Create charming cartoon-style figures if needed'}
 - Be creative and unique, avoid generic designs
 - Flat 2D artwork for printing
 - Style: ${styleModifier}
+- IMPORTANT: Do NOT include "from" or sender information on the front cover
 
 Return ONLY the front cover prompt as plain text.`;
 
@@ -439,8 +429,7 @@ IMPORTANT: The above front cover description is provided as CONTEXT ONLY. You sh
 
 CARD DETAILS:
 - Card Type: ${cardTypeForPrompt}
-- Message to display: "${config.message || 'No message - handwritten space needed'}"
-- Is Handwritten: ${config.isHandwrittenMessage ? 'Yes' : 'No'}
+- Message space needed: ${config.isHandwrittenMessage ? 'Yes (blank space for handwriting)' : 'Yes (for provided message)'}
 - Style Modifier: ${config.artisticStyle?.promptModifier || 'Default style'}
 
 VISUAL DENSITY REQUIREMENTS:
@@ -454,7 +443,7 @@ CRITICAL REQUIREMENTS:
 3. Extract ONLY colors and artistic style from the front cover context
 4. Each panel should feel cohesive but serve its specific purpose
 5. Back cover must leave bottom-right corner clear for QR code
-6. Right interior must prioritize message legibility if message is provided
+6. Right interior must have elegant space for a message (do NOT include the actual message text - just create space for it)
 7. NEVER include the card type greeting text anywhere except the front cover
 
 ${this.LAYOUT_REQUIREMENTS}
@@ -495,6 +484,11 @@ ${this.SAFETY_REQUIREMENTS}`;
       if (!config.isFrontBackOnly) {
         prompts.leftInterior = response.leftInterior;
         prompts.rightInterior = response.rightInterior;
+        
+        // Append the actual message to the right interior prompt
+        if (config.message && !config.isHandwrittenMessage) {
+          prompts.rightInterior += `\n\nDisplay this exact text in elegant, clearly readable handwritten script: "${config.message}"`;
+        }
       }
 
       return prompts;
@@ -510,7 +504,7 @@ ${this.SAFETY_REQUIREMENTS}`;
     // Generate unique ID for this specific panel
     const uniqueId = uuidv4();
     
-    let prompt = `Create a beautiful front cover for a ${cardType} greeting card. ${theme}. Include "${cardType}" greeting text in elegant handwritten script positioned in the center area. ${styleModifier} ${this.LAYOUT_REQUIREMENTS} Unique ID: ${uniqueId}`;
+    let prompt = `Create a beautiful front cover for a ${cardType} greeting card${config.toField ? ` for ${config.toField}` : ''}. ${theme}. Include appropriate greeting text for a ${cardType} card${config.toField ? ` (can optionally include "${config.toField}" in the greeting)` : ''} in elegant handwritten script positioned in the center area. ${styleModifier} ${this.LAYOUT_REQUIREMENTS} IMPORTANT: Do NOT include "from" or sender information on the front cover. Unique ID: ${uniqueId}`;
     
     if (config.referenceImageUrls?.length) {
       prompt += ` ${this.getEnhancedReferencePhotoInstructions(config.photoAnalyses)}`;

@@ -74,6 +74,7 @@ export function CardWizardSteps({
           savePhotoAnalysis={cardStudio.savePhotoAnalysis}
           skipPhotoAnalysis={cardStudio.skipPhotoAnalysis}
           setShowAnalysisModal={cardStudio.setShowAnalysisModal}
+          triggerPhotoAnalysis={cardStudio.triggerPhotoAnalysis}
           // Pass cardStudio's URLs directly for immediate access
           referenceImageUrlsFromStudio={cardStudio.referenceImageUrls}
         />
@@ -126,6 +127,19 @@ export function CardWizardSteps({
       );
     
     case 5:
+      // Log only significant state changes
+      if (process.env.NODE_ENV === 'development') {
+        const stateKey = `${cardStudio.isGenerating}-${cardStudio.isDraftMode}-${cardStudio.draftCards.length}`;
+        if ((window as any).lastStep5State !== stateKey) {
+          console.log('📍 Step 5 state changed:', {
+            isGenerating: cardStudio.isGenerating,
+            isDraftMode: cardStudio.isDraftMode,
+            draftCards: cardStudio.draftCards.length,
+            progressPercentage: cardStudio.progressPercentage
+          });
+          (window as any).lastStep5State = stateKey;
+        }
+      }
       return (
         <Step5Review
           formData={formData}

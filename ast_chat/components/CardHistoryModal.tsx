@@ -246,27 +246,36 @@ export default function CardHistoryModal({
                           <div className="flex items-start gap-4">
                             {/* Draft Preview */}
                             <div className="flex-shrink-0">
-                              {session.draftCards.length > 0 ? (
-                                <div className="relative">
-                                  <img 
-                                    src={session.draftCards[0].frontCover} 
-                                    alt="Draft preview" 
-                                    className="w-20 h-28 object-cover rounded-lg border shadow-sm"
-                                  />
-                                  {session.draftCards.length > 1 && (
-                                    <Badge 
-                                      variant="secondary" 
-                                      className="absolute -top-2 -right-2 text-xs bg-purple-600 text-white"
-                                    >
-                                      {session.draftCards.length}
-                                    </Badge>
-                                  )}
-                                </div>
-                              ) : (
-                                <div className="w-20 h-28 bg-gray-100 dark:bg-gray-800 rounded-lg border flex items-center justify-center">
-                                  <Clock className="w-6 h-6 text-gray-400" />
-                                </div>
-                              )}
+                              {(() => {
+                                const validDrafts = session.draftCards.filter(Boolean);
+                                const firstDraft = validDrafts[0];
+                                
+                                if (firstDraft) {
+                                  return (
+                                    <div className="relative">
+                                      <img 
+                                        src={firstDraft.frontCover} 
+                                        alt="Draft preview" 
+                                        className="w-20 h-28 object-cover rounded-lg border shadow-sm"
+                                      />
+                                      {validDrafts.length > 1 && (
+                                        <Badge 
+                                          variant="secondary" 
+                                          className="absolute -top-2 -right-2 text-xs bg-purple-600 text-white"
+                                        >
+                                          {validDrafts.length}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  );
+                                } else {
+                                  return (
+                                    <div className="w-20 h-28 bg-gray-100 dark:bg-gray-800 rounded-lg border flex items-center justify-center">
+                                      <Clock className="w-6 h-6 text-gray-400" />
+                                    </div>
+                                  );
+                                }
+                              })()}
                             </div>
                             
                             {/* Session Details */}
@@ -277,7 +286,7 @@ export default function CardHistoryModal({
                                 </h3>
                                 <div className="flex items-center gap-2 ml-2">
                                   <Badge variant="outline" className="text-xs">
-                                    {session.draftCards.length} drafts
+                                    {session.draftCards.filter(Boolean).length} drafts
                                   </Badge>
                                 </div>
                               </div>

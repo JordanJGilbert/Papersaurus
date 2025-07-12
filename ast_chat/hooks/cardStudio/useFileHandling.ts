@@ -51,17 +51,63 @@ export function useFileHandling() {
         setReferenceImageUrls(prev => [...prev, result.url]);
         toast.success(`Reference image uploaded! ${referenceImages.length + 1} photo${referenceImages.length + 1 > 1 ? 's' : ''} ready for character creation.`);
         
-        // Wait a moment for state to update before triggering analysis modal
+        // Store the URL and index for later analysis
+        const analysisData = { url: result.url, index: newImageIndex };
+        
+        // Auto-analyze the photo in the background after state updates
         setTimeout(() => {
-          setPendingAnalysisIndex(newImageIndex);
-          setShowAnalysisModal(true);
-        }, 100);
+          console.log("🤖 Auto-analyzing uploaded photo...");
+          analyzePhoto(analysisData.url, analysisData.index).then(analysisResult => {
+            if (analysisResult && analysisResult.peopleCount > 0) {
+              console.log(`✅ Photo analysis complete: ${analysisResult.peopleCount} people detected`);
+              
+              // Create default photo analysis with all people included
+              const defaultAnalysis: PhotoAnalysis = {
+                imageUrl: analysisData.url,
+                imageIndex: analysisData.index,
+                analysisResult: analysisResult,
+                selectedPeople: analysisResult.people.map(person => ({
+                  ...person,
+                  includeInCard: true,
+                  name: '', // No name by default, user can add via "Customize people"
+                  relationshipToRecipient: ''
+                })),
+                includeEveryone: true,
+                excludedCount: 0,
+                analyzed: true,
+                analysisFailed: false
+              };
+              
+              // Save the analysis silently
+              setPhotoAnalyses(prev => {
+                const newAnalyses = [...prev];
+                newAnalyses[analysisData.index] = defaultAnalysis;
+                return newAnalyses;
+              });
+              
+              // Subtle notification that analysis is complete
+              if (analysisResult.peopleCount === 1) {
+                console.log("📸 1 person detected and ready for card creation");
+              } else {
+                console.log(`📸 ${analysisResult.peopleCount} people detected and ready for card creation`);
+              }
+            } else if (analysisResult && analysisResult.peopleCount === 0) {
+              console.log("📸 No people detected in photo, but it can still be used for reference");
+            } else {
+              console.log("⚠️ Photo analysis failed, but photo can still be used");
+            }
+          }).catch(error => {
+            console.error("Failed to auto-analyze photo:", error);
+            // Don't show error toast - silent failure is OK since analysis is optional
+          });
+        }, 100); // Small delay to ensure state updates are complete
       }
     } catch (error) {
       toast.error("Upload failed. Please try again.");
     } finally {
       setIsUploading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [referenceImages.length]);
 
   const handleRemoveReferenceImage = useCallback((index: number) => {
@@ -286,6 +332,14 @@ Return ONLY the JSON response, no additional text.`;
     };
   }, [photoAnalyses]);
 
+  // Manually trigger photo analysis for a specific image
+  const triggerPhotoAnalysis = useCallback((imageIndex: number) => {
+    if (imageIndex >= 0 && imageIndex < referenceImageUrls.length) {
+      setPendingAnalysisIndex(imageIndex);
+      setShowAnalysisModal(true);
+    }
+  }, [referenceImageUrls.length]);
+
   return {
     handwritingSample,
     setHandwritingSample,
@@ -312,6 +366,7 @@ Return ONLY the JSON response, no additional text.`;
     analyzePhoto,
     savePhotoAnalysis,
     skipPhotoAnalysis,
-    getCombinedPhotoAnalysis
+    getCombinedPhotoAnalysis,
+    triggerPhotoAnalysis
   };
 }

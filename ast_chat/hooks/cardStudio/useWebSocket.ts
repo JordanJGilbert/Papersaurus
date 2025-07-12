@@ -10,11 +10,7 @@ export function useWebSocket() {
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const currentJobRef = useRef<string | null>(null);
   const subscribedJobsRef = useRef<Set<string>>(new Set()); // Track all subscribed jobs
-  const lastJobUpdateRef = useRef<number>(Date.now());
-  const connectionStartTimeRef = useRef<number | null>(null);
-  const reconnectionAttemptsRef = useRef<number>(0);
-  const MAX_CONNECTION_AGE = 5 * 60 * 1000; // 5 minutes in milliseconds
-  const hasShownStaleToastRef = useRef(false);
+  const lastJobUpdateRef = useRef<number>(Date.now()); // Track last job update time
 
   const connectWebSocket = useCallback(() => {
     if (socketRef.current?.connected) {
@@ -22,39 +18,15 @@ export function useWebSocket() {
       return;
     }
 
-    // Check if connection is stale (older than 5 minutes)
-    if (connectionStartTimeRef.current && 
-        Date.now() - connectionStartTimeRef.current > MAX_CONNECTION_AGE) {
-      console.log('⏰ Connection attempt is stale (>5 minutes), stopping reconnection');
-      reconnectionAttemptsRef.current = 0;
-      connectionStartTimeRef.current = null;
-      
-      // Only show toast once
-      if (!hasShownStaleToastRef.current) {
-        toast.error('Connection timed out. Please refresh the page if needed.');
-        hasShownStaleToastRef.current = true;
-      }
-      
-      return;
-    }
-
-    // Set connection start time on first attempt
-    if (!connectionStartTimeRef.current) {
-      connectionStartTimeRef.current = Date.now();
-    }
-
-    reconnectionAttemptsRef.current++;
-
     try {
       console.log('🔌 Connecting to WebSocket...');
       const socket = io(BACKEND_API_BASE_URL, {
         transports: ['websocket', 'polling'],
-        timeout: 120000, // Increased to 120 seconds for long-running operations
+        timeout: 30000, // 30 seconds timeout
         reconnection: true,
         reconnectionDelay: 1000,
-        reconnectionAttempts: 20, // Increased retry attempts for better resilience
-        reconnectionDelayMax: 5000, // Max delay between reconnection attempts
-        forceNew: true // Force new connection to avoid stale connections
+        reconnectionAttempts: 10, // Reduced from 20
+        reconnectionDelayMax: 5000
       });
 
       socket.on('connect', () => {
@@ -62,12 +34,7 @@ export function useWebSocket() {
         setIsSocketConnected(true);
         toast.success('🔗 Real-time updates connected');
         
-        // Reset connection tracking on successful connect
-        connectionStartTimeRef.current = null;
-        reconnectionAttemptsRef.current = 0;
-        hasShownStaleToastRef.current = false;
-        
-        // Resubscribe to all subscribed jobs
+        // Resubscribe to all subscribed jobs for recovery
         if (subscribedJobsRef.current.size > 0) {
           console.log('🔄 Resubscribing to jobs:', Array.from(subscribedJobsRef.current));
           subscribedJobsRef.current.forEach(jobId => {
@@ -89,21 +56,12 @@ export function useWebSocket() {
       socket.on('connect_error', (error: Error) => {
         console.error('❌ WebSocket connection error:', error);
         setIsSocketConnected(false);
-        
-        // Check if we should stop trying
-        if (connectionStartTimeRef.current && 
-            Date.now() - connectionStartTimeRef.current > MAX_CONNECTION_AGE) {
-          console.log('⏰ Stopping reconnection attempts after 5 minutes');
-          socket.disconnect();
-          connectionStartTimeRef.current = null;
-          reconnectionAttemptsRef.current = 0;
-        }
       });
 
       socketRef.current = socket;
     } catch (error) {
       console.error('❌ Failed to connect WebSocket:', error);
-      toast.error('Failed to connect real-time updates. Using fallback mode.');
+      toast.error('Failed to connect real-time updates. Please refresh the page.');
     }
   }, []);
 
@@ -113,8 +71,6 @@ export function useWebSocket() {
       socketRef.current.disconnect();
       socketRef.current = null;
       setIsSocketConnected(false);
-      connectionStartTimeRef.current = null;
-      reconnectionAttemptsRef.current = 0;
     }
   }, []);
 
@@ -175,13 +131,6 @@ export function useWebSocket() {
       socketRef.current.off('job_update'); // Remove any existing handler
       socketRef.current.on('job_update', (data: any) => {
         console.log('📦 Job update received:', data);
-        lastJobUpdateRef.current = Date.now();
-        
-        // Update connection start time to track how long we've been connected
-        if (!connectionStartTimeRef.current) {
-          connectionStartTimeRef.current = Date.now();
-        }
-        
         handler(data);
       });
     }

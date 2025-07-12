@@ -128,7 +128,7 @@ The app uses a step-based wizard with modular components:
 
 ## Recent Updates
 
-### Photo Upload Moved to Step 1 (Latest Update - January 2025)
+### Photo Upload Moved to Step 1 (Latest Update)
 Reference photo upload has been moved from Step 3 to Step 1 for better user experience:
 
 #### Key Improvements:
@@ -138,55 +138,18 @@ Reference photo upload has been moved from Step 3 to Step 1 for better user expe
 - **Cleaner Separation**: Step 3 now focused solely on artistic style
 - **No Model Dependency**: Photos can be uploaded regardless of image model selection
 
-### Reference Photo Analysis Feature (January 2025)
-Added intelligent photo analysis capabilities for personalized character creation:
-
-#### New Features:
-- **AI Vision Analysis**: Analyzes uploaded photos to detect all people and their characteristics
-- **Person Selection UI**: Interactive modal to select which people to include in the card
-- **Name Assignment**: Ability to name individuals for better personalization (e.g., "Sarah" instead of "person on left")
-- **Relationship Context**: Optional field to specify relationships (e.g., "daughter", "best friend")
-- **Enhanced Prompts**: Generates detailed character descriptions including:
-  - Physical appearance (hair, clothing, age)
-  - Position in photo (for maintaining relationships)
-  - Distinguishing features
-  - Expressions and mood
-
-#### Technical Implementation:
-- Uses `analyze_images` tool from image_services_server.py (via MCP)
-- The tool uses Gemini 2.5 Pro for accurate photo analysis
-- Structured JSON output with TypeScript interfaces
-- PhotoAnalysisModal component for user interaction
-- Enhanced PromptGenerator with person-specific instructions
-- Maintains backward compatibility (analysis is optional)
-
-#### User Flow:
-1. Upload reference photo in Step 1 (moved from Step 3)
-2. AI analyzes photo and detects people
-3. Modal appears showing detected people
-4. User selects who to include and optionally names them
-5. Selected people are incorporated into all card designs
+### Reference Photo Analysis Feature
+- **AI Vision Analysis**: Gemini 2.5 Pro detects people and their characteristics
+- **Person Selection**: Interactive modal to select and name individuals
+- **Smart Integration**: Selected people incorporated into card designs
+- **Technical**: Uses MCP `analyze_images` tool with structured JSON output
+- **Note**: Reference photos only work with GPT-1 image model
 
 ### Message Generation UX Enhancements
-Added comprehensive UX improvements to the message creation interface:
-
-#### New Features:
-- **Message History Dropdown**: Easy access to all previously generated messages
-- **Undo/Redo Functionality**: Navigate through message versions with dedicated buttons
-- **"Try Another" Button**: Generate message variations while keeping context
-- **Dynamic Placeholders**: Context-aware hints based on card type and tone:
-  - Birthday + Funny: "💝 Add a joke about their age or a funny memory..."
-  - Anniversary + Romantic: "💝 Express your love and cherished memories..."
-  - Thank You + Professional: "💝 Express gratitude professionally..."
-- **Character Count Indicator**: Shows current count with ideal range (50-250 characters)
-- **Enhanced Loading States**: Skeleton loader with "Creating personalized message..." text
-- **Mobile-Optimized UI**: Buttons show/hide text based on screen size
-
-#### Technical Implementation:
-- Fixed state synchronization bug by returning generated message from `handleGetMessageHelp`
-- Added `messageHistory`, `currentMessageIndex`, `undoMessage`, `redoMessage` props to Step2
-- Used `useMemo` for dynamic placeholder computation
-- Improved responsive design with conditional button text
+- **Message History**: Dropdown with undo/redo and "Try Another" variations
+- **Dynamic Placeholders**: Context-aware hints based on card type and tone
+- **Character Count**: Shows current count with ideal range guidance
+- **Mobile-Optimized**: Responsive button text and touch-friendly controls
 
 ### Card History Feature
 - Added `useCardHistory` hook to track the last 10 generated cards
@@ -251,6 +214,24 @@ QR codes are automatically generated for each card:
    - Progress tracking
    - Email delivery with PDF attachment
 
+## Architecture & APIs
+
+### Backend Services
+- **Flask API** (port 5001): Main backend with WebSocket support
+- **MCP Service**: Separate process for AI model integration
+- **WebSocket**: SocketIO with job-specific rooms (`job_{job_id}`)
+
+### Key API Endpoints
+- `POST /api/generate-card-async` - Start card generation job
+- `POST /send-thank-you-email` - Send card via email
+- `GET /api/job-status/{job_id}` - Check generation progress
+- `GET /view-card/{uniqueId}` - Public card viewing
+
+### Storage Architecture
+- **Cards**: `/data/cards/card_{id}.json` 
+- **Jobs**: `/data/jobs/` (auto-cleanup after 6 hours)
+- **File Storage**: MD5 hash-based paths `/data/{first2}/{next2}/{hash}`
+
 ## Testing & Deployment
 
 ### Local Testing
@@ -306,13 +287,18 @@ To test email functionality:
 3. Complete generation in Step 6
 4. Check inbox for professionally formatted email
 
-## AI Models Used
+## AI Models & Configuration
+
+### Models Used
 - **Message Generation**: Gemini 2.5 Pro
-- **Image Generation**: GPT for drafts and finals
-- **Card Descriptions**: GPT-4 for creative prompts
-- **Prompt Generation**: Gemini 2.5 Pro for combined prompt generation
-- **Photo Analysis**: Gemini 2.5 Pro with vision capabilities (NEW)
-- **IMPORTANT**: Always use `gemini-2.5-pro` for ALL AI-related calls (including brainstorming, suggestions, etc.)
+- **Image Generation**: GPT-1 Image model
+- **Photo Analysis**: Gemini 2.5 Pro with vision
+- **Prompt Generation**: Gemini 2.5 Pro
+- **IMPORTANT**: Always use `gemini-2.5-pro` for ALL AI-related calls
+
+### Required Environment Variables
+- `OPENAI_API_KEY` - GPT image generation
+- `ANTHROPIC_API_KEY` - Claude integration
 
 ### AI Chat Helper Function (`chatWithAI`)
 The `chatWithAI` helper function in `/hooks/cardStudio/utils.ts` provides a unified interface for AI interactions:
@@ -337,7 +323,7 @@ chatWithAI(userMessage: string, options: {
 ```typescript
 const response = await chatWithAI(prompt, {
   systemPrompt: "You are a greeting card designer",
-  model: 'gemini-2.0-flash',
+  model: 'gemini-2.5-pro',
   jsonSchema: {
     type: "object",
     properties: {
@@ -353,34 +339,12 @@ const response = await chatWithAI(prompt, {
 
 ## Recent Architecture Improvements
 
-### Code Refactoring for Maintainability (Latest - January 2025)
-Successfully refactored the two largest files in the codebase into modular, maintainable components:
-
-#### useCardStudio Hook Refactoring
-Broke down the massive `useCardStudio.ts` (2048 lines) into 7 focused modules:
-- **useWebSocket.ts** (100 lines): WebSocket connection and job subscription management
-- **useJobManagement.ts** (140 lines): Job tracking, storage, and time management
-- **useMessageGeneration.ts** (130 lines): AI message generation with history/undo/redo
-- **useFileHandling.ts** (90 lines): File upload handling for references and handwriting
-- **useDraftGeneration.ts** (445 lines): Draft card generation and selection logic
-- **useCardGeneration.ts** (410 lines): Final card generation and completion handling
-- **constants.ts** (110 lines): Shared constants, types, and configuration
-- **utils.ts** (145 lines): Shared utility functions (email, AI chat, etc.)
-
-#### CardWizard Component Refactoring
-Split `CardWizard.tsx` (627 lines) into 4 smaller components:
-- **CardWizardRefactored.tsx** (225 lines): Main component with state management
-- **CardWizardEffects.tsx** (95 lines): All useEffect hooks and side effects
-- **CardWizardSteps.tsx** (130 lines): Step rendering and switching logic
-- **CardWizardHelpers.tsx** (165 lines): Helper functions and wrapper utilities
-
-#### Benefits Achieved:
-- **Better Code Organization**: Each module has a single, clear responsibility
-- **Improved Testability**: Smaller modules are easier to unit test
-- **Enhanced Reusability**: Utilities and constants can be imported individually
-- **Easier Maintenance**: Average file size reduced from 1300+ to ~200 lines
-- **Backward Compatibility**: Original imports preserved via re-exports
-- **Type Safety**: All modules maintain full TypeScript support
+### Code Refactoring for Maintainability
+- **useCardStudio**: Split 2048-line hook into 7 focused modules (~100-400 lines each)
+  - WebSocket, Job Management, Message Generation, File Handling, Draft/Final Generation
+- **CardWizard**: Split 627-line component into 4 modules (~100-225 lines each)
+  - Main state, Effects, Steps, Helpers
+- **Benefits**: Single responsibility, easier testing, better reusability, backward compatible
 
 ### Prompt Generation Consolidation
 Successfully consolidated multiple prompt generation locations into a single source of truth:
@@ -407,34 +371,18 @@ The `generateFinalFromDraftPromptsCombined()` method generates back cover, left 
 - **JSON Schema Output**: Uses structured JSON response for reliability
 - **Fallback**: Automatically falls back to individual generation if combined fails
 
-### WebSocket Resilience Improvements
-- **Auto-reconnection**: Reconnects on disconnect with exponential backoff
-- **Stale Job Detection**: Monitors for jobs stuck without updates for 30+ seconds
-- **Progress Extraction**: Parses progress from WebSocket messages when percentage missing
-- **Debug Logging**: Enhanced console logging for troubleshooting
+### WebSocket & State Management Fixes
+- **Multi-subscription support** for concurrent draft jobs
+- **Auto-reconnection** with exponential backoff
+- **Stale job detection** (30+ second timeout)
+- **One-way image sync** prevents reference photo loss
 
-### Fixed Issues
-- **95% Progress Bug**: Added multiple fallback mechanisms for completion detection
-- **Reference Image Bleeding**: Explicit prompts prevent characters on non-front pages
-- **Message Generation State**: Fixed synchronization between CardWizard and useCardStudio
-- **WebSocket Draft Updates**: Fixed issue where only one draft completion was received instead of all 5
-  - Added support for multiple concurrent WebSocket subscriptions
-  - Draft jobs no longer unsubscribe from each other
-- **Reference Image Persistence**: Fixed race condition causing uploaded images to disappear
-  - Reference images now only sync from cardStudio → form data (one-way sync)
-  - Images persist properly when navigating between wizard steps
-  - Reference photos are correctly passed to draft and final generation
-- **Job Persistence Across Server Restarts** (January 2025)
-  - Implemented file-based job storage in Flask backend (`/data/jobs/`)
-  - Jobs now survive Flask server restarts
-  - Auto-cleanup of jobs older than 6 hours
-  - Thread-safe PersistentJobStorage class
-- **Page Refresh During Generation** (January 2025)
-  - Fixed runtime error: `draftGeneration.setIsGeneratingDrafts` → `setIsGenerating`
-  - Step5Review now checks localStorage for pending jobs on mount
-  - Proper UI state restoration showing generation progress instead of draft selection
-  - Frontend gracefully handles missing backend jobs with clear user messages
-  - Stale job cleanup (>5 minutes) on page load
+### Recent Fixes
+- **Job Persistence**: File-based storage survives Flask restarts, 6-hour auto-cleanup
+- **Page Refresh Recovery**: Restores generation state from localStorage, handles stale jobs
+- **Message Rendering**: Fixed messages not appearing by appending exact text after AI prompts
+- **WebSocket Stability**: Multi-subscription support, auto-reconnection, progress tracking
+- **Reference Images**: Fixed persistence issues with one-way sync pattern
 
 ## Gallery UI Implementation
 
@@ -466,11 +414,19 @@ The gallery at `/gallery` now includes comprehensive UI enhancements:
 - Responsive grid layouts with Tailwind CSS
 
 ## Important Configuration
-- All generated cards are saved to `/var/www/flask_app/data/cards/`
-- QR codes point to public URLs at `vibecarding.com/cards/{id}`
-- Email templates are inline in the backend code
-- Frontend and backend must be running for full functionality
-- **Note**: Reference photo analysis feature requires deployment of latest code (January 2025)
+
+### Critical File Paths
+- **Cards**: `/var/www/flask_app/data/cards/`
+- **Jobs**: `/var/www/flask_app/data/jobs/`
+- **Claude Attachments**: `/var/www/flask_app/claude_attachments/`
+- **MCP Servers**: `/var/www/flask_app/mcp_client/mcp_servers/`
+
+### Key Features
+- QR codes auto-generated for all cards (`vibecarding.com/cards/{id}`)
+- Email delivery via SendGrid (fallback: Gmail API)
+- Reference photos only work with GPT-1 model
+- WebSocket auto-reconnection with exponential backoff
+- Job persistence survives server restarts (file-based)
 
 ## Claude Code Integration
 - **Attachments Folder**: When user with phone number 17145986105 sends attachments via Signal, they are automatically saved to `/var/www/flask_app/claude_attachments/`
@@ -478,13 +434,13 @@ The gallery at `/gallery` now includes comprehensive UI enhancements:
 - The folder includes an `index.json` file with metadata about each attachment (filename, url, description, etc.)
 
 ### Quick Commands for Claude Code
-- **View Latest Image**: Just say "show latest" or "latest image" and Claude will automatically read the most recent attachment
-- **Analyze UI**: Send a screenshot via Signal, then say "analyze UI" or "improve this UI" and Claude will automatically analyze the latest image
+- **IMPORTANT**: Always use `python3 /var/www/flask_app/show_latest_image.py` to get the latest image path
+- **Default Behavior**: For ANY image-related request, automatically run the Python script to get the latest image
 - **Quick Workflow Examples**:
-  - "make this button look better" - Claude will analyze the latest Signal image and suggest improvements
-  - "fix the spacing here" - Claude will look at the latest screenshot and provide fixes
-  - "improve this design" - Claude will analyze and suggest design improvements
-- **Alternative**: Run `python3 /var/www/flask_app/show_latest_image.py` to get the path of the latest image
+  - "make this button look better" - Claude runs the script and analyzes the latest image
+  - "fix the spacing here" - Claude runs the script and provides fixes
+  - "improve this design" - Claude runs the script and suggests improvements
+- **DO NOT**: Read index.json directly - always use the Python script for latest image
 
 ## Future Enhancements
 - Message templates library

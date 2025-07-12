@@ -5626,7 +5626,7 @@ def generate_card_images_background(job_id, prompts, config):
             socketio.emit('job_update', {
                 'job_id': job_id,
                 'status': 'processing',
-                'progress': 'Generating images...'
+                'progress': 'Generating images... (10%)'
             }, room=f"job_{job_id}")
         
         # Prepare sections to generate
@@ -5648,7 +5648,7 @@ def generate_card_images_background(job_id, prompts, config):
             socketio.emit('job_update', {
                 'job_id': job_id,
                 'status': 'processing',
-                'progress': 'Generating all card images in parallel...'
+                'progress': 'Generating all card images in parallel... (30%)'
             }, room=f"job_{job_id}")
         
         # Prepare all prompts for parallel generation
@@ -5818,6 +5818,14 @@ def generate_card_images_background(job_id, prompts, config):
         
         missing_sections = [s for s in required_sections if s not in generated_images]
         
+        # Send 80% progress update after images generated
+        if not missing_sections and job_id in job_storage:
+            socketio.emit('job_update', {
+                'job_id': job_id,
+                'status': 'processing',
+                'progress': 'Images generated, finalizing card... (80%)'
+            }, room=f"job_{job_id}")
+        
         if missing_sections:
             # Mark as failed and emit to WebSocket
             error_message = f"Failed to generate sections: {', '.join(missing_sections)}"
@@ -5868,7 +5876,7 @@ def generate_card_images_background(job_id, prompts, config):
                     socketio.emit('job_update', {
                         'job_id': job_id,
                         'status': 'processing',
-                        'progress': 'Adding QR code to your card...'
+                        'progress': 'Adding QR code to your card... (90%)'
                     }, room=f"job_{job_id}")
                 
                 # First, store the card to get a share URL
@@ -5945,7 +5953,7 @@ def generate_card_images_background(job_id, prompts, config):
             socketio.emit('job_update', {
                 'job_id': job_id,
                 'status': 'completed',
-                'progress': 'Generation complete!',
+                'progress': 'Generation complete! (100%)',
                 'cardData': card_data,
                 'completedAt': time.time()
             }, room=f"job_{job_id}")
@@ -6409,16 +6417,28 @@ def overlay_qr_code_on_image(image_url: str, qr_url: str, logo_url: str = None) 
         # Paste the QR code with background onto the base image
         base_image.paste(background, (qr_x - 10, qr_y - 10), background)
         
-        # Convert composite image back to data URL
+        # Save the composite image to a file and return URL
         output_buffer = io.BytesIO()
         base_image.save(output_buffer, format='PNG', optimize=True)
         output_data = output_buffer.getvalue()
-        output_base64 = base64.b64encode(output_data).decode()
         
-        result_data_url = f"data:image/png;base64,{output_base64}"
+        # Generate a unique filename for the QR-overlaid image
+        import uuid
+        filename = f"back_cover_qr_{uuid.uuid4().hex[:8]}.png"
         
-        print(f"✅ QR overlay complete. Result size: {len(result_data_url)} characters")
-        return result_data_url
+        # Save to the user's image directory
+        user_dir = os.path.join(app.config['UPLOAD_FOLDER'], '17145986105', 'images')
+        os.makedirs(user_dir, exist_ok=True)
+        
+        file_path = os.path.join(user_dir, filename)
+        with open(file_path, 'wb') as f:
+            f.write(output_data)
+        
+        # Return URL instead of data URL
+        result_url = f"{BASE_URL}/user_data/17145986105/images/{filename}"
+        
+        print(f"✅ QR overlay complete. Saved to: {result_url}")
+        return result_url
         
     except Exception as e:
         print(f"❌ QR overlay error: {e}")

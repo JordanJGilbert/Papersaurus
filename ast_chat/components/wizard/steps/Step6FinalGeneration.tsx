@@ -117,7 +117,9 @@ export default function Step6FinalGeneration({
     }
   }, [selectedDraftIndex, isGeneratingFinalCard, isCardCompleted, generatedCard]);
 
-  const selectedDraft = draftCards[selectedDraftIndex];
+  const selectedDraft = selectedDraftIndex >= 0 && selectedDraftIndex < draftCards.length 
+    ? draftCards[selectedDraftIndex] 
+    : null;
 
   // Print click handler
   const handlePrintClick = () => {

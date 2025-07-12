@@ -1,0 +1,17 @@
+{
+  "id": "balancedDustyBulldog",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_9d5d0841.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_c030847b.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_bbaa4fe8.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_5728ceea.png",
+  "generatedPrompts": {
+    "frontCover": "A birthday card front cover, watercolor painting style. A humorous and lighthearted cartoon illustration of a young couple taking a selfie. In the foreground, a man with light tan skin, short dark hair with a textured top, and a wide, joyful, open-mouthed smile, is wearing a maroon t-shirt and holding the camera. Next to him, a woman with fair skin, long straight dark brown hair, round glasses, and a happy smile, is wearing a yellow sleeveless top with a red floral pattern. They are comically squished together in the frame. In the background, a soft, blurry party scene with confetti and balloons adds to the festive mood. The text \"Happy Birthday\" is written in the center in a beautiful, readable handwritten cursive script. The style is flat 2D, with soft flowing colors, artistic brush strokes, visible paper texture, and organic paint bleeds, perfect for a greeting card. --ar 2:3 --style raw --v 6.0\n\n- Reference photos provided for character creation\n- Characters should only appear on the front cover\n- Transform real people into artistic cartoon/illustrated versions matching the style\n- Maintain recognizable features while adapting to the artistic style",
+    "backCover": "A minimalist back cover for a greeting card. A very sparse arrangement of abstract watercolor splotches in maroon, yellow, and soft red, located in the top-left corner. The rest of the design is a plain, off-white background with a visible paper texture. The style is flat 2D, with organic paint bleeds and artistic brush strokes. The bottom-right area is intentionally left blank. --ar 2:3 --style raw --v 6.0",
+    "leftInterior": "The left interior panel of a greeting card. A subtle and artistic watercolor background. A gentle wash of soft yellow covers the page, with abstract confetti shapes and balloon outlines scattered lightly across the top and bottom. The confetti and balloons are painted in soft maroon and red hues, blending gently into the yellow background. The artwork is concentrated towards the edges, leaving the center relatively clear. Flat 2D art style with soft flowing colors, visible paper texture, and organic paint bleeds. --ar 2:3 --style raw --v 6.0",
+    "rightInterior": "The right interior panel of a greeting card, designed to be the background for a written message. A simple, clean off-white background with a visible paper texture. A single, small, elegant watercolor red floral element, matching the style of the front cover, is placed in the bottom-right corner as a subtle accent. The overall design is very minimal to ensure text is easily readable. Flat 2D art style with soft flowing colors and artistic brush strokes. --ar 2:3 --style raw --v 6.0"
+  },
+  "createdAt": 1752199507.756791,
+  "expiresAt": 1783735507.7567918,
+  "version": 1
+}

@@ -1,0 +1,8 @@
+{
+  "hooks": {
+    "afterResponse": "/var/www/flask_app/notify-claude.sh response",
+    "afterError": "/var/www/flask_app/notify-claude.sh error",
+    "afterWrite": "/var/www/flask_app/notify-claude.sh file_write",
+    "afterEdit": "/var/www/flask_app/notify-claude.sh file_write"
+  }
+}
