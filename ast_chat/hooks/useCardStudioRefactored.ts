@@ -1013,6 +1013,7 @@ export function useCardStudio() {
     saveJobToStorage: jobManagement.saveJobToStorage,
     removeJobFromStorage: jobManagement.removeJobFromStorage,
     checkPendingJobs,
+    isRestoringJobs,
     
     // Main generation functions
     handleGenerateCardAsync: cardGeneration.handleGenerateCardAsync,

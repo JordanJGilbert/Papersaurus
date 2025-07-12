@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, MessageSquarePlus, RefreshCw, Undo2, Redo2, History } from "lucide-react";
+import { ChevronDown, MessageSquarePlus, RefreshCw, Undo2, Redo2, History, ToggleLeft, ToggleRight } from "lucide-react";
 import { CardFormData } from "@/hooks/useCardForm";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -14,6 +14,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import CardDescriptionHelper from "../CardDescriptionHelper";
+import PersonalDetailsInput from "../PersonalDetailsInput";
 import { chatWithAI } from "@/hooks/cardStudio/utils";
 import { PhotoReference } from "@/hooks/cardStudio/constants";
 
@@ -44,6 +45,7 @@ export default function Step2ContentCreation({
 }: Step2Props) {
   const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
   const [isMessageExpanded, setIsMessageExpanded] = useState(false);
+  const [useTagInput, setUseTagInput] = useState(true);
 
   React.useEffect(() => {
     // This step is always "complete" since all fields are optional
@@ -89,41 +91,66 @@ export default function Step2ContentCreation({
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
             {formData.to ? `What makes ${formData.to} special?` : 'Add Personal Touches'} (Optional)
           </label>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsTextareaExpanded(!isTextareaExpanded)}
-            className="gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-          >
-            {isTextareaExpanded ? (
-              <>
-                <ChevronDown className="w-3 h-3" />
-                Collapse
-              </>
-            ) : (
-              <>
-                <ChevronDown className="w-3 h-3 rotate-180" />
-                Expand
-              </>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setUseTagInput(!useTagInput)}
+              className="gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+              title={useTagInput ? "Switch to free text mode" : "Switch to tag mode"}
+            >
+              {useTagInput ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4" />}
+              <span className="hidden sm:inline">{useTagInput ? 'Tags' : 'Text'}</span>
+            </Button>
+            {!useTagInput && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsTextareaExpanded(!isTextareaExpanded)}
+                className="gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+              >
+                {isTextareaExpanded ? (
+                  <>
+                    <ChevronDown className="w-3 h-3" />
+                    Collapse
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-3 h-3 rotate-180" />
+                    Expand
+                  </>
+                )}
+              </Button>
             )}
-          </Button>
+          </div>
         </div>
-        <Textarea
-          placeholder="💡 Optional: E.g., Loves boba tea, plays guitar, our hiking trips, inside jokes..."
-          value={formData.prompt}
-          onChange={(e) => updateFormData({ prompt: e.target.value })}
-          rows={isTextareaExpanded ? 6 : 3}
-          className={isTextareaExpanded ? "resize-y" : "resize-none"}
-          style={{ fontSize: '16px' }}
-        />
         
-        {/* Card Description Helper */}
-        <CardDescriptionHelper
-          formData={formData}
-          onAddToDescription={(text) => updateFormData({ prompt: text })}
-          chatWithAI={chatWithAI}
-          photoReferences={photoReferences}
-        />
+        {useTagInput ? (
+          <PersonalDetailsInput
+            value={formData.prompt || ''}
+            onChange={(value) => updateFormData({ prompt: value })}
+            className="mb-2"
+          />
+        ) : (
+          <Textarea
+            placeholder="💡 Optional: E.g., Loves boba tea, plays guitar, our hiking trips, inside jokes..."
+            value={formData.prompt}
+            onChange={(e) => updateFormData({ prompt: e.target.value })}
+            rows={isTextareaExpanded ? 6 : 3}
+            className={isTextareaExpanded ? "resize-y" : "resize-none"}
+            style={{ fontSize: '16px' }}
+          />
+        )}
+        
+        {/* Card Description Helper - Only show for textarea mode */}
+        {!useTagInput && (
+          <CardDescriptionHelper
+            formData={formData}
+            onAddToDescription={(text) => updateFormData({ prompt: text })}
+            chatWithAI={chatWithAI}
+            photoReferences={photoReferences}
+          />
+        )}
         
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
           💡 <strong>Tip:</strong> Add their interests, hobbies, or memories for a truly personal card

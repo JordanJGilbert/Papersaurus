@@ -20,6 +20,8 @@ interface CardWizardStepsProps {
   undoMessageWrapper: () => void;
   redoMessageWrapper: () => void;
   handleTemplateSelect: (template: any) => void;
+  cardHistory?: any;
+  handleResumeDraft?: (sessionId: string) => void;
 }
 
 export function CardWizardSteps({
@@ -32,7 +34,9 @@ export function CardWizardSteps({
   handleGetMessageHelpWrapper,
   undoMessageWrapper,
   redoMessageWrapper,
-  handleTemplateSelect
+  handleTemplateSelect,
+  cardHistory,
+  handleResumeDraft
 }: CardWizardStepsProps) {
   switch (currentStep) {
     case 1:
@@ -70,6 +74,9 @@ export function CardWizardSteps({
           updatePhotoDescription={cardStudio.updatePhotoDescription}
           // Pass cardStudio's URLs directly for immediate access
           referenceImageUrlsFromStudio={cardStudio.referenceImageUrls}
+          // Card history props
+          cardHistory={cardHistory}
+          onResumeDraft={handleResumeDraft}
         />
       );
     

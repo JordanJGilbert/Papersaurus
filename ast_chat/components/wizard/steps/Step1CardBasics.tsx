@@ -9,7 +9,7 @@ import { CardFormData } from "@/hooks/useCardForm";
 import { 
   Wrench, Cake, ThumbsUp, Heart, Trophy, TreePine, Stethoscope, 
   CloudRain, GraduationCap, Baby, Church, Gift, Home, MessageCircle, Eye,
-  Image, Sparkles, Upload, X, Wand2, Users
+  Image, Sparkles, Upload, X, Wand2, Users, Play
 } from "lucide-react";
 import TemplateGallery from "../TemplateGallery";
 import { useCardCache } from "@/hooks/useCardCache";
@@ -51,6 +51,9 @@ interface Step1Props {
   updatePhotoDescription?: (index: number, description: string) => void;
   // Direct URLs from cardStudio for immediate access
   referenceImageUrlsFromStudio?: string[];
+  // Card history props
+  cardHistory?: any;
+  onResumeDraft?: (sessionId: string) => void;
 }
 
 // Card types with icons
@@ -98,7 +101,9 @@ export default function Step1CardBasics({
   isUploading = false,
   photoReferences = [],
   updatePhotoDescription,
-  referenceImageUrlsFromStudio = []
+  referenceImageUrlsFromStudio = [],
+  cardHistory,
+  onResumeDraft
 }: Step1Props) {
   const [showTemplateGallery, setShowTemplateGallery] = useState(false);
   const { preloadAllCards } = useCardCache();
@@ -228,8 +233,79 @@ export default function Step1CardBasics({
   };
 
 
+  // Get the most recent draft session if available
+  const mostRecentDraft = cardHistory?.draftSessions?.[0];
+  const hasRecentDraft = mostRecentDraft && 
+    // Only show if less than 24 hours old
+    (Date.now() - new Date(mostRecentDraft.lastModified).getTime() < 24 * 60 * 60 * 1000);
+  
+  // Debug logging
+  console.log('Step1 Debug:', {
+    cardHistoryExists: !!cardHistory,
+    hasDraftSessions: cardHistory?.hasDraftSessions,
+    draftSessionsLength: cardHistory?.draftSessions?.length || 0,
+    mostRecentDraftExists: !!mostRecentDraft,
+    hasRecentDraft,
+    onResumeDraftExists: !!onResumeDraft
+  });
+
   return (
     <div className="space-y-4 sm:space-y-6 w-full">
+      {/* Resume Draft Section */}
+      {hasRecentDraft && onResumeDraft && (
+        <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-xl p-4 sm:p-6 border border-purple-200 dark:border-purple-800">
+          <div className="flex items-start gap-4">
+            <div className="flex-shrink-0">
+              {mostRecentDraft.draftCards[0]?.frontCover ? (
+                <img 
+                  src={mostRecentDraft.draftCards[0].frontCover} 
+                  alt="Recent draft"
+                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg object-cover shadow-md"
+                />
+              ) : (
+                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg bg-purple-100 dark:bg-purple-800 flex items-center justify-center">
+                  <Sparkles className="w-8 h-8 text-purple-600 dark:text-purple-300" />
+                </div>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-1">
+                Resume Your Recent Draft
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                {mostRecentDraft.title || 'Untitled Draft'} • {
+                  new Date(mostRecentDraft.lastModified).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit'
+                  })
+                }
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => onResumeDraft(mostRecentDraft.id)}
+                  size="sm"
+                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                >
+                  <Play className="w-4 h-4 mr-1" />
+                  Resume Draft
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    // Just continue with new card - do nothing
+                  }}
+                >
+                  Start Fresh
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Template Gallery Option - Temporarily Hidden */}
       {/* TODO: Re-enable when AI-powered template extraction is implemented
       <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-xl p-4 sm:p-6 border border-purple-200 dark:border-purple-800">

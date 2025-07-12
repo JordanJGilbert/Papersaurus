@@ -281,6 +281,8 @@ export default function CardWizard() {
             undoMessageWrapper={undoMessageWrapper}
             redoMessageWrapper={redoMessageWrapper}
             handleTemplateSelect={handleTemplateSelect}
+            cardHistory={cardHistory}
+            handleResumeDraft={handleResumeDraft}
           />
         </CardContent>
       </Card>
@@ -313,6 +315,7 @@ export default function CardWizard() {
         cardHistory={cardHistory}
         wizardState={wizardState}
         isResumingDraft={isResumingDraft}
+        isRestoringJobs={cardStudio.isRestoringJobs}
       />
     </div>
   );

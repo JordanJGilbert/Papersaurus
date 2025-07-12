@@ -10,6 +10,7 @@ interface CardWizardEffectsProps {
   cardHistory: any;
   wizardState: any;
   isResumingDraft: boolean;
+  isRestoringJobs: boolean;
 }
 
 export function CardWizardEffects({
@@ -17,87 +18,73 @@ export function CardWizardEffects({
   cardForm,
   cardHistory,
   wizardState,
-  isResumingDraft
+  isResumingDraft,
+  isRestoringJobs
 }: CardWizardEffectsProps) {
-  // Check for pending jobs on component mount and advance to appropriate step
+  // Check for pending jobs on component mount but don't auto-navigate
   useEffect(() => {
     const restorePendingJobs = async () => {
+      console.log('🔄 CardWizardEffects: Starting checkPendingJobs...');
       await cardStudio.checkPendingJobs();
       
-      // After checking pending jobs, if we're generating drafts, ensure we're on step 5
-      // Only navigate if we have actual draft cards or a valid draft generation in progress
-      if ((cardStudio.isDraftMode || cardStudio.isGenerating) && 
-          !cardStudio.isGeneratingFinalCard && 
-          (cardStudio.draftCards.length > 0 || cardStudio.generationProgress)) {
-        console.log('🔄 Restoring to Step 5 due to ongoing draft generation', {
-          isDraftMode: cardStudio.isDraftMode,
-          isGenerating: cardStudio.isGenerating,
-          draftCards: cardStudio.draftCards.length,
-          generationProgress: cardStudio.generationProgress
-        });
-        // Mark previous steps as completed
-        if (!wizardState.completedSteps.includes(1)) wizardState.markStepCompleted(1);
-        if (!wizardState.completedSteps.includes(2)) wizardState.markStepCompleted(2);
-        if (!wizardState.completedSteps.includes(3)) wizardState.markStepCompleted(3);
-        if (!wizardState.completedSteps.includes(4)) wizardState.markStepCompleted(4);
-        wizardState.goToStep(5);
-      } else if (cardStudio.isGeneratingFinalCard || cardStudio.isCardCompleted) {
-        console.log('🔄 Restoring to Step 6 due to ongoing final generation or completed card');
-        // Mark all previous steps as completed
-        for (let i = 1; i <= 5; i++) {
-          if (!wizardState.completedSteps.includes(i)) wizardState.markStepCompleted(i);
+      // Only auto-navigate if there's an active generation in progress
+      // Don't navigate for completed drafts - let user choose
+      if (cardStudio.isGenerating && cardStudio.generationProgress) {
+        if (cardStudio.isGeneratingFinalCard) {
+          console.log('🔄 Restoring to Step 6 due to ongoing final generation');
+          // Mark all previous steps as completed
+          for (let i = 1; i <= 5; i++) {
+            if (!wizardState.completedSteps.includes(i)) wizardState.markStepCompleted(i);
+          }
+          wizardState.goToStep(6);
+        } else if (cardStudio.isDraftMode && cardStudio.isGenerating) {
+          console.log('🔄 Restoring to Step 5 due to ongoing draft generation');
+          // Mark previous steps as completed
+          if (!wizardState.completedSteps.includes(1)) wizardState.markStepCompleted(1);
+          if (!wizardState.completedSteps.includes(2)) wizardState.markStepCompleted(2);
+          if (!wizardState.completedSteps.includes(3)) wizardState.markStepCompleted(3);
+          if (!wizardState.completedSteps.includes(4)) wizardState.markStepCompleted(4);
+          wizardState.goToStep(5);
         }
-        wizardState.goToStep(6);
+      } else {
+        // No active generation - reset wizard to step 1 if we're on a later step
+        // This handles the case where user left off on step 5 but isn't actively generating
+        if (wizardState.currentStep > 1 && !cardStudio.isGenerating) {
+          console.log('🔄 No active generation, resetting to Step 1');
+          wizardState.goToStep(1);
+        }
       }
+      // If we have completed drafts but no active generation, stay on Step 1
+      // User can choose to resume via the UI
     };
     
     restorePendingJobs();
   }, []);
 
-  // Auto-resume to the appropriate step based on saved data
+  // Only mark step 1 as completed if user has made selections, but don't auto-advance
   useEffect(() => {
     if (!wizardState.isInitialLoadComplete || !cardForm.isInitialLoadComplete) return;
     
-    // Only auto-advance if we're on step 1 and have data
-    if (wizardState.currentStep === 1 && wizardState.completedSteps.length === 0) {
+    // Only mark step as completed, don't navigate
+    if (wizardState.currentStep === 1 && !wizardState.completedSteps.includes(1)) {
       const formData = cardForm.formData;
       
-      // Check if user has meaningful progress
-      if (formData.userEmail) {
-        // User has email, advance to at least step 4
-        console.log('🔄 Auto-resuming to email step or beyond');
-        wizardState.markStepCompleted(1);
-        if (formData.finalCardMessage || formData.prompt) {
-          wizardState.markStepCompleted(2);
-        }
-        if (formData.selectedArtisticStyle || formData.referenceImages.length > 0) {
-          wizardState.markStepCompleted(3);
-        }
-        wizardState.markStepCompleted(4);
-        
-        // If they have draft cards OR draft generation is in progress, go to step 5
-        if (cardStudio.draftCards.length > 0 || cardStudio.isDraftMode || cardStudio.isGenerating) {
-          wizardState.goToStep(5);
-        } else {
-          wizardState.goToStep(4);
-        }
-      } else if (formData.finalCardMessage || formData.prompt) {
-        // User has message content, advance to step 2
-        console.log('🔄 Auto-resuming to message step');
-        wizardState.markStepCompleted(1);
-        wizardState.goToStep(2);
-      } else if (formData.selectedType && formData.selectedTone) {
-        // User has completed step 1 but not moved on
-        console.log('🔄 Auto-completing step 1');
+      // Mark step 1 as completed if user has made selections
+      if (formData.selectedType && formData.selectedTone) {
+        console.log('✅ Marking step 1 as completed based on saved data');
         wizardState.markStepCompleted(1);
       }
     }
   }, [wizardState.isInitialLoadComplete, cardForm.isInitialLoadComplete]);
 
-  // Navigate to Step 5 when draft cards are loaded
+  // Only navigate to Step 5 when NEW draft cards are being generated (not restored)
   useEffect(() => {
-    if (cardStudio.draftCards.length > 0 && wizardState.currentStep < 5) {
-      console.log('📋 Draft cards loaded, navigating to Step 5');
+    // Only navigate if we're actively generating NEW drafts, not restoring old ones
+    if (cardStudio.draftCards.length > 0 && 
+        wizardState.currentStep < 5 && 
+        cardStudio.isGenerating && 
+        !isRestoringJobs) {
+      console.log('📋 New draft cards being generated, navigating to Step 5');
       // Mark previous steps as completed
       for (let i = 1; i <= 4; i++) {
         if (!wizardState.completedSteps.includes(i)) {
@@ -106,7 +93,7 @@ export function CardWizardEffects({
       }
       wizardState.goToStep(5);
     }
-  }, [cardStudio.draftCards.length]);
+  }, [cardStudio.draftCards.length, cardStudio.isGenerating, isRestoringJobs]);
 
   // Auto-save drafts when user creates draft cards
   // Track the current session ID to update the same session
@@ -114,8 +101,18 @@ export function CardWizardEffects({
   const [lastSavedDraftCount, setLastSavedDraftCount] = useState<number>(0);
   
   useEffect(() => {
-    // Only save if we have draft cards and not resuming
-    if (cardStudio.draftCards.length > 0 && cardForm.isInitialLoadComplete && !isResumingDraft) {
+    // Only save if we have draft cards and not resuming or restoring
+    if (cardStudio.draftCards.length > 0) {
+      console.log('🔍 Auto-save check:', {
+        hasCards: cardStudio.draftCards.length > 0,
+        isInitialLoadComplete: cardForm.isInitialLoadComplete,
+        isResumingDraft,
+        isRestoringJobs,
+        shouldSave: cardForm.isInitialLoadComplete && !isResumingDraft && !isRestoringJobs
+      });
+    }
+    
+    if (cardStudio.draftCards.length > 0 && cardForm.isInitialLoadComplete && !isResumingDraft && !isRestoringJobs) {
       // Count non-null draft cards
       const validDrafts = cardStudio.draftCards.filter(card => card !== null).length;
       
@@ -149,7 +146,7 @@ export function CardWizardEffects({
         console.log(`💾 Draft session saved: ${validDrafts}/5 drafts complete`);
       }
     }
-  }, [cardStudio.draftCards, cardStudio.selectedDraftIndex, cardForm.formData, cardForm.isInitialLoadComplete, isResumingDraft, currentDraftSessionId, lastSavedDraftCount]);
+  }, [cardStudio.draftCards, cardStudio.selectedDraftIndex, cardForm.formData, cardForm.isInitialLoadComplete, isResumingDraft, isRestoringJobs, currentDraftSessionId, lastSavedDraftCount]);
   
   // Reset session ID when drafts are cleared
   useEffect(() => {
