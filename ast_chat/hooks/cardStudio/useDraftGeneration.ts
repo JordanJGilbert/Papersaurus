@@ -20,6 +20,7 @@ interface DraftGenerationProps {
   prompt: string;
   toField: string;
   fromField: string;
+  relationshipField: string;
   userEmail: string;
   finalCardMessage: string;
   isHandwrittenMessage: boolean;
@@ -169,6 +170,7 @@ export function useDraftGeneration(props: DraftGenerationProps) {
             theme: effectivePrompt,
             toField: toField,
             fromField: fromField,
+            relationshipField: props.relationshipField,
             artisticStyle: selectedStyle,
             referenceImageUrls: referenceImageUrls,
             photoReferences: props.photoReferences,

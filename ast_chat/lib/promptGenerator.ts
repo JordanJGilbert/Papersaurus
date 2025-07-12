@@ -9,6 +9,7 @@ export interface CardConfig {
   theme: string;
   toField?: string;
   fromField?: string;
+  relationshipField?: string;
   message?: string;
   isHandwrittenMessage?: boolean;
   artisticStyle?: {
@@ -44,6 +45,7 @@ export interface DraftConfig {
   theme: string;
   toField?: string;
   fromField?: string;
+  relationshipField?: string;
   artisticStyle?: {
     label: string;
     promptModifier: string;
@@ -237,12 +239,21 @@ Unique ID: ${uniqueId}`.trim();
       }
     }
 
-    let prompt = `You are an expert AI greeting card designer. Create a front cover prompt for a ${cardTypeForPrompt} greeting card${config.toField ? ` for ${config.toField}` : ''}.
+    let prompt = `You are an expert AI greeting card designer. Create a front cover prompt for a ${cardTypeForPrompt} greeting card.
 
+CARD CONTEXT:
 Theme: "${effectivePrompt}"
 Style: ${config.artisticStyle?.label || "Default"}
 Tone: ${config.toneLabel} - ${config.toneDescription}
-${config.referenceImageUrls?.length ? `Reference Photos: ${config.referenceImageUrls.length} photo${config.referenceImageUrls.length > 1 ? 's' : ''} attached to this message. Please analyze them and incorporate the people as cartoon characters.` : ""}
+${config.toField ? `To: ${config.toField}` : ''}
+${config.fromField ? `From: ${config.fromField}` : ''}
+${config.relationshipField ? `Relationship: ${config.toField || 'The recipient'} is ${config.fromField || 'the sender'}'s ${config.relationshipField}` : ''}
+
+${config.referenceImageUrls?.length && config.photoReferences?.length ? `REFERENCE PHOTOS (${config.referenceImageUrls.length} attached):
+${config.photoReferences.map((ref, idx) => `- Photo ${idx + 1}: ${ref.description || 'No description provided'}`).join('\n')}
+
+IMPORTANT: Analyze the attached photos and transform the described people into cartoon/illustrated characters as specified above.` : ''}
+
 Unique ID: ${uniqueId}
 
 Front Cover Requirements:
@@ -422,7 +433,28 @@ ${this.SAFETY_REQUIREMENTS}`;
     // Generate unique ID for this specific panel
     const uniqueId = uuidv4();
     
-    let prompt = `Create a beautiful front cover for a ${cardType} greeting card${config.toField ? ` for ${config.toField}` : ''}. ${theme}. Include appropriate greeting text for a ${cardType} card${config.toField ? ` (can optionally include "${config.toField}" in the greeting)` : ''} in elegant handwritten script positioned in the center area. ${styleModifier} ${this.LAYOUT_REQUIREMENTS} IMPORTANT: Do NOT include "from" or sender information on the front cover. Unique ID: ${uniqueId}`;
+    // Build context section
+    let contextSection = '';
+    if (config.toField || config.fromField || config.relationshipField) {
+      contextSection = '\n\nCONTEXT:';
+      if (config.toField) contextSection += `\n- To: ${config.toField}`;
+      if (config.fromField) contextSection += `\n- From: ${config.fromField}`;
+      if (config.relationshipField) contextSection += `\n- Relationship: ${config.toField || 'The recipient'} is ${config.fromField || 'the sender'}'s ${config.relationshipField}`;
+    }
+    
+    // Build photo context if available
+    let photoContext = '';
+    if (config.referenceImageUrls?.length && config.photoReferences?.length) {
+      photoContext = '\n\nREFERENCE PHOTOS:';
+      config.photoReferences.forEach((ref, idx) => {
+        photoContext += `\n- Photo ${idx + 1}: ${ref.description || 'No description provided'}`;
+      });
+      photoContext += '\n\nTransform these people into cartoon/illustrated characters matching the descriptions above.';
+    }
+    
+    let prompt = `Create a beautiful front cover for a ${cardType} greeting card. ${theme}.${contextSection}${photoContext}
+    
+Include appropriate greeting text for a ${cardType} card${config.toField ? ` (can optionally include "${config.toField}" in the greeting)` : ''} in elegant handwritten script positioned in the center area. ${styleModifier} ${this.LAYOUT_REQUIREMENTS} IMPORTANT: Do NOT include "from" or sender information on the front cover. Unique ID: ${uniqueId}`;
     
     if (config.referenceImageUrls?.length) {
       prompt += ` ${this.getEnhancedReferencePhotoInstructions(config.photoReferences)}`;

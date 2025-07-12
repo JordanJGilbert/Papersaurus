@@ -19,6 +19,7 @@ interface CardGenerationProps {
   prompt: string;
   toField: string;
   fromField: string;
+  relationshipField: string;
   userEmail: string;
   finalCardMessage: string;
   isHandwrittenMessage: boolean;
@@ -279,6 +280,7 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags.`;
         theme: prompt || `A beautiful ${cardTypeForPrompt} card`,
         toField: toField,
         fromField: fromField,
+        relationshipField: props.relationshipField,
         message: messageContent,
         isHandwrittenMessage: isHandwrittenMessage,
         artisticStyle: selectedStyle,
