@@ -22,7 +22,6 @@ import {
 
 import { useCardStudio } from "@/hooks/useCardStudio";
 import { useCardForm } from "@/hooks/useCardForm";
-import { useWizardState } from "@/hooks/useWizardState";
 import { useCardHistory } from "@/hooks/useCardHistorySimplified";
 
 export interface WizardStep {
