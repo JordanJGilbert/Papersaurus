@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from 'uuid';
 import { PromptGenerator, DraftConfig, FinalFromDraftConfig } from '@/lib/promptGenerator';
-import { GeneratedCard, artisticStyles, paperSizes, cardTones, PhotoAnalysis } from './constants';
+import { GeneratedCard, artisticStyles, paperSizes, cardTones, PhotoReference } from './constants';
 import { chatWithAI } from './utils';
 
 interface DraftGenerationProps {
@@ -25,7 +25,7 @@ interface DraftGenerationProps {
   isHandwrittenMessage: boolean;
   isFrontBackOnly: boolean;
   referenceImageUrls: string[];
-  photoAnalyses?: PhotoAnalysis[];
+  photoReferences?: PhotoReference[];
   
   // Job management
   saveJobToStorage: (jobId: string, jobData: any) => void;
@@ -171,7 +171,7 @@ export function useDraftGeneration(props: DraftGenerationProps) {
             fromField: fromField,
             artisticStyle: selectedStyle,
             referenceImageUrls: referenceImageUrls,
-            photoAnalyses: props.photoAnalyses,
+            photoReferences: props.photoReferences,
             isDraftVariation: selectedArtisticStyle === "smart",
             variationIndex: index
           };

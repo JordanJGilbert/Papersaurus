@@ -996,18 +996,10 @@ export function useCardStudio() {
     handleFileUpload: fileHandling.handleFileUpload,
     handleRemoveReferenceImage: fileHandling.handleRemoveReferenceImage,
     
-    // Photo analysis
-    photoAnalyses: fileHandling.photoAnalyses,
-    setPhotoAnalyses: fileHandling.setPhotoAnalyses,
-    isAnalyzing: fileHandling.isAnalyzing,
-    showAnalysisModal: fileHandling.showAnalysisModal,
-    setShowAnalysisModal: fileHandling.setShowAnalysisModal,
-    pendingAnalysisIndex: fileHandling.pendingAnalysisIndex,
-    setPendingAnalysisIndex: fileHandling.setPendingAnalysisIndex,
-    analyzePhoto: fileHandling.analyzePhoto,
-    savePhotoAnalysis: fileHandling.savePhotoAnalysis,
-    skipPhotoAnalysis: fileHandling.skipPhotoAnalysis,
-    getCombinedPhotoAnalysis: fileHandling.getCombinedPhotoAnalysis,
+    // Simplified photo references
+    photoReferences: fileHandling.photoReferences,
+    setPhotoReferences: fileHandling.setPhotoReferences,
+    updatePhotoDescription: fileHandling.updatePhotoDescription,
     
     // Message functions
     handleGetMessageHelp: messageGeneration.handleGetMessageHelp,
@@ -1067,8 +1059,6 @@ export function useCardStudio() {
     handwritingSampleUrl: fileHandling.handwritingSampleUrl,
     setHandwritingSampleUrl: fileHandling.setHandwritingSampleUrl,
     
-    // Photo analysis
-    triggerPhotoAnalysis: fileHandling.triggerPhotoAnalysis,
     
     // Job tracking
     currentJobId: jobManagement.currentJobId,

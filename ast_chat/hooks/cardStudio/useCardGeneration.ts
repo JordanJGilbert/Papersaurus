@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from 'uuid';
 import { PromptGenerator, CardConfig } from '@/lib/promptGenerator';
-import { GeneratedCard, cardTones, artisticStyles, paperSizes, PhotoAnalysis } from './constants';
+import { GeneratedCard, cardTones, artisticStyles, paperSizes, PhotoReference } from './constants';
 import { chatWithAI, sendThankYouEmail, scrollToCardPreview } from './utils';
 
 interface CardGenerationProps {
@@ -24,7 +24,7 @@ interface CardGenerationProps {
   isHandwrittenMessage: boolean;
   isFrontBackOnly: boolean;
   referenceImageUrls: string[];
-  photoAnalyses?: PhotoAnalysis[];
+  photoReferences?: PhotoReference[];
   numberOfCards: number;
   
   // Job management
@@ -283,7 +283,7 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags.`;
         isHandwrittenMessage: isHandwrittenMessage,
         artisticStyle: selectedStyle,
         referenceImageUrls: referenceImageUrls,
-        photoAnalyses: props.photoAnalyses,
+        photoReferences: props.photoReferences,
         isFrontBackOnly: isFrontBackOnly,
         selectedImageModel: selectedImageModel
       };

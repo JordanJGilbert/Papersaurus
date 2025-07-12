@@ -22,6 +22,7 @@ export interface CardFormData {
   referenceImages: File[];
   referenceImageUrls: string[];
   imageTransformation: string;
+  photoReferences?: Array<{ imageUrl: string; imageIndex: number; description?: string; }>;
 
   // Step 4: Details
   userEmail: string;
@@ -170,6 +171,14 @@ export function useCardForm() {
         if (formData.selectedType === "custom" && !formData.customCardType.trim()) return false;
         // Tone is required
         if (!formData.selectedTone) return false;
+        // If photos are uploaded, they must have descriptions
+        if (formData.referenceImageUrls.length > 0) {
+          // Check if we have photoReferences data
+          if (!formData.photoReferences || formData.photoReferences.length === 0) return false;
+          // Check if all photos have descriptions
+          const allHaveDescriptions = formData.photoReferences.every(ref => ref.description && ref.description.trim());
+          if (!allHaveDescriptions) return false;
+        }
         return true;
 
       case 2: // Content Creation
@@ -247,6 +256,17 @@ export function useCardForm() {
           errors.push("Please describe your custom card type");
         }
         if (!formData.selectedTone) errors.push("Please select a tone");
+        // Check photo descriptions
+        if (formData.referenceImageUrls.length > 0) {
+          if (!formData.photoReferences || formData.photoReferences.length === 0) {
+            errors.push("Please describe who's in your photos");
+          } else {
+            const missingDescriptions = formData.photoReferences.filter(ref => !ref.description || !ref.description.trim()).length;
+            if (missingDescriptions > 0) {
+              errors.push(`Please describe who's in ${missingDescriptions} photo${missingDescriptions > 1 ? 's' : ''}`);
+            }
+          }
+        }
         break;
 
       case 3:

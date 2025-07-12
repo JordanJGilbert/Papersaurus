@@ -6,12 +6,13 @@ import { Sparkles, RefreshCw } from "lucide-react";
 import { CardFormData } from "@/hooks/useCardForm";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PhotoReference } from "@/hooks/cardStudio/constants";
 
 interface CardDescriptionHelperProps {
   formData: CardFormData;
   onAddToDescription: (text: string) => void;
   chatWithAI?: (message: string, options: any) => Promise<any>;
-  photoAnalyses?: any[];
+  photoReferences?: PhotoReference[];
 }
 
 // Contextual inspiration chips based on card type and tone
@@ -52,7 +53,7 @@ export default function CardDescriptionHelper({
   formData, 
   onAddToDescription,
   chatWithAI,
-  photoAnalyses = [] 
+  photoReferences = [] 
 }: CardDescriptionHelperProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
@@ -62,42 +63,41 @@ export default function CardDescriptionHelper({
   const inspirationChips = useMemo(() => {
     const baseChips = getInspirationChips(formData.selectedType, formData.selectedTone);
     
-    // Add photo-specific chips if we have analyzed photos
-    if (photoAnalyses && photoAnalyses.length > 0) {
-      const photoChips: string[] = [];
-      const selectedPeople = photoAnalyses.flatMap(analysis => 
-        analysis.selectedPeople || []
-      );
+    // Add photo-specific chips if we have photos with descriptions
+    if (photoReferences && photoReferences.length > 0) {
+      const photosWithDescriptions = photoReferences.filter(ref => ref.description && ref.description.trim() !== '');
       
-      if (selectedPeople.length > 0) {
-        // Add people-based suggestions
-        if (selectedPeople.length === 1) {
-          const person = selectedPeople[0];
-          const name = person.name || 'them';
-          photoChips.push(`${name} portrait 🎨`);
-          photoChips.push(`${name} in action`);
+      if (photosWithDescriptions.length > 0) {
+        const photoChips: string[] = [];
+        
+        // Extract names from descriptions
+        const allDescriptions = photosWithDescriptions.map(ref => ref.description).join(' ');
+        
+        // Simple heuristic to find potential names
+        const namePattern = /\b(my\s+)?(daughter|son|wife|husband|friend|sister|brother|mom|dad|mother|father)\s+(\w+)/gi;
+        const matches = Array.from(allDescriptions.matchAll(namePattern));
+        const names = matches.map(match => match[3]);
+        
+        if (names.length > 0) {
+          if (names.length === 1) {
+            photoChips.push(`${names[0]} portrait 🎨`);
+            photoChips.push(`${names[0]} in action`);
+          } else {
+            photoChips.push('group portrait 👥');
+            photoChips.push('everyone together');
+          }
         } else {
-          photoChips.push('group portrait 👥');
-          photoChips.push('everyone together');
+          photoChips.push('family portrait 👨‍👩‍👧‍👦');
+          photoChips.push('special moment 📸');
         }
         
-        // Add activity/scene based suggestions if available
-        const firstAnalysis = photoAnalyses[0];
-        if (firstAnalysis?.backgroundDescription) {
-          if (firstAnalysis.backgroundDescription.toLowerCase().includes('outdoor')) {
-            photoChips.push('outdoor adventure 🌳');
-          } else if (firstAnalysis.backgroundDescription.toLowerCase().includes('indoor')) {
-            photoChips.push('cozy indoor scene 🏠');
-          }
-        }
+        // Combine photo chips with base chips, photo chips first
+        return [...photoChips, ...baseChips].slice(0, 6); // Limit to 6 chips total
       }
-      
-      // Combine photo chips with base chips, photo chips first
-      return [...photoChips, ...baseChips].slice(0, 6); // Limit to 6 chips total
     }
     
     return baseChips;
-  }, [formData.selectedType, formData.selectedTone, photoAnalyses]);
+  }, [formData.selectedType, formData.selectedTone, photoReferences]);
 
   // Handle chip click
   const handleChipClick = (chip: string) => {
@@ -114,52 +114,15 @@ export default function CardDescriptionHelper({
     setShowSuggestions(true);
     
     try {
-      // Build simplified photo context (same as message generation)
+      // Build simplified photo context
       let photoContext = '';
-      if (photoAnalyses && photoAnalyses.length > 0) {
-        const selectedPeople = photoAnalyses.flatMap(analysis => 
-          analysis.selectedPeople || []
-        );
-        
-        if (selectedPeople.length > 0) {
-          // Build simple context with just names, relationships, and ages
-          const peopleDescriptions = selectedPeople.map(person => {
-            // Use name if available, otherwise use a simplified position
-            let description = person.name;
-            
-            if (!description) {
-              // Simplify position description for unnamed people
-              if (person.gender && person.apparentAge) {
-                description = `a ${person.gender.toLowerCase()} (${person.apparentAge})`;
-              } else {
-                description = person.positionDescription || 'someone';
-              }
-            } else {
-              // For named people, add relationship and age in parentheses
-              const details = [];
-              if (person.relationshipToRecipient) {
-                details.push(person.relationshipToRecipient);
-              }
-              if (person.apparentAge) {
-                details.push(person.apparentAge);
-              }
-              
-              if (details.length > 0) {
-                description += ` (${details.join(', ')})`;
-              }
-            }
-            
-            return description;
-          });
-          
-          if (peopleDescriptions.length === 1) {
-            photoContext = `The card should include ${peopleDescriptions[0]}`;
-          } else if (peopleDescriptions.length === 2) {
-            photoContext = `The card should include ${peopleDescriptions[0]} and ${peopleDescriptions[1]}`;
-          } else {
-            const lastPerson = peopleDescriptions.pop();
-            photoContext = `The card should include ${peopleDescriptions.join(', ')}, and ${lastPerson}`;
-          }
+      if (photoReferences && photoReferences.length > 0) {
+        const photosWithDescriptions = photoReferences.filter(ref => ref.description && ref.description.trim() !== '');
+        if (photosWithDescriptions.length > 0) {
+          const descriptions = photosWithDescriptions.map(ref => ref.description).join(', ');
+          photoContext = `The card should include ${descriptions}`;
+        } else if (photoReferences.length > 0) {
+          photoContext = `The card should include the people from ${photoReferences.length} reference photo${photoReferences.length > 1 ? 's' : ''}`;
         }
       }
       

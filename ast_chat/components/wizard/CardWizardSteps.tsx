@@ -65,16 +65,9 @@ export function CardWizardSteps({
             });
           }}
           isUploading={cardStudio.isUploading}
-          // Photo analysis props
-          photoAnalyses={cardStudio.photoAnalyses}
-          isAnalyzing={cardStudio.isAnalyzing}
-          showAnalysisModal={cardStudio.showAnalysisModal}
-          pendingAnalysisIndex={cardStudio.pendingAnalysisIndex}
-          analyzePhoto={cardStudio.analyzePhoto}
-          savePhotoAnalysis={cardStudio.savePhotoAnalysis}
-          skipPhotoAnalysis={cardStudio.skipPhotoAnalysis}
-          setShowAnalysisModal={cardStudio.setShowAnalysisModal}
-          triggerPhotoAnalysis={cardStudio.triggerPhotoAnalysis}
+          // Simplified photo references
+          photoReferences={cardStudio.photoReferences}
+          updatePhotoDescription={cardStudio.updatePhotoDescription}
           // Pass cardStudio's URLs directly for immediate access
           referenceImageUrlsFromStudio={cardStudio.referenceImageUrls}
         />
@@ -96,7 +89,7 @@ export function CardWizardSteps({
           currentMessageIndex={cardStudio.currentMessageIndex}
           undoMessage={undoMessageWrapper}
           redoMessage={redoMessageWrapper}
-          photoAnalyses={cardStudio.photoAnalyses}
+          photoReferences={cardStudio.photoReferences}
         />
       );
     

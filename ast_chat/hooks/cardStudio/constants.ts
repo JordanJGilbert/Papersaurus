@@ -175,48 +175,9 @@ export const formatCountdown = (seconds: number): string => {
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
 
-// Photo Analysis Types
-export interface PersonInPhoto {
-  id: string;
-  position: 'far-left' | 'left' | 'center-left' | 'center' | 'center-right' | 'right' | 'far-right';
-  positionDescription: string; // e.g., "person on the far left wearing blue"
-  description: string;
-  apparentAge: string;
-  gender?: string;
-  hairColor: string;
-  hairStyle: string;
-  distinguishingFeatures: string;
-  clothing: string;
-  expression: string; // e.g., "smiling", "serious", "laughing"
-}
-
-export interface PhotoAnalysisResult {
-  peopleCount: number;
-  people: PersonInPhoto[];
-  hasPets: boolean;
-  petDescription?: string;
-  backgroundDescription: string;
-  setting: string; // e.g., "outdoor park", "indoor living room", "beach"
-  overallMood: string; // e.g., "joyful", "formal", "casual"
-  lighting: string; // e.g., "natural daylight", "indoor lighting"
-}
-
-export interface SelectedPerson extends PersonInPhoto {
-  name?: string;
-  relationshipToRecipient?: string; // e.g., "son", "friend", "colleague"
-  includeInCard: boolean;
-}
-
-export interface PhotoAnalysis {
+// Simplified Photo Reference Types
+export interface PhotoReference {
   imageUrl: string;
   imageIndex: number;
-  analysisResult: PhotoAnalysisResult;
-  selectedPeople: SelectedPerson[];
-  includeEveryone: boolean;
-  groupRelationship?: string; // Overall relationship (e.g., "family", "friends", "colleagues")
-  excludedCount: number;
-  specialInstructions?: string; // Any special user instructions for the photo
-  analyzed: boolean;
-  analysisFailed?: boolean;
-  analysisError?: string;
+  description?: string; // Simple user description like "my daughter Sarah and son Mike"
 }

@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { PromptGenerator, MessageConfig } from '@/lib/promptGenerator';
-import { cardTones } from './constants';
+import { cardTones, PhotoReference } from './constants';
 import { chatWithAI } from './utils';
 
 export function useMessageGeneration(
@@ -14,7 +14,7 @@ export function useMessageGeneration(
   toField: string,
   fromField: string,
   relationshipField: string,
-  photoAnalyses?: any[]
+  photoReferences?: PhotoReference[]
 ) {
   const [finalCardMessage, setFinalCardMessage] = useState("");
   const [isGeneratingMessage, setIsGeneratingMessage] = useState(false);
@@ -89,7 +89,7 @@ export function useMessageGeneration(
         toField: toField,
         fromField: fromField,
         relationshipField: relationshipField,
-        photoAnalyses: photoAnalyses
+        photoReferences: photoReferences
       };
 
       const messagePrompt = PromptGenerator.generateMessagePrompt(messageConfig);
@@ -128,7 +128,7 @@ export function useMessageGeneration(
     } finally {
       setIsGeneratingMessage(false);
     }
-  }, [selectedType, customCardType, selectedTone, prompt, toField, fromField, relationshipField, finalCardMessage, photoAnalyses]);
+  }, [selectedType, customCardType, selectedTone, prompt, toField, fromField, relationshipField, finalCardMessage, photoReferences]);
 
   return {
     finalCardMessage,

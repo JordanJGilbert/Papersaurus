@@ -1,4 +1,4 @@
-import { PhotoAnalysis } from '@/hooks/cardStudio/constants';
+import { PhotoReference } from '@/hooks/cardStudio/constants';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface CardConfig {
@@ -16,7 +16,7 @@ export interface CardConfig {
     promptModifier: string;
   };
   referenceImageUrls?: string[];
-  photoAnalyses?: PhotoAnalysis[];
+  photoReferences?: PhotoReference[];
   isFrontBackOnly?: boolean;
   selectedImageModel?: string;
 }
@@ -49,7 +49,7 @@ export interface DraftConfig {
     promptModifier: string;
   };
   referenceImageUrls?: string[];
-  photoAnalyses?: PhotoAnalysis[];
+  photoReferences?: PhotoReference[];
   isDraftVariation?: boolean;
   variationIndex?: number;
 }
@@ -64,7 +64,7 @@ export interface MessageConfig {
   toField?: string;
   fromField?: string;
   relationshipField?: string;
-  photoAnalyses?: PhotoAnalysis[];
+  photoReferences?: PhotoReference[];
 }
 
 export interface FinalFromDraftConfig {
@@ -123,75 +123,40 @@ export class PromptGenerator {
 - Make text large and well-spaced for easy reading
 - Center the message in the optimal reading area`.trim();
 
-  private static getEnhancedReferencePhotoInstructions(photoAnalyses?: PhotoAnalysis[]): string {
-    // If no photo analyses, use basic instructions
-    if (!photoAnalyses || photoAnalyses.length === 0) {
+  private static getEnhancedReferencePhotoInstructions(photoReferences?: PhotoReference[]): string {
+    // If no photo references or descriptions, use basic instructions
+    if (!photoReferences || photoReferences.length === 0) {
       return `
 REFERENCE PHOTO INSTRUCTIONS:
 - Transform the people in the attached reference photos into cartoon/illustrated versions
 - Characters MUST HIGHLY resemble the people in the reference photos
 - Keep the SAME clothing they're wearing (omit any text/logos on clothing)
-- CRITICAL ACCURACY RULES:
-  - Each person MUST retain their INDIVIDUAL characteristics
-  - If Person A wears glasses and Person B does not, ONLY Person A should have glasses
-  - Do NOT transfer features between people (glasses, hairstyles, clothing, etc.)
-  - Each person's unique features must be preserved separately
 - Maintain exact hairstyles, facial features, and body proportions
 - ONLY include the people shown in the reference photos
-- Do NOT add any additional people, children, or characters unless explicitly requested in the card description`.trim();
+- Do NOT add any additional people or characters unless explicitly requested`.trim();
     }
 
-    // Build simplified instructions when we have analysis
-    const analyzedPhotos = photoAnalyses.filter(a => a.analyzed && !a.analysisFailed);
-    if (analyzedPhotos.length === 0) {
-      return this.getEnhancedReferencePhotoInstructions(); // Fallback to basic
-    }
-
-    const allSelectedPeople = analyzedPhotos.flatMap(a => a.selectedPeople.filter(p => p.includeInCard));
-    const totalExcluded = analyzedPhotos.reduce((sum, a) => sum + a.excludedCount, 0);
+    // Find photos with descriptions
+    const photosWithDescriptions = photoReferences.filter(ref => ref.description && ref.description.trim() !== '');
     
     let instructions = `
-REFERENCE PHOTO INSTRUCTIONS:
-- Transform the ${allSelectedPeople.length} ${allSelectedPeople.length === 1 ? 'person' : 'people'} from the attached photos into cartoon/illustrated versions`;
+REFERENCE PHOTO INSTRUCTIONS:`;
 
-    // Only include names if they were provided by the user
-    const namedPeople = allSelectedPeople.filter(p => p.name && p.name.trim() !== '');
-    if (namedPeople.length > 0) {
-      instructions += `\n- People to include:`;
-      namedPeople.forEach((person, idx) => {
-        let nameInfo = `\n  - ${person.name}`;
-        if (person.relationshipToRecipient) {
-          nameInfo += ` (${person.relationshipToRecipient})`;
-        }
-        instructions += nameInfo;
+    // If user provided descriptions, use them directly
+    if (photosWithDescriptions.length > 0) {
+      instructions += `\n- Transform the following people from the reference photos into cartoon/illustrated versions:`;
+      photosWithDescriptions.forEach((ref, idx) => {
+        instructions += `\n  - Photo ${ref.imageIndex + 1}: ${ref.description}`;
       });
-    }
-
-    // Add exclusion note if needed
-    if (totalExcluded > 0) {
-      instructions += `\n- Note: ${totalExcluded} ${totalExcluded === 1 ? 'person' : 'people'} in the photos should be excluded`;
-    }
-
-    // Add any special instructions
-    const specialInstructions = analyzedPhotos
-      .filter(a => a.specialInstructions)
-      .map(a => a.specialInstructions)
-      .join(' ');
-    
-    if (specialInstructions) {
-      instructions += `\n- ${specialInstructions}`;
+    } else {
+      instructions += `\n- Transform the people in the attached reference photos into cartoon/illustrated versions`;
     }
 
     instructions += `
 - Characters MUST HIGHLY resemble the people in the reference photos
 - Keep the SAME clothing they're wearing (omit any text/logos on clothing)
-- CRITICAL ACCURACY RULES:
-  - Each person MUST retain their INDIVIDUAL characteristics
-  - If Person A wears glasses and Person B does not, ONLY Person A should have glasses
-  - Do NOT transfer features between people (glasses, hairstyles, clothing, etc.)
-  - Each person's unique features must be preserved separately
-- Maintain exact hairstyles, facial features, body proportions, and relative positions
-- ONLY include these specific people - do NOT add any additional characters
+- Maintain exact hairstyles, facial features, and body proportions
+- ONLY include the people described or shown - do NOT add any additional characters
 - Exception: Only add extra characters if explicitly requested in the card description`;
 
     return instructions.trim();
@@ -277,14 +242,14 @@ Unique ID: ${uniqueId}`.trim();
 Theme: "${effectivePrompt}"
 Style: ${config.artisticStyle?.label || "Default"}
 Tone: ${config.toneLabel} - ${config.toneDescription}
-${config.referenceImageUrls?.length ? `Reference Photos: I have attached ${config.referenceImageUrls.length} reference photo${config.referenceImageUrls.length > 1 ? 's' : ''} for character creation.` : ""}
+${config.referenceImageUrls?.length ? `Reference Photos: ${config.referenceImageUrls.length} photo${config.referenceImageUrls.length > 1 ? 's' : ''} attached to this message. Please analyze them and incorporate the people as cartoon characters.` : ""}
 Unique ID: ${uniqueId}
 
 Front Cover Requirements:
 - Include appropriate greeting text for a ${cardTypeForPrompt} card${config.toField ? ` (can optionally include "${config.toField}" in the greeting)` : ''}
 - Position text safely in center area (avoid top/bottom 10%)
 - Use beautiful, readable handwritten cursive script
-- ${config.referenceImageUrls?.length ? this.getEnhancedReferencePhotoInstructions(config.photoAnalyses) : 'Create charming cartoon-style figures if needed'}
+- ${config.referenceImageUrls?.length ? 'IMPORTANT: Analyze the attached photos and ' + this.getEnhancedReferencePhotoInstructions(config.photoReferences) : 'Create charming cartoon-style figures if needed'}
 - Be creative and unique, avoid generic designs
 - Flat 2D artwork for printing
 - Style: ${styleModifier}
@@ -302,57 +267,10 @@ Return ONLY the front cover prompt as plain text.`;
 
     // Build relationship context if available (for message tone/content)
     let relationshipContext = '';
-    let contextParts = [];
     
-    // First, prioritize the explicit relationship field from the form
+    // Use the explicit relationship field from the form
     if (config.relationshipField && config.relationshipField.trim()) {
-      contextParts.push(`Relationship: ${config.toField || 'the recipient'} is the sender's ${config.relationshipField}`);
-    }
-    
-    // Then, add any additional context from photo analyses
-    if (config.photoAnalyses && config.photoAnalyses.length > 0) {
-      const selectedPeople = config.photoAnalyses.flatMap(analysis => 
-        analysis.selectedPeople || []
-      );
-      
-      if (selectedPeople.length > 0) {
-        // Get people with age info (but not relationships since we have explicit field)
-        const peopleWithAge = selectedPeople
-          .filter(person => person.apparentAge)
-          .map(person => {
-            const name = person.name || config.toField || 'the recipient';
-            return `${name} (${person.apparentAge} years old)`;
-          });
-        
-        if (peopleWithAge.length > 0 && !contextParts.some(part => part.includes('years old'))) {
-          contextParts.push(`Age context: ${peopleWithAge.join(', ')}`);
-        }
-        
-        // Add group relationship if specified
-        const groupRelationships = config.photoAnalyses
-          .filter(a => a.groupRelationship)
-          .map(a => a.groupRelationship);
-        if (groupRelationships.length > 0) {
-          contextParts.push(`Group relationship: ${groupRelationships.join(', ')}`);
-        }
-        
-        // Only include special instructions if they relate to relationships/message content
-        const specialInstructions = config.photoAnalyses
-          .filter(a => a.specialInstructions)
-          .map(a => a.specialInstructions)
-          .filter(instruction => 
-            instruction.toLowerCase().includes('relationship') || 
-            instruction.toLowerCase().includes('message') ||
-            instruction.toLowerCase().includes('tone')
-          );
-        if (specialInstructions.length > 0) {
-          contextParts.push(`Special notes: ${specialInstructions.join('; ')}`);
-        }
-      }
-    }
-    
-    if (contextParts.length > 0) {
-      relationshipContext = `\n\nRelationship Context:\n${contextParts.join('\n')}`;
+      relationshipContext = `\n\nRelationship Context:\nRelationship: ${config.toField || 'the recipient'} is the sender's ${config.relationshipField}`;
     }
 
     return `Create a ${config.toneDescription} message for a ${cardTypeForPrompt} greeting card.
@@ -507,7 +425,7 @@ ${this.SAFETY_REQUIREMENTS}`;
     let prompt = `Create a beautiful front cover for a ${cardType} greeting card${config.toField ? ` for ${config.toField}` : ''}. ${theme}. Include appropriate greeting text for a ${cardType} card${config.toField ? ` (can optionally include "${config.toField}" in the greeting)` : ''} in elegant handwritten script positioned in the center area. ${styleModifier} ${this.LAYOUT_REQUIREMENTS} IMPORTANT: Do NOT include "from" or sender information on the front cover. Unique ID: ${uniqueId}`;
     
     if (config.referenceImageUrls?.length) {
-      prompt += ` ${this.getEnhancedReferencePhotoInstructions(config.photoAnalyses)}`;
+      prompt += ` ${this.getEnhancedReferencePhotoInstructions(config.photoReferences)}`;
     }
     
     return prompt;

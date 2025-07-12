@@ -13,8 +13,7 @@ import {
 } from "lucide-react";
 import TemplateGallery from "../TemplateGallery";
 import { useCardCache } from "@/hooks/useCardCache";
-import PhotoAnalysisModal from "../PhotoAnalysisModal";
-import { PhotoAnalysis } from "@/hooks/cardStudio/constants";
+import { PhotoReference } from "@/hooks/cardStudio/constants";
 import { toast } from "sonner";
 
 interface GeneratedCard {
@@ -47,16 +46,9 @@ interface Step1Props {
   handleFileUpload?: (file: File, type: 'handwriting' | 'reference') => Promise<void>;
   handleRemoveReferenceImage?: (index: number) => void;
   isUploading?: boolean;
-  // Photo analysis props
-  photoAnalyses?: PhotoAnalysis[];
-  isAnalyzing?: boolean;
-  showAnalysisModal?: boolean;
-  pendingAnalysisIndex?: number | null;
-  analyzePhoto?: (imageUrl: string, imageIndex: number) => Promise<any>;
-  savePhotoAnalysis?: (analysis: PhotoAnalysis) => void;
-  skipPhotoAnalysis?: () => void;
-  setShowAnalysisModal?: (show: boolean) => void;
-  triggerPhotoAnalysis?: (index: number) => void;
+  // Simplified photo references
+  photoReferences?: PhotoReference[];
+  updatePhotoDescription?: (index: number, description: string) => void;
   // Direct URLs from cardStudio for immediate access
   referenceImageUrlsFromStudio?: string[];
 }
@@ -104,19 +96,11 @@ export default function Step1CardBasics({
   handleFileUpload: externalHandleFileUpload,
   handleRemoveReferenceImage: externalHandleRemoveReferenceImage,
   isUploading = false,
-  photoAnalyses = [],
-  isAnalyzing = false,
-  showAnalysisModal = false,
-  pendingAnalysisIndex = null,
-  analyzePhoto,
-  savePhotoAnalysis,
-  skipPhotoAnalysis,
-  setShowAnalysisModal,
-  triggerPhotoAnalysis,
+  photoReferences = [],
+  updatePhotoDescription,
   referenceImageUrlsFromStudio = []
 }: Step1Props) {
   const [showTemplateGallery, setShowTemplateGallery] = useState(false);
-  const [analysisResult, setAnalysisResult] = React.useState<any>(null);
   const { preloadAllCards } = useCardCache();
   
   
@@ -127,11 +111,18 @@ export default function Step1CardBasics({
 
   React.useEffect(() => {
     // Auto-complete step when all required fields are filled
-    if (formData.selectedType && formData.selectedTone && 
-        (formData.selectedType !== "custom" || formData.customCardType.trim())) {
+    const hasRequiredFields = formData.selectedType && formData.selectedTone && 
+        (formData.selectedType !== "custom" || formData.customCardType.trim());
+    
+    // Check if all uploaded photos have descriptions
+    const allPhotosHaveDescriptions = 
+      formData.referenceImageUrls.length === 0 || // No photos uploaded
+      (photoReferences && photoReferences.every(ref => ref.description && ref.description.trim()));
+    
+    if (hasRequiredFields && allPhotosHaveDescriptions) {
       onStepComplete?.();
     }
-  }, [formData.selectedType, formData.selectedTone, formData.customCardType, onStepComplete]);
+  }, [formData.selectedType, formData.selectedTone, formData.customCardType, formData.referenceImageUrls, photoReferences, onStepComplete]);
 
   const handleTemplateSelect = (template: GeneratedCard) => {
     onTemplateSelect?.(template);
@@ -236,32 +227,6 @@ export default function Step1CardBasics({
     }
   };
 
-  // Trigger photo analysis when modal opens
-  React.useEffect(() => {
-    if (showAnalysisModal && pendingAnalysisIndex !== null) {
-      // Check if we already have analysis data for this image
-      const existingAnalysis = photoAnalyses[pendingAnalysisIndex];
-      
-      if (existingAnalysis && existingAnalysis.analyzed && !existingAnalysis.analysisFailed) {
-        // Use existing analysis data
-        console.log("📊 Using pre-analyzed data for image", pendingAnalysisIndex);
-        setAnalysisResult(existingAnalysis.analysisResult);
-      } else if (analyzePhoto) {
-        // No existing analysis, perform new analysis
-        const imageUrls = referenceImageUrlsFromStudio.length > 0 ? referenceImageUrlsFromStudio : formData.referenceImageUrls;
-        const imageUrl = imageUrls[pendingAnalysisIndex];
-        if (imageUrl && !analysisResult) {
-          setAnalysisResult(null);
-          analyzePhoto(imageUrl, pendingAnalysisIndex).then(result => {
-            setAnalysisResult(result);
-          }).catch(error => {
-            console.error("Error analyzing photo:", error);
-            toast.error("Failed to analyze photo");
-          });
-        }
-      }
-    }
-  }, [showAnalysisModal, pendingAnalysisIndex, analyzePhoto, formData.referenceImageUrls, referenceImageUrlsFromStudio, analysisResult, photoAnalyses]);
 
   return (
     <div className="space-y-4 sm:space-y-6 w-full">
@@ -467,41 +432,55 @@ export default function Step1CardBasics({
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {/* Display uploaded images */}
-                  <div className="grid grid-cols-2 gap-3">
+                  {/* Display uploaded images with description inputs */}
+                  <div className="space-y-4">
                     {(referenceImageUrlsFromStudio.length > 0 ? referenceImageUrlsFromStudio : formData.referenceImageUrls).map((url, index) => (
-                      <div key={index} className="relative group">
-                        <img
-                          src={url}
-                          alt={`Reference ${index + 1}`}
-                          className="w-full aspect-square object-cover rounded-lg border-2 border-indigo-200 dark:border-indigo-700"
-                        />
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleRemoveImage(index)}
-                          className="absolute top-2 right-2 h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
+                      <div key={index} className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-indigo-200 dark:border-indigo-700">
+                        <div className="flex gap-3">
+                          <div className="relative flex-shrink-0">
+                            <img
+                              src={url}
+                              alt={`Reference ${index + 1}`}
+                              className="w-24 h-24 object-cover rounded-lg border-2 border-indigo-200 dark:border-indigo-700"
+                            />
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleRemoveImage(index)}
+                              className="absolute -top-2 -right-2 h-6 w-6 p-0 rounded-full"
+                            >
+                              <X className="w-3 h-3" />
+                            </Button>
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+                              Who's in this photo? <span className="text-red-500">*</span>
+                            </label>
+                            <Input
+                              placeholder={formData.toField && formData.fromField 
+                                ? `e.g., ${formData.toField} on the left, ${formData.fromField} on the right`
+                                : "e.g., my daughter Sarah and son Mike"}
+                              value={photoReferences[index]?.description || ''}
+                              onChange={(e) => updatePhotoDescription?.(index, e.target.value)}
+                              className={`text-sm ${!photoReferences[index]?.description ? 'border-red-300' : ''}`}
+                              style={{ fontSize: '16px' }}
+                              required
+                            />
+                            {!photoReferences[index]?.description && (
+                              <p className="text-xs text-red-500 dark:text-red-400 mt-1">
+                                Please describe who's in this photo
+                              </p>
+                            )}
+                            {photoReferences[index]?.description && (
+                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                Describe who should appear as cartoon characters
+                              </p>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
-                  
-                  {/* Customize people button */}
-                  {triggerPhotoAnalysis && (referenceImageUrlsFromStudio.length > 0 || formData.referenceImageUrls.length > 0) && (
-                    <div className="flex justify-center">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => triggerPhotoAnalysis(0)}
-                        className="flex items-center gap-2"
-                      >
-                        <Users className="w-4 h-4" />
-                        <span>Customize people</span>
-                      </Button>
-                    </div>
-                  )}
                   
                   {/* Add more photos button */}
                   {formData.referenceImageUrls.length < 4 && (
@@ -567,33 +546,6 @@ export default function Step1CardBasics({
       />
       */}
 
-      {/* Photo Analysis Modal (moved from Step3) */}
-      {showAnalysisModal && pendingAnalysisIndex !== null && (
-        <PhotoAnalysisModal
-          isOpen={showAnalysisModal}
-          onClose={() => {
-            setShowAnalysisModal?.(false);
-            setAnalysisResult(null);
-          }}
-          imageUrl={(referenceImageUrlsFromStudio.length > 0 ? referenceImageUrlsFromStudio : formData.referenceImageUrls)[pendingAnalysisIndex]}
-          imageIndex={pendingAnalysisIndex}
-          isAnalyzing={isAnalyzing || false}
-          analysisResult={analysisResult}
-          existingAnalysis={photoAnalyses[pendingAnalysisIndex]}
-          onSave={(analysis) => {
-            savePhotoAnalysis?.(analysis);
-            setAnalysisResult(null);
-            setShowAnalysisModal?.(false);
-          }}
-          onSkip={() => {
-            skipPhotoAnalysis?.();
-            setAnalysisResult(null);
-            setShowAnalysisModal?.(false);
-          }}
-          toField={formData.toField}
-          fromField={formData.fromField}
-        />
-      )}
     </div>
   );
 } 

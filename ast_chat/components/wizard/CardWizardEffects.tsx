@@ -233,16 +233,21 @@ export function CardWizardEffects({
   useEffect(() => {
     if (!cardForm.isInitialLoadComplete) return;
     
-    // Only sync if cardStudio has images but form doesn't
-    if (cardStudio.referenceImageUrls.length > 0 && 
-        cardForm.formData.referenceImageUrls.length !== cardStudio.referenceImageUrls.length) {
-      
+    // Sync if cardStudio has images but form doesn't, or if photoReferences changed
+    const shouldSync = (
+      (cardStudio.referenceImageUrls.length > 0 && 
+       cardForm.formData.referenceImageUrls.length !== cardStudio.referenceImageUrls.length) ||
+      (cardStudio.photoReferences && cardStudio.photoReferences !== cardForm.formData.photoReferences)
+    );
+    
+    if (shouldSync) {
       cardForm.updateFormData({
         referenceImages: cardStudio.referenceImages,
-        referenceImageUrls: cardStudio.referenceImageUrls
+        referenceImageUrls: cardStudio.referenceImageUrls,
+        photoReferences: cardStudio.photoReferences
       });
     }
-  }, [cardStudio.referenceImageUrls, cardStudio.referenceImages, cardForm.isInitialLoadComplete]);
+  }, [cardStudio.referenceImageUrls, cardStudio.referenceImages, cardStudio.photoReferences, cardForm.isInitialLoadComplete]);
 
   return null;
 }

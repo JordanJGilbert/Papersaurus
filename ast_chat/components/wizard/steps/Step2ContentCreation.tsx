@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import CardDescriptionHelper from "../CardDescriptionHelper";
 import { chatWithAI } from "@/hooks/cardStudio/utils";
+import { PhotoReference } from "@/hooks/cardStudio/constants";
 
 interface Step2Props {
   formData: CardFormData;
@@ -26,7 +27,7 @@ interface Step2Props {
   currentMessageIndex?: number;
   undoMessage?: () => void;
   redoMessage?: () => void;
-  photoAnalyses?: any[];
+  photoReferences?: PhotoReference[];
 }
 
 export default function Step2ContentCreation({ 
@@ -39,7 +40,7 @@ export default function Step2ContentCreation({
   currentMessageIndex = -1,
   undoMessage,
   redoMessage,
-  photoAnalyses = []
+  photoReferences = []
 }: Step2Props) {
   const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
   const [isMessageExpanded, setIsMessageExpanded] = useState(false);
@@ -121,7 +122,7 @@ export default function Step2ContentCreation({
           formData={formData}
           onAddToDescription={(text) => updateFormData({ prompt: text })}
           chatWithAI={chatWithAI}
-          photoAnalyses={photoAnalyses}
+          photoReferences={photoReferences}
         />
         
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
