@@ -22,6 +22,7 @@ import {
   GeneratedCard 
 } from './cardStudio/constants';
 import { sendThankYouEmail, chatWithAI, scrollToCardPreview } from './cardStudio/utils';
+import { storage } from '@/lib/storageManager';
 
 export function useCardStudio() {
   // Core form state
