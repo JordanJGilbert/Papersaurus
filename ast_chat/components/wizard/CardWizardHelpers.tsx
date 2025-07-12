@@ -150,10 +150,10 @@ export const handleResumeDraft = (
     // Navigate to appropriate step
     if (session.draftCards.length > 0) {
       // If drafts exist, go to draft selection step
-      wizardState.goToStep(5);
+      wizardState.updateCurrentStep(5);
     } else {
       // Otherwise go to content creation step
-      wizardState.goToStep(2);
+      wizardState.updateCurrentStep(2);
     }
     
     toast.success('Draft session resumed successfully!');

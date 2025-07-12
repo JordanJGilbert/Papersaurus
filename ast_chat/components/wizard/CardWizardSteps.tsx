@@ -166,7 +166,7 @@ export function CardWizardSteps({
             if (!wizardState.completedSteps.includes(5)) {
               wizardState.markStepCompleted(5);
             }
-            wizardState.goToStep(6);
+            wizardState.updateCurrentStep(6);
           }}
         />
       );

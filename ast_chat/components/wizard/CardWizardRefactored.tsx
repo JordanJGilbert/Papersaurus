@@ -120,7 +120,7 @@ export default function CardWizard() {
     wizardState.markStepCompleted(wizardState.currentStep);
     
     if (wizardState.currentStep < wizardSteps.length) {
-      wizardState.goToNextStep();
+      wizardState.updateCurrentStep(wizardState.currentStep + 1);
     }
     
     return true;
@@ -128,14 +128,14 @@ export default function CardWizard() {
 
   const handlePrevious = () => {
     if (wizardState.currentStep > 1) {
-      wizardState.goToPreviousStep();
+      wizardState.updateCurrentStep(wizardState.currentStep - 1);
     }
   };
 
   const handleStepClick = (stepNumber: number) => {
     // Allow free navigation to any completed step
     if (wizardState.completedSteps.includes(stepNumber)) {
-      wizardState.goToStep(stepNumber);
+      wizardState.updateCurrentStep(stepNumber);
       return;
     }
     
@@ -144,13 +144,13 @@ export default function CardWizard() {
       if (!wizardState.completedSteps.includes(wizardState.currentStep)) {
         wizardState.markStepCompleted(wizardState.currentStep);
       }
-      wizardState.goToStep(stepNumber);
+      wizardState.updateCurrentStep(stepNumber);
       return;
     }
     
     // Allow backward navigation
     if (stepNumber < wizardState.currentStep) {
-      wizardState.goToStep(stepNumber);
+      wizardState.updateCurrentStep(stepNumber);
       return;
     }
   };

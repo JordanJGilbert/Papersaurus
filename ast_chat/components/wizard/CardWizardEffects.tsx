@@ -38,7 +38,7 @@ export function CardWizardEffects({
           for (let i = 1; i <= 5; i++) {
             if (!wizardState.completedSteps.includes(i)) wizardState.markStepCompleted(i);
           }
-          wizardState.goToStep(6);
+          wizardState.updateCurrentStep(6);
         } else if (cardStudio.isDraftMode && cardStudio.isGenerating) {
           console.log('🔄 Restoring to Step 5 due to ongoing draft generation');
           // Mark previous steps as completed
@@ -46,14 +46,14 @@ export function CardWizardEffects({
           if (!wizardState.completedSteps.includes(2)) wizardState.markStepCompleted(2);
           if (!wizardState.completedSteps.includes(3)) wizardState.markStepCompleted(3);
           if (!wizardState.completedSteps.includes(4)) wizardState.markStepCompleted(4);
-          wizardState.goToStep(5);
+          wizardState.updateCurrentStep(5);
         }
       } else {
         // No active generation - reset wizard to step 1 if we're on a later step
         // This handles the case where user left off on step 5 but isn't actively generating
         if (wizardState.currentStep > 1 && !cardStudio.isGenerating) {
           console.log('🔄 No active generation, resetting to Step 1');
-          wizardState.goToStep(1);
+          wizardState.updateCurrentStep(1);
         }
       }
       // If we have completed drafts but no active generation, stay on Step 1
@@ -93,7 +93,7 @@ export function CardWizardEffects({
           wizardState.markStepCompleted(i);
         }
       }
-      wizardState.goToStep(5);
+      wizardState.updateCurrentStep(5);
     }
   }, [cardStudio.draftCards.length, cardStudio.isGenerating, isRestoringJobs]);
 
@@ -167,7 +167,7 @@ export function CardWizardEffects({
       // Ensure we're on Step 6 to see the completed card
       if (wizardState.currentStep !== 6) {
         console.log('📍 Card completed but not on Step 6, navigating there now...');
-        wizardState.goToStep(6);
+        wizardState.updateCurrentStep(6);
       }
     }
   }, [cardStudio.generatedCard, cardStudio.isCardCompleted, wizardState.currentStep]);
@@ -224,7 +224,7 @@ export function CardWizardEffects({
       if (!wizardState.completedSteps.includes(5)) {
         wizardState.markStepCompleted(5);
       }
-      wizardState.goToStep(6);
+      wizardState.updateCurrentStep(6);
     }
   }, [cardStudio.isGeneratingFinalCard, wizardState]);
 
