@@ -130,6 +130,8 @@ export class PromptGenerator {
     if (!photoReferences || photoReferences.length === 0) {
       return `
 REFERENCE PHOTO INSTRUCTIONS:
+- LOOK AT THE ATTACHED PHOTOS - they contain real people that you must transform
+- Analyze the physical appearance of each person in the attached photos
 - Transform the people in the attached reference photos into cartoon/illustrated versions
 - Characters MUST HIGHLY resemble the people in the reference photos
 - Keep the SAME clothing they're wearing (omit any text/logos on clothing)
@@ -142,19 +144,22 @@ REFERENCE PHOTO INSTRUCTIONS:
     const photosWithDescriptions = photoReferences.filter(ref => ref.description && ref.description.trim() !== '');
     
     let instructions = `
-REFERENCE PHOTO INSTRUCTIONS:`;
+REFERENCE PHOTO INSTRUCTIONS:
+- CRITICAL: Look at the ${photoReferences.length} attached photo(s) to see the actual people`;
 
     // If user provided descriptions, use them directly
     if (photosWithDescriptions.length > 0) {
-      instructions += `\n- Transform the following people from the reference photos into cartoon/illustrated versions:`;
+      instructions += `\n- The user has identified these people in the photos:`;
       photosWithDescriptions.forEach((ref, idx) => {
         instructions += `\n  - Photo ${ref.imageIndex + 1}: ${ref.description}`;
       });
+      instructions += `\n- Transform these EXACT people from the attached photos into cartoon/illustrated versions`;
     } else {
-      instructions += `\n- Transform the people in the attached reference photos into cartoon/illustrated versions`;
+      instructions += `\n- Analyze the people in the attached photos and transform them into cartoon/illustrated versions`;
     }
 
     instructions += `
+- YOU MUST look at the attached images to see their actual appearance
 - Characters MUST HIGHLY resemble the people in the reference photos
 - Keep the SAME clothing they're wearing (omit any text/logos on clothing)
 - Maintain exact hairstyles, facial features, and body proportions
@@ -252,7 +257,7 @@ ${config.relationshipField ? `Relationship: ${config.toField || 'The recipient'}
 ${config.referenceImageUrls?.length && config.photoReferences?.length ? `REFERENCE PHOTOS (${config.referenceImageUrls.length} attached):
 ${config.photoReferences.map((ref, idx) => `- Photo ${idx + 1}: ${ref.description || 'No description provided'}`).join('\n')}
 
-IMPORTANT: Analyze the attached photos and transform the described people into cartoon/illustrated characters as specified above.` : ''}
+CRITICAL: I have attached ${config.referenceImageUrls.length} actual photo(s) to this message. You MUST analyze these attached images to see the real people in them. Transform these EXACT people from the photos into cartoon/illustrated characters. Do NOT make up generic descriptions - use the actual appearance of the people in the attached photos.` : ''}
 
 Unique ID: ${uniqueId}
 

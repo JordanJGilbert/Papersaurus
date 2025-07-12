@@ -306,5 +306,38 @@
     "label": "vibecarding_card_history_drafts",
     "description": "A screenshot showing a user's 'Card History' screen on Vibecarding, displaying a list of draft cards including birthday and thank-you designs.",
     "size": 118875
+  },
+  "0e7c0d65-0f5f-40c0-9cd8-fb1ca216fa6b": {
+    "filename": "0e7c0d65-0f5f-40c0-9cd8-fb1ca216fa6b.png",
+    "path": "/var/www/flask_app/claude_attachments/0e7c0d65-0f5f-40c0-9cd8-fb1ca216fa6b.png",
+    "url": "https://vibecarding.com/serve_image?key=attachment_6aaa64f3-5d15-481a-810a-1c3d8f710e93&type=image/png",
+    "mime_type": "image/png",
+    "timestamp": 1752283521855,
+    "message_id": "+17145986105_1752283521855",
+    "label": "birthday_lao_lao_dumpling_chopsticks",
+    "description": "A \"Happy Birthday, Lao Lao!\" greeting card design featuring a man about to place a dumpling on a woman's head using chopsticks. The woman looks surprised and the man is smiling.",
+    "size": 41575
+  },
+  "76f4af59-9dbc-4715-9386-026e01cdb08c": {
+    "filename": "76f4af59-9dbc-4715-9386-026e01cdb08c.jpg",
+    "path": "/var/www/flask_app/claude_attachments/76f4af59-9dbc-4715-9386-026e01cdb08c.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_7dec3739-46a3-466e-8c17-efb282f047aa&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752283760248,
+    "message_id": "+17145986105_1752283760248",
+    "label": "couple_by_waterfront_embrace",
+    "description": "A couple stands by a waterfront, embracing. The background features a body of water, cloudy sky, and distant buildings.",
+    "size": 277109
+  },
+  "0495e7ac-032e-4f92-a854-f6206c508d15": {
+    "filename": "0495e7ac-032e-4f92-a854-f6206c508d15.png",
+    "path": "/var/www/flask_app/claude_attachments/0495e7ac-032e-4f92-a854-f6206c508d15.png",
+    "url": "https://vibecarding.com/serve_image?key=attachment_f4523927-23b6-4bbc-827d-7002edc8266b&type=image/png",
+    "mime_type": "image/png",
+    "timestamp": 1752283850361,
+    "message_id": "+17145986105_1752283850361",
+    "label": "lao_jordan_photo_description_input",
+    "description": "A screenshot showing the input fields to describe who is in the photo (Lao Lao and Jordan) to use them as cartoon characters.",
+    "size": 127023
   }
 }

@@ -111,7 +111,7 @@ export function useCardStudio() {
     toField,
     fromField,
     relationshipField,
-    fileHandling.photoAnalyses
+    fileHandling.photoReferences
   );
   
   // Draft generation props
@@ -132,7 +132,8 @@ export function useCardStudio() {
     isHandwrittenMessage,
     isFrontBackOnly,
     referenceImageUrls: fileHandling.referenceImageUrls,
-    photoAnalyses: fileHandling.photoAnalyses,
+    photoReferences: fileHandling.photoReferences,
+    relationshipField,
     saveJobToStorage: jobManagement.saveJobToStorage,
     subscribeToJob: webSocket.subscribeToJob,
     unsubscribeFromAllJobs: webSocket.unsubscribeFromAllJobs,
@@ -159,7 +160,8 @@ export function useCardStudio() {
     isHandwrittenMessage,
     isFrontBackOnly,
     referenceImageUrls: fileHandling.referenceImageUrls,
-    photoAnalyses: fileHandling.photoAnalyses,
+    photoReferences: fileHandling.photoReferences,
+    relationshipField,
     numberOfCards,
     saveJobToStorage: jobManagement.saveJobToStorage,
     removeJobFromStorage: jobManagement.removeJobFromStorage,

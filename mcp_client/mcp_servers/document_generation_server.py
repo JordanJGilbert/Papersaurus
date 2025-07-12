@@ -2955,7 +2955,9 @@ async def ai_chat(
             print(f"DEBUG: Processing {len(attachments)} attachments for ai_chat")
             for url in attachments:
                 if isinstance(url, str) and url.startswith(('http://', 'https://')):
-                    if url.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg')):
+                    # Check if URL ends with common image extensions OR contains serve_image (for our dynamic URLs)
+                    if (url.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg')) or 
+                        'serve_image' in url or 'claude_attachments' in url):
                         # Download attachment for AI processing
                         attachment_part = await download_and_create_attachment_part(url)
                         if attachment_part:
