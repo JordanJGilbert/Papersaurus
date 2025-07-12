@@ -576,61 +576,97 @@ export function useCardStudio() {
       return;
     }
     
-    console.log('🔄 Found pending jobs to restore:', pendingJobs);
+    console.log('🔄 Found recovery data:', recovery);
     
-    // Separate draft jobs from final jobs
-    const draftJobs = pendingJobs.filter(({ jobId }) => jobId.startsWith('draft-'));
-    const finalJobs = pendingJobs.filter(({ jobId }) => !jobId.startsWith('draft-'));
+    // In our simplified system, we only track one active job at a time
+    // Recovery is meant for browser crashes during generation
+    const isRecoveryDraft = recovery.jobId?.startsWith('draft-');
     
-    // Process draft jobs first to restore draft state
-    if (draftJobs.length > 0) {
-      console.log(`🎨 Found ${draftJobs.length} draft jobs to restore`);
+    if (isRecoveryDraft) {
+      console.log('🎨 Recovering from draft generation');
+      // For draft recovery, we can't restore the exact state
+      // User will need to restart the draft generation
+      setIsRestoringJobs(false);
+      return;
+    }
+    
+    // For final card recovery, we can try to restore the job
+    console.log('🎯 Recovering from final card generation');
+    webSocket.subscribeToJob(recovery.jobId);
+    setIsRestoringJobs(false);
+  }, [webSocket, storage]);
+
+  // Load recovery data on component mount
+  useEffect(() => {
+    console.log('🚀 useCardStudio mounted, checking for recovery...');
+    
+    // Check for active recovery job
+    const recovery = storage.getRecovery();
+    
+    if (recovery) {
+      console.log('🔄 Found active job to recover:', recovery.jobId);
       
-      // Collect all draft cards from all draft jobs
-      const draftsByIndex: (GeneratedCard | null)[] = new Array(5).fill(null);
+      // Restore job state and subscribe to updates
+      jobManagement.setCurrentJobId(recovery.jobId);
+      webSocket.subscribeToJob(recovery.jobId);
       
-      for (const { job } of draftJobs) {
-        if (job.draftCards && Array.isArray(job.draftCards) && job.draftCards.length > 0) {
-          const draftCard = job.draftCards[0]; // Each job stores one draft
-          const draftIndex = job.draftIndex;
-          
-          if (draftIndex >= 0 && draftIndex < 5) {
-            draftsByIndex[draftIndex] = draftCard;
-          }
-        }
-      }
-      
-      // Get non-null drafts for counting
-      const allDraftCards = draftsByIndex.filter(Boolean) as GeneratedCard[];
-      
-      // Restore all draft cards at once
-      if (allDraftCards.length > 0) {
-        console.log(`🔄 Restoring ${allDraftCards.length} draft cards from ${draftJobs.length} jobs`);
-        // Only set draft mode when we have actual cards
-        console.log('🎯 Setting isDraftMode to true - draft cards found');
+      // Set generation state
+      const isDraft = recovery.jobId.startsWith('draft-');
+      if (isDraft) {
         draftGeneration.setIsDraftMode(true);
-        
-        // Use the draftsByIndex which already has drafts at correct positions
-        draftGeneration.setDraftCards(draftsByIndex);
-        draftGeneration.setDraftCompletionCount(allDraftCards.length);
-        
-        // Set appropriate progress state
-        if (allDraftCards.length === 5) {
-          draftGeneration.setDraftCompletionShown(true);
-          draftGeneration.setIsGenerating(false);
-          cardGeneration.setIsGenerating(false);
-          draftGeneration.setGenerationProgress("");
-          cardGeneration.setGenerationProgress("");
-          // Time-based progress will be cleared above
-        } else {
-          draftGeneration.setIsGenerating(true);
-          cardGeneration.setIsGenerating(true);
-          const progressMsg = `✨ ${allDraftCards.length}/5 front cover variations complete... ${allDraftCards.length >= 2 ? "You can select one now to proceed!" : ""}`;
-          draftGeneration.setGenerationProgress(progressMsg);
-          cardGeneration.setGenerationProgress(progressMsg);
-          // Don't override time-based progress
-        }
+        draftGeneration.setIsGenerating(true);
+        cardGeneration.setIsGenerating(true);
+        draftGeneration.setGenerationProgress('🎨 Resuming draft generation...');
+        cardGeneration.setGenerationProgress('🎨 Resuming draft generation...');
+      } else {
+        cardGeneration.setIsGenerating(true);
+        cardGeneration.setGenerationProgress('🎨 Resuming card generation...');
       }
+      
+      // Start elapsed time tracking
+      jobManagement.startElapsedTimeTracking(isDraft ? 'draft' : 'final');
+    }
+    
+    // Always mark restoration as complete
+    setIsRestoringJobs(false);
+    
+    // Mark restoration as complete after a small delay
+    setTimeout(() => {
+      setIsRestoringJobs(false);
+    }, 100);
+  }, []);
+
+  // Return all the state and functions that the UI needs
+  return {
+    // Core state
+    prompt,
+    setPrompt,
+    finalCardMessage: messageGeneration.finalCardMessage,
+    setFinalCardMessage: messageGeneration.setFinalCardMessage,
+    toField,
+    setToField,
+    fromField,
+    setFromField,
+    relationshipField,
+    setRelationshipField,
+    selectedType,
+    setSelectedType,
+    customCardType,
+    setCustomCardType,
+    selectedTone,
+    setSelectedTone,
+    isGenerating: cardGeneration.isGenerating || draftGeneration.isGenerating,
+    setIsGenerating: cardGeneration.setIsGenerating,
+    isGeneratingMessage: messageGeneration.isGeneratingMessage,
+    setIsGeneratingMessage: messageGeneration.setIsGeneratingMessage,
+    generatedCard: cardGeneration.generatedCard,
+    setGeneratedCard: cardGeneration.setGeneratedCard,
+    numberOfCards,
+    setNumberOfCards,
+    generatedCards: cardGeneration.generatedCards,
+    setGeneratedCards: cardGeneration.setGeneratedCards,
+    selectedCardIndex: cardGeneration.selectedCardIndex,
+    setSelectedCardIndex: cardGeneration.setSelectedCardIndex,
       
       // If no draft cards were found but we have draft jobs, set appropriate state
       if (allDraftCards.length === 0 && draftJobs.length > 0) {

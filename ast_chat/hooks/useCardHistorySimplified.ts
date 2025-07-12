@@ -61,13 +61,35 @@ export function useCardHistory() {
   const resumeDraftSession = () => {};
   const removeDraftSession = () => {};
 
+  // Alias for backward compatibility
+  const addCompletedCard = (card: any) => {
+    // Convert from the old format to new format
+    const historyItem: CardHistoryItem = {
+      id: card.id || Date.now().toString(),
+      date: new Date().toISOString(),
+      type: card.cardType || 'custom',
+      tone: card.cardTone || 'casual',
+      recipient: card.toField,
+      sender: card.fromField,
+      message: card.finalCardMessage,
+      thumbnailUrl: card.frontCover || card.images?.frontCover
+    };
+    addCardToHistory(historyItem);
+  };
+
   return {
     cardHistory,
     draftSessions,
     addCardToHistory,
+    addCompletedCard,  // Add this for backward compatibility
     clearHistory,
     saveDraftSession,
     resumeDraftSession,
     removeDraftSession,
+    // Add these for backward compatibility
+    hasCompletedCards: cardHistory.length > 0,
+    hasDraftSessions: false,  // No longer support draft sessions
+    totalCards: cardHistory.length,
+    totalDrafts: 0,
   };
 }
