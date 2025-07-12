@@ -23,7 +23,7 @@ import {
 import { useCardStudio } from "@/hooks/useCardStudio";
 import { useCardForm } from "@/hooks/useCardForm";
 import { useWizardState } from "@/hooks/useWizardState";
-import { useCardHistory } from "@/hooks/useCardHistory";
+import { useCardHistory } from "@/hooks/useCardHistorySimplified";
 
 export interface WizardStep {
   id: string;
@@ -314,6 +314,7 @@ export default function CardWizard() {
         cardForm={cardForm}
         cardHistory={cardHistory}
         wizardState={wizardState}
+        updateWizardState={updateWizardState}
         isResumingDraft={isResumingDraft}
         isRestoringJobs={cardStudio.isRestoringJobs}
       />

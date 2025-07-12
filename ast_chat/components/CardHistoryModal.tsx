@@ -19,7 +19,7 @@ import {
   Share2,
   Download
 } from 'lucide-react';
-import { useCardHistory } from '@/hooks/useCardHistory';
+import { useCardHistory } from '@/hooks/useCardHistorySimplified';
 import { toast } from 'sonner';
 
 interface CardHistoryModalProps {

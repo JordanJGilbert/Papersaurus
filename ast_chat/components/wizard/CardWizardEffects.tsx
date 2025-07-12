@@ -9,6 +9,7 @@ interface CardWizardEffectsProps {
   cardForm: any;
   cardHistory: any;
   wizardState: any;
+  updateWizardState: (updates: any) => void;
   isResumingDraft: boolean;
   isRestoringJobs: boolean;
 }
@@ -18,6 +19,7 @@ export function CardWizardEffects({
   cardForm,
   cardHistory,
   wizardState,
+  updateWizardState,
   isResumingDraft,
   isRestoringJobs
 }: CardWizardEffectsProps) {

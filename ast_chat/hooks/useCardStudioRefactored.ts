@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 // Import modular hooks
 import { useWebSocket } from './cardStudio/useWebSocket';
-import { useJobManagement } from './cardStudio/useJobManagement';
+import { useJobManagement } from './cardStudio/useJobManagementSimplified';
 import { useMessageGeneration } from './cardStudio/useMessageGeneration';
 import { useFileHandling } from './cardStudio/useFileHandling';
 import { useDraftGeneration } from './cardStudio/useDraftGeneration';
@@ -274,22 +274,7 @@ export function useCardStudio() {
           updated[draftIndex] = draftCard;
           console.log(`✅ Draft ${draftIndex + 1} completed and stored at index ${draftIndex}`);
           
-          // Save draft to localStorage with expiration
-          if (typeof window !== 'undefined') {
-            try {
-              const jobData = localStorage.getItem(`cardJob_${job_id}`);
-              if (jobData) {
-                const job = JSON.parse(jobData);
-                job.draftCards = [draftCard];
-                job.draftIndex = draftIndex;
-                job.lastUpdate = Date.now();
-                job.expiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000); // 30 days
-                localStorage.setItem(`cardJob_${job_id}`, JSON.stringify(job));
-              }
-            } catch (error) {
-              console.error('Failed to save draft:', error);
-            }
-          }
+          // No longer save individual drafts to localStorage
           
           return updated;
         });
@@ -361,28 +346,7 @@ export function useCardStudio() {
         console.log('🚀 Calling handleFinalCardCompletion...');
         cardGeneration.handleFinalCardCompletion(mappedCardData);
         
-        // Save final card metadata to localStorage for recovery (without large images)
-        try {
-          const finalCardMetadata = {
-            jobId: job_id,
-            completedAt: Date.now(),
-            isFinalCard: true,
-            prompt: cardData.prompt,
-            id: cardData.id,
-            createdAt: cardData.createdAt,
-            // Don't save base64 images to avoid quota issues
-            hasImages: {
-              frontCover: !!cardData.frontCover,
-              backCover: !!cardData.backCover,
-              leftPage: !!cardData.leftPage,
-              rightPage: !!cardData.rightPage
-            }
-          };
-          localStorage.setItem('lastCompletedCard', JSON.stringify(finalCardMetadata));
-          console.log('💾 Saved final card metadata to localStorage (without images)');
-        } catch (error) {
-          console.error('Failed to save final card metadata:', error);
-        }
+        // Card is automatically added to recent cards by markJobComplete
         
         jobManagement.removeJobFromStorage(job_id);
         jobManagement.setCurrentJobId(null);
@@ -597,15 +561,16 @@ export function useCardStudio() {
   }, [cardGeneration.isGenerating, draftGeneration.isGeneratingFinalCard, 
       webSocket, jobManagement.progressPercentage, handleJobUpdate]);
 
-  // OLD: Complex job restoration - keeping for reference but not using
+  // Simplified job restoration using new storage manager
   const checkPendingJobs = useCallback(async () => {
-    console.log('🔄 Starting job restoration...');
+    console.log('🔄 Checking for recovery data...');
     setIsRestoringJobs(true);
     
-    const pendingJobs = await jobManagement.checkPendingJobs();
+    // Check for active recovery job
+    const recovery = storage.getRecovery();
     
-    if (pendingJobs.length === 0) {
-      console.log('✅ No pending jobs to restore');
+    if (!recovery) {
+      console.log('✅ No active job to recover');
       setIsRestoringJobs(false);
       return;
     }
@@ -797,80 +762,39 @@ export function useCardStudio() {
     }, 100);
   }, [jobManagement, cardGeneration, draftGeneration, webSocket]);
 
-  // Load most recent draft batch and final card on component mount
+  // Load recovery data on component mount
   useEffect(() => {
-    console.log('🚀 useCardStudio mounted, loading recent cards...');
+    console.log('🚀 useCardStudio mounted, checking for recovery...');
     
-    // Check for completed final card first
-    try {
-      const savedFinalCard = localStorage.getItem('lastCompletedCard');
-      if (savedFinalCard) {
-        const finalCard = JSON.parse(savedFinalCard);
-        console.log('💾 Found saved final card:', finalCard);
-        
-        // Restore final card state
-        cardGeneration.setGeneratedCard(finalCard);
-        cardGeneration.setGeneratedCards([finalCard]);
-        cardGeneration.setIsCardCompleted(true);
-        draftGeneration.setIsDraftMode(false);
-        
-        // Clear the saved card after restoring
-        localStorage.removeItem('lastCompletedCard');
-        console.log('✅ Restored final card from localStorage');
-        return; // Don't load drafts if we have a final card
-      }
-    } catch (error) {
-      console.error('Failed to restore final card:', error);
-    }
+    // Check for active recovery job
+    const recovery = storage.getRecovery();
     
-    // If no final card, check for drafts
-    // First, clear any existing draft state to avoid duplicates
-    draftGeneration.setDraftCards([]);
-    draftGeneration.setDraftCompletionCount(0);
-    
-    const recentDrafts = jobManagement.loadMostRecentDraftBatch();
-    console.log('📊 Draft batch result:', recentDrafts);
-    
-    if (recentDrafts && recentDrafts.cards.length > 0) {
-      console.log(`📋 Found recent draft batch with ${recentDrafts.count} cards from ${new Date(recentDrafts.createdAt).toLocaleString()}`);
+    if (recovery) {
+      console.log('🔄 Found active job to recover:', recovery.jobId);
       
-      // Set the draft cards and enable draft mode
-      draftGeneration.setDraftCards(recentDrafts.cards);
-      draftGeneration.setIsDraftMode(true);
-      draftGeneration.setDraftCompletionCount(recentDrafts.count);
+      // Restore job state and subscribe to updates
+      jobManagement.setCurrentJobId(recovery.jobId);
+      webSocket.subscribeToJob(recovery.jobId);
       
-      // If we have all 5 cards, mark as complete
-      if (recentDrafts.count === 5) {
-        draftGeneration.setDraftCompletionShown(true);
-        draftGeneration.setIsGenerating(false);
-        cardGeneration.setIsGenerating(false);
-      } else {
-        // Still generating - set generation state and start timer
+      // Set generation state
+      const isDraft = recovery.jobId.startsWith('draft-');
+      if (isDraft) {
+        draftGeneration.setIsDraftMode(true);
         draftGeneration.setIsGenerating(true);
         cardGeneration.setIsGenerating(true);
-        
-        // Calculate how long generation has been running
-        const elapsedSeconds = Math.floor((Date.now() - recentDrafts.createdAt) / 1000);
-        jobManagement.setCurrentElapsedTime(elapsedSeconds);
-        jobManagement.startElapsedTimeTracking();
-        
-        // Set progress
-        const progressMsg = `✨ ${recentDrafts.count}/5 front cover variations complete...`;
-        draftGeneration.setGenerationProgress(progressMsg);
-        cardGeneration.setGenerationProgress(progressMsg);
-        // Don't override time-based progress
-        
-        // Check for pending jobs to subscribe to
-        const pendingJobs = JSON.parse(localStorage.getItem('pendingCardJobs') || '[]');
-        const activeDraftJobs = pendingJobs.filter((id: string) => id.startsWith('draft-'));
-        
-        // Subscribe to active draft jobs for real-time updates
-        activeDraftJobs.forEach((jobId: string) => {
-          console.log(`📡 Subscribing to active draft job: ${jobId}`);
-          webSocket.subscribeToJob(jobId);
-        });
+        draftGeneration.setGenerationProgress('🎨 Resuming draft generation...');
+        cardGeneration.setGenerationProgress('🎨 Resuming draft generation...');
+      } else {
+        cardGeneration.setIsGenerating(true);
+        cardGeneration.setGenerationProgress('🎨 Resuming card generation...');
       }
+      
+      // Start elapsed time tracking
+      jobManagement.startElapsedTimeTracking(isDraft ? 'draft' : 'final');
     }
+    
+    // Always mark restoration as complete
+    setIsRestoringJobs(false);
     
     // Mark restoration as complete after a small delay
     setTimeout(() => {

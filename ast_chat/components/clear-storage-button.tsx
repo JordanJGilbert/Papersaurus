@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { storage } from "@/lib/storageManager";
 
 export function ClearStorageButton() {
   const [isClearing, setIsClearing] = useState(false);
@@ -25,15 +26,21 @@ export function ClearStorageButton() {
     setIsClearing(true);
     
     try {
-      // Clear all localStorage
+      // Clear all storage using storage manager
       if (typeof window !== 'undefined') {
-        console.log('🧹 Clearing all localStorage...');
+        console.log('🧹 Clearing all storage...');
         
-        // Get all keys before clearing
-        const keysCount = localStorage.length;
+        // Get storage info before clearing
+        const storageInfo = storage.getStorageInfo();
         
-        // Clear everything
-        localStorage.clear();
+        // Clear using storage manager (only our keys)
+        storage.clearAll();
+        
+        // Also clear any legacy localStorage items
+        const legacyKeys = Object.keys(localStorage).filter(key => 
+          !key.startsWith('vibe-')
+        );
+        legacyKeys.forEach(key => localStorage.removeItem(key));
         
         // Clear sessionStorage too
         sessionStorage.clear();
@@ -45,8 +52,8 @@ export function ClearStorageButton() {
             .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
         });
         
-        console.log(`✅ Cleared ${keysCount} items from localStorage`);
-        toast.success(`Cleared all data! Removed ${keysCount} stored items.`);
+        console.log(`✅ Cleared ${storageInfo.keys.length} managed items + ${legacyKeys.length} legacy items`);
+        toast.success(`Cleared all data! Removed ${storageInfo.keys.length + legacyKeys.length} stored items.`);
         
         // Give a moment for the toast to show
         setTimeout(() => {
@@ -81,11 +88,10 @@ export function ClearStorageButton() {
           <AlertDialogDescription className="space-y-2">
             <p>This will completely clear all stored data including:</p>
             <ul className="list-disc list-inside text-sm space-y-1 mt-2">
-              <li>All form data and drafts</li>
-              <li>Card generation history</li>
-              <li>Saved preferences and settings</li>
-              <li>All cached images and data</li>
-              <li>WebSocket connections and job tracking</li>
+              <li>Active wizard session (form data & progress)</li>
+              <li>Recent cards (last 5 generated)</li>
+              <li>Recovery data (active generation)</li>
+              <li>All legacy storage data</li>
             </ul>
             <p className="font-semibold text-red-600 dark:text-red-400 mt-3">
               This action cannot be undone!
