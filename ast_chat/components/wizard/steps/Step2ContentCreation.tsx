@@ -87,7 +87,7 @@ export default function Step2ContentCreation({
       <div>
         <div className="flex items-center justify-between mb-2">
           <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Describe Your Card (Optional)
+            {formData.to ? `What makes ${formData.to} special?` : 'Add Personal Touches'} (Optional)
           </label>
           <Button
             variant="ghost"
@@ -109,7 +109,7 @@ export default function Step2ContentCreation({
           </Button>
         </div>
         <Textarea
-          placeholder="💡 Optional: E.g., 'Birthday card with cute cats and rainbow colors'"
+          placeholder="💡 Optional: E.g., Loves boba tea, plays guitar, our hiking trips, inside jokes..."
           value={formData.prompt}
           onChange={(e) => updateFormData({ prompt: e.target.value })}
           rows={isTextareaExpanded ? 6 : 3}
@@ -126,7 +126,7 @@ export default function Step2ContentCreation({
         />
         
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          💡 <strong>Tip:</strong> Add colors, style, themes for better results, or leave blank for defaults
+          💡 <strong>Tip:</strong> Add their interests, hobbies, or memories for a truly personal card
         </p>
       </div>
 

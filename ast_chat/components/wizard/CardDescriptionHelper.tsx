@@ -15,37 +15,44 @@ interface CardDescriptionHelperProps {
   photoReferences?: PhotoReference[];
 }
 
-// Contextual inspiration chips based on card type and tone
+// Contextual inspiration chips based on card type and tone - now focused on personal details
 const getInspirationChips = (cardType: string, tone: string): string[] => {
   const chips: Record<string, string[]> = {
-    'birthday-funny': ['cake disaster 🎂', 'age jokes', 'party animals 🎉', 'embarrassing photo'],
-    'birthday-heartfelt': ['childhood memories', 'growth journey', 'warm wishes', 'family gathering'],
-    'birthday-romantic': ['romantic dinner', 'heart balloons', 'love notes', 'special surprise'],
-    'anniversary-romantic': ['wedding memories', 'sunset beach', 'flower garden 🌹', 'starlit dance'],
-    'anniversary-funny': ['first date fail', 'inside jokes', 'funny couple', 'adventure mishaps'],
-    'thank-you-professional': ['elegant design', 'corporate colors', 'minimalist style', 'formal appreciation'],
-    'thank-you-heartfelt': ['gratitude flowers', 'helping hands', 'warm embrace', 'heartfelt thanks'],
-    'holiday-funny': ['ugly sweater', 'reindeer chaos', 'gift wrapping fail', 'santa mishap'],
-    'holiday-heartfelt': ['cozy fireplace', 'family traditions', 'winter wonderland', 'holiday warmth'],
-    'congratulations-professional': ['achievement medal', 'success ladder', 'professional milestone', 'elegant celebration'],
-    'congratulations-funny': ['victory dance', 'confetti explosion', 'champagne pop', 'silly celebration'],
-    'sympathy-heartfelt': ['peaceful nature', 'gentle memories', 'comforting embrace', 'serene landscape'],
-    'get-well-funny': ['superhero recovery', 'band-aid warrior', 'healing humor', 'get well soon animals'],
-    'get-well-heartfelt': ['healing flowers', 'sunny days ahead', 'caring thoughts', 'peaceful recovery'],
+    'birthday-funny': ['Coffee lover ☕', 'Dog person 🐕', 'Gamer 🎮', 'Always late ⏰', 'Dad jokes', 'Netflix addict 📺'],
+    'birthday-heartfelt': ['Family oriented 👨‍👩‍👧‍👦', 'Nature lover 🌿', 'Bookworm 📚', 'Music lover 🎵', 'Travel memories ✈️', 'Childhood friend'],
+    'birthday-romantic': ['First date spot 💕', 'Our song 🎵', 'Inside jokes 😄', 'Pet names', 'Anniversary trip', 'Favorite restaurant 🍽️'],
+    'anniversary-romantic': ['Wedding memories 💍', 'First date', 'Our favorite place', 'Inside jokes 😄', 'Pet together 🐾', 'Travel adventures ✈️'],
+    'anniversary-funny': ['Still tolerates me', 'Pizza nights 🍕', 'Netflix arguments', 'Snoring champion', 'Bad cooking', 'Game nights 🎲'],
+    'thank-you-professional': ['Great mentor', 'Team player', 'Problem solver', 'Always helpful', 'Goes extra mile', 'Inspiring leader'],
+    'thank-you-heartfelt': ['Always there', 'Best friend', 'Life saver', 'Kind heart', 'Great listener', 'True support'],
+    'holiday-funny': ['Holiday movies 🎬', 'Cookie monster 🍪', 'Gift wrapper fail', 'Ugly sweater champ', 'Carol singer', 'Light untangler'],
+    'holiday-heartfelt': ['Family traditions', 'Baking together 🧁', 'Decorating memories', 'Cozy nights', 'Holiday recipes', 'Annual photos'],
+    'congratulations-professional': ['Hard worker', 'Goal crusher', 'Team leader', 'Innovation driver', 'Detail oriented', 'Results focused'],
+    'congratulations-funny': ['Finally did it!', 'Overachiever', 'Boss mode 💪', 'Killing it', 'Next level', 'Unstoppable'],
+    'sympathy-heartfelt': ['Cherished memories', 'Always remembered', 'Special moments', 'Legacy lives on', 'Forever loved', 'Beautiful soul'],
+    'get-well-funny': ['Tough cookie 🍪', 'Fighter spirit', 'Bounce back champ', 'Too stubborn to quit', 'Superhero mode', 'Healing vibes'],
+    'get-well-heartfelt': ['Stay strong', 'Thinking of you', 'Sending love', 'Get rest', 'Take care', 'Here for you'],
   };
 
   const key = `${cardType}-${tone}`;
-  return chips[key] || chips[cardType + '-heartfelt'] || ['custom design', 'personal touch', 'special elements', 'unique style'];
+  return chips[key] || chips[cardType + '-heartfelt'] || ['Loves life', 'Great friend', 'Always smiling', 'Kind soul'];
 };
 
-// AI brainstorming prompts
+// AI brainstorming prompts - now focused on personal details
 const getBrainstormPrompt = (cardType: string, tone: string, recipient?: string, photoContext?: string) => {
   const recipientText = recipient ? `for ${recipient}` : '';
   const photoText = photoContext ? `\n\n${photoContext}. Include these specific people in creative and imaginative ways. IMPORTANT: Only feature the people mentioned above - do not add any additional people, babies, children, or characters unless explicitly requested.` : '';
   
-  return `Generate 4 creative and specific card description ideas for a ${tone} ${cardType} card ${recipientText}.${photoText}
-  Each idea should be 20-30 words long and paint a vivid picture with specific visual elements, themes, scenes, and artistic details.
-  Make them detailed, unique and imaginative - not generic. Include colors, styles, compositions, and emotional elements.
+  return `Generate 4 personal detail suggestions that someone might include when creating a ${tone} ${cardType} card ${recipientText}.${photoText}
+  
+  Focus on interests, hobbies, personality traits, favorite things, shared memories, or activities they enjoy.
+  Each suggestion should be 15-25 words and include specific personal details that would make the card more meaningful.
+  
+  Examples of good suggestions:
+  - "Loves hiking on weekends, collects vintage vinyl records, makes the best homemade pasta"
+  - "Coffee addict who never misses morning yoga, has two rescue dogs named Max and Luna"
+  - "Our weekly sushi dates, that time we got lost in Paris, your terrible dad jokes"
+  
   Return as a JSON array of strings.`;
 };
 
@@ -148,10 +155,10 @@ export default function CardDescriptionHelper({
       console.error('Error generating suggestions:', error);
       // Fallback suggestions
       setAiSuggestions([
-        'A vibrant celebration scene with colorful balloons, confetti, and joyful characters dancing under sparkling party lights in watercolor style',
-        'A personalized cartoon portrait featuring the recipient surrounded by their favorite hobbies, pets, and meaningful symbols in bright cheerful colors',
-        'A serene nature-inspired design with blooming wildflowers, butterflies, and soft pastel sunset creating a peaceful, dreamy atmosphere',
-        'Modern geometric patterns in bold jewel tones creating an elegant abstract design with gold accents and sophisticated minimalist appeal'
+        'Loves morning coffee, weekend hikes with the dog, and collecting succulents for the apartment',
+        'Board game enthusiast, makes amazing chocolate chip cookies, always has the best book recommendations',
+        'Our Sunday brunch tradition, terrible at karaoke but does it anyway, gives the best hugs',
+        'Marathon runner, sushi connoisseur, has traveled to 15 countries and counting'
       ]);
     } finally {
       setIsGenerating(false);

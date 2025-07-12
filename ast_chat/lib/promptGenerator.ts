@@ -172,6 +172,39 @@ REFERENCE PHOTO INSTRUCTIONS:
   private static readonly QR_CODE_SPACE = `
 - IMPORTANT: Leave the bottom-right corner area (approximately 1 inch square) completely clear and undecorated for QR code placement`.trim();
 
+  // Helper method to extract and format personal details from the theme
+  private static extractPersonalDetails(theme: string): string {
+    // Check if the theme contains personal details (interests, hobbies, etc.)
+    const personalKeywords = [
+      'loves', 'enjoys', 'likes', 'favorite', 'always', 'never', 
+      'collects', 'plays', 'makes', 'bakes', 'cooks', 'reads',
+      'watches', 'listens', 'travels', 'hikes', 'runs', 'swims',
+      'coffee', 'tea', 'sushi', 'pizza', 'chocolate', 'wine',
+      'dog', 'cat', 'pet', 'garden', 'music', 'movie', 'book',
+      'weekend', 'morning', 'evening', 'tradition', 'memory',
+      'joke', 'laugh', 'smile', 'hobby', 'passion', 'interest'
+    ];
+    
+    const themeWords = theme.toLowerCase().split(/\s+/);
+    const hasPersonalDetails = personalKeywords.some(keyword => 
+      themeWords.includes(keyword) || theme.toLowerCase().includes(keyword)
+    );
+    
+    if (hasPersonalDetails) {
+      return `\nPERSONAL DETAILS TO INCORPORATE:
+${theme}
+
+IMPORTANT: These personal details should be creatively woven into the card design:
+- If they love coffee, show a cozy coffee scene
+- If they enjoy hiking, include mountain or trail elements  
+- If they have pets mentioned, include those specific pets
+- Transform interests into visual elements (e.g., "loves sushi" = sushi illustrations)
+- Make the card feel personally crafted for someone with these specific interests`;
+    }
+    
+    return '';
+  }
+
   // Generate prompts for all card sections with AI (includes images)
   static async generateCardPromptsWithAI(config: CardConfig): Promise<CardPrompts> {
     // For now, just return the regular prompts
@@ -244,6 +277,9 @@ Unique ID: ${uniqueId}`.trim();
       }
     }
 
+    // Extract personal details if present
+    const personalDetails = this.extractPersonalDetails(effectivePrompt);
+
     let prompt = `You are an expert AI greeting card designer. Create a front cover prompt for a ${cardTypeForPrompt} greeting card.
 
 CARD CONTEXT:
@@ -253,6 +289,7 @@ Tone: ${config.toneLabel} - ${config.toneDescription}
 ${config.toField ? `To: ${config.toField}` : ''}
 ${config.fromField ? `From: ${config.fromField}` : ''}
 ${config.relationshipField ? `Relationship: ${config.toField || 'The recipient'} is ${config.fromField || 'the sender'}'s ${config.relationshipField}` : ''}
+${personalDetails}
 
 ${config.referenceImageUrls?.length && config.photoReferences?.length ? `REFERENCE PHOTOS (${config.referenceImageUrls.length} attached):
 ${config.photoReferences.map((ref, idx) => `- Photo ${idx + 1}: ${ref.description || 'No description provided'}`).join('\n')}
@@ -281,6 +318,9 @@ Return ONLY the front cover prompt as plain text.`;
     const cardTypeForPrompt = config.customCardType || config.cardType;
     const effectivePrompt = config.theme || `A beautiful ${cardTypeForPrompt} card with ${config.toneDescription} style`;
 
+    // Extract personal details to weave into the message
+    const personalDetails = this.extractPersonalDetails(effectivePrompt);
+
     // Build relationship context if available (for message tone/content)
     let relationshipContext = '';
     
@@ -292,6 +332,7 @@ Return ONLY the front cover prompt as plain text.`;
     return `Create a ${config.toneDescription} message for a ${cardTypeForPrompt} greeting card.
 
 Card Theme/Description: "${effectivePrompt}"
+${personalDetails ? '\nPersonal Details: Use these interests and traits to make the message more personal and meaningful.' : ''}
 ${config.toField ? `Recipient: ${config.toField}` : "Recipient: [not specified]"}
 ${config.fromField ? `Sender: ${config.fromField}` : "Sender: [not specified]"}
 Card Tone: ${config.toneLabel} - ${config.toneDescription}${relationshipContext}
@@ -438,6 +479,9 @@ ${this.SAFETY_REQUIREMENTS}`;
     // Generate unique ID for this specific panel
     const uniqueId = uuidv4();
     
+    // Extract personal details if present
+    const personalDetails = this.extractPersonalDetails(theme);
+    
     // Build context section
     let contextSection = '';
     if (config.toField || config.fromField || config.relationshipField) {
@@ -457,7 +501,7 @@ ${this.SAFETY_REQUIREMENTS}`;
       photoContext += '\n\nTransform these people into cartoon/illustrated characters matching the descriptions above.';
     }
     
-    let prompt = `Create a beautiful front cover for a ${cardType} greeting card. ${theme}.${contextSection}${photoContext}
+    let prompt = `Create a beautiful front cover for a ${cardType} greeting card. ${theme}.${contextSection}${photoContext}${personalDetails}
     
 Include appropriate greeting text for a ${cardType} card${config.toField ? ` (can optionally include "${config.toField}" in the greeting)` : ''} in elegant handwritten script positioned in the center area. ${styleModifier} ${this.LAYOUT_REQUIREMENTS} IMPORTANT: Do NOT include "from" or sender information on the front cover. Unique ID: ${uniqueId}`;
     

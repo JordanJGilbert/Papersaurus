@@ -350,5 +350,38 @@
     "label": "card_image_generation_progress",
     "description": "The screenshot displays the progress of generating card images, indicating that it is 12% complete. The process is happening in parallel.",
     "size": 28801
+  },
+  "8bebec0f-0f19-4a35-acdf-2fe808121453": {
+    "filename": "8bebec0f-0f19-4a35-acdf-2fe808121453.jpg",
+    "path": "/var/www/flask_app/claude_attachments/8bebec0f-0f19-4a35-acdf-2fe808121453.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_55de4ee2-ed5e-4a6c-a176-83d301eab523&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752288156347,
+    "message_id": "+17145986105_1752288156347",
+    "label": "vibecarding_greeting_card_ideas",
+    "description": "A screenshot of the VibeCarding app displaying AI-generated greeting card ideas based on interests and hobbies.",
+    "size": 143928
+  },
+  "2ff3f839-843c-4ef1-903c-6fc472070146": {
+    "filename": "2ff3f839-843c-4ef1-903c-6fc472070146.jpg",
+    "path": "/var/www/flask_app/claude_attachments/2ff3f839-843c-4ef1-903c-6fc472070146.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_b34b1613-e29b-4dd4-ae91-586b4c2eaa18&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752288416687,
+    "message_id": "+17145986105_1752288416687",
+    "label": "vibecarding_upload_photo_interface",
+    "description": "A screenshot of the VibeCarding website interface for uploading photos to create cartoon characters. It shows the prompt to add a photo and provide character style instructions.",
+    "size": 126749
+  },
+  "e911a86b-482d-4256-afd9-0d15989ee0f2": {
+    "filename": "e911a86b-482d-4256-afd9-0d15989ee0f2.jpg",
+    "path": "/var/www/flask_app/claude_attachments/e911a86b-482d-4256-afd9-0d15989ee0f2.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_b2145464-a2c6-48ff-a18a-e898f28f720e&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752289036881,
+    "message_id": "+17145986105_1752289036881",
+    "label": "vibecarding_image_generation_screen",
+    "description": "This screenshot shows the VibeCarding app during the image generation process. It shows a progress bar and generation tips for users.",
+    "size": 124608
   }
 }

@@ -398,14 +398,14 @@ export default function Step1CardBasics({
           Reference Photos (Optional)
         </label>
         
-        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl p-4 sm:p-6 border border-indigo-200 dark:border-indigo-800">
+        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl p-3 sm:p-6 border border-indigo-200 dark:border-indigo-800">
           <div className="flex items-start gap-3">
             <Wand2 className="w-6 h-6 text-indigo-600 dark:text-indigo-400 mt-0.5 flex-shrink-0" />
             <div className="flex-1">
-              <h4 className="font-medium text-indigo-900 dark:text-indigo-100 mb-2">
+              <h4 className="font-medium text-indigo-900 dark:text-indigo-100 mb-1 text-sm sm:text-base">
                 Upload photos to create cartoon characters!
               </h4>
-              <p className="text-sm text-indigo-700 dark:text-indigo-300 mb-4">
+              <p className="text-xs sm:text-sm text-indigo-700 dark:text-indigo-300 mb-3">
                 Add photos of people to include them as personalized cartoon characters in your card
               </p>
               
@@ -435,13 +435,13 @@ export default function Step1CardBasics({
                   {/* Display uploaded images with description inputs */}
                   <div className="space-y-4">
                     {(referenceImageUrlsFromStudio.length > 0 ? referenceImageUrlsFromStudio : formData.referenceImageUrls).map((url, index) => (
-                      <div key={index} className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-indigo-200 dark:border-indigo-700">
-                        <div className="flex gap-3">
+                      <div key={index} className="bg-white dark:bg-gray-800 rounded-lg p-2 sm:p-4 border border-indigo-200 dark:border-indigo-700">
+                        <div className="flex gap-2 sm:gap-3">
                           <div className="relative flex-shrink-0">
                             <img
                               src={url}
                               alt={`Reference ${index + 1}`}
-                              className="w-24 h-24 object-cover rounded-lg border-2 border-indigo-200 dark:border-indigo-700"
+                              className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg border-2 border-indigo-200 dark:border-indigo-700"
                             />
                             <Button
                               variant="destructive"
@@ -452,8 +452,8 @@ export default function Step1CardBasics({
                               <X className="w-3 h-3" />
                             </Button>
                           </div>
-                          <div className="flex-1">
-                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+                          <div className="flex-1 min-w-0">
+                            <label className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
                               Who's in this photo? <span className="text-red-500">*</span>
                             </label>
                             <Input
@@ -462,7 +462,7 @@ export default function Step1CardBasics({
                                 : "e.g., my daughter Sarah and son Mike"}
                               value={photoReferences[index]?.description || ''}
                               onChange={(e) => updatePhotoDescription?.(index, e.target.value)}
-                              className={`text-sm ${!photoReferences[index]?.description ? 'border-red-300' : ''}`}
+                              className={`w-full text-sm ${!photoReferences[index]?.description ? 'border-red-300' : ''}`}
                               style={{ fontSize: '16px' }}
                               required
                             />
@@ -484,7 +484,7 @@ export default function Step1CardBasics({
                   
                   {/* Add more photos button */}
                   {formData.referenceImageUrls.length < 4 && (
-                    <div className="mt-3">
+                    <div className="mt-2">
                       <input
                         type="file"
                         accept="image/*"
@@ -505,8 +505,8 @@ export default function Step1CardBasics({
                   )}
                   
                   {/* Transformation Instructions */}
-                  <div className="mt-4">
-                    <label className="text-sm font-medium text-indigo-800 dark:text-indigo-200 mb-2 block">
+                  <div className="mt-3">
+                    <label className="text-xs sm:text-sm font-medium text-indigo-800 dark:text-indigo-200 mb-1 block">
                       Character Style Instructions (Optional)
                     </label>
                     <Textarea
@@ -526,9 +526,9 @@ export default function Step1CardBasics({
       </div>
 
       {/* Quick Tips - Mobile Optimized */}
-      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
-        <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">💡 Tips</h4>
-        <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
+      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-2 sm:p-3 border border-blue-200 dark:border-blue-800">
+        <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-1 text-sm">💡 Tips</h4>
+        <ul className="text-xs sm:text-sm text-blue-800 dark:text-blue-200 space-y-0.5">
           <li>• Pick your card type and tone</li>
           <li>• To/From fields help personalize</li>
           <li>• All fields are optional</li>
