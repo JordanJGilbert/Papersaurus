@@ -1,1 +1,6 @@
-{}
+{
+  "lib/promptGenerator.ts -> ../hooks/cardStudio/utils": {
+    "id": "lib/promptGenerator.ts -> ../hooks/cardStudio/utils",
+    "files": []
+  }
+}
