@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { CardFormData } from "@/hooks/useCardForm";
 import { GeneratedCard } from "@/hooks/cardStudio/constants";
+import { storage } from "@/lib/storageManager";
 
 interface CardWizardEffectsProps {
   cardStudio: any;
@@ -23,10 +24,46 @@ export function CardWizardEffects({
   isResumingDraft,
   isRestoringJobs
 }: CardWizardEffectsProps) {
+  // Track the current session ID to update the same session
+  const [currentDraftSessionId, setCurrentDraftSessionId] = useState<string | null>(null);
+  const [lastSavedDraftCount, setLastSavedDraftCount] = useState<number>(0);
   // Check for pending jobs on component mount but don't auto-navigate
   useEffect(() => {
     const restorePendingJobs = async () => {
       console.log('🔄 CardWizardEffects: Starting checkPendingJobs...');
+      
+      // First check for saved draft session
+      let currentSession = null;
+      try {
+        currentSession = JSON.parse(localStorage.getItem('vibe-current-draft-session') || 'null');
+      } catch {
+        currentSession = null;
+      }
+      if (currentSession && currentSession.draftCards && currentSession.draftCards.length > 0) {
+        console.log('🔄 Found saved draft session with', currentSession.draftCards.length, 'drafts');
+        
+        // Restore draft cards
+        cardStudio.setDraftCards(currentSession.draftCards);
+        cardStudio.setIsDraftMode(true);
+        
+        // Restore form data if needed
+        if (currentSession.formData) {
+          cardForm.updateFormData(currentSession.formData);
+        }
+        
+        // Navigate to Step 5 to show the drafts
+        console.log('🔄 Restoring to Step 5 with saved drafts');
+        for (let i = 1; i <= 4; i++) {
+          if (!wizardState.completedSteps.includes(i)) wizardState.markStepCompleted(i);
+        }
+        wizardState.updateCurrentStep(5);
+        
+        // Set the current session ID for updates
+        setCurrentDraftSessionId(currentSession.id);
+        setLastSavedDraftCount(currentSession.draftCards.length);
+        return; // Skip pending jobs check if we restored a draft session
+      }
+      
       await cardStudio.checkPendingJobs();
       
       // Only auto-navigate if there's an active generation in progress
@@ -98,10 +135,6 @@ export function CardWizardEffects({
   }, [cardStudio.draftCards.length, cardStudio.isGenerating, isRestoringJobs]);
 
   // Auto-save drafts when user creates draft cards
-  // Track the current session ID to update the same session
-  const [currentDraftSessionId, setCurrentDraftSessionId] = useState<string | null>(null);
-  const [lastSavedDraftCount, setLastSavedDraftCount] = useState<number>(0);
-  
   useEffect(() => {
     // Only save if we have draft cards and not resuming or restoring
     if (cardStudio.draftCards.length > 0) {

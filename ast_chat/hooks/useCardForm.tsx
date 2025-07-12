@@ -49,7 +49,7 @@ const defaultFormData: CardFormData = {
   isHandwrittenMessage: false,
 
   // Step 3: Personalization
-  selectedArtisticStyle: "watercolor",
+  selectedArtisticStyle: "ai-smart-style",
   customStyleDescription: "",
   referenceImages: [],
   referenceImageUrls: [],

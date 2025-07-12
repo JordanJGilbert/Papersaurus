@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from 'uuid';
-import { PromptGenerator, DraftConfig, FinalFromDraftConfig } from '@/lib/promptGenerator';
+import { PromptGenerator, DraftConfig, FinalFromDraftConfig, CardConfig } from '@/lib/promptGenerator';
 import { GeneratedCard, artisticStyles, paperSizes, cardTones, PhotoReference } from './constants';
 import { chatWithAI } from './utils';
 
@@ -67,6 +67,9 @@ export function useDraftGeneration(props: DraftGenerationProps) {
       toField,
       fromField,
       selectedPaperSize,
+      finalCardMessage,
+      isHandwrittenMessage,
+      isFrontBackOnly,
       saveJobToStorage,
       subscribeToJob,
       startElapsedTimeTracking
@@ -134,6 +137,17 @@ export function useDraftGeneration(props: DraftGenerationProps) {
         try {
           console.log(`🎨 Starting draft variation ${index + 1}`);
           
+          // Validate required props
+          if (!selectedDraftModel) {
+            throw new Error('selectedDraftModel is required but not provided');
+          }
+          if (!selectedPaperSize) {
+            throw new Error('selectedPaperSize is required but not provided');
+          }
+          if (!userEmail) {
+            throw new Error('userEmail is required but not provided');
+          }
+          
           // For smart style, use predefined styles
           let styleOverride: string | undefined = undefined;
           let styleLabel: string | undefined = undefined;
@@ -145,9 +159,10 @@ export function useDraftGeneration(props: DraftGenerationProps) {
             styleLabel = styleLabels[index];
           }
           
-          // Generate front cover prompt
+          // Generate only front cover prompt for draft
           const selectedStyle = artisticStyles.find(style => style.id === (styleOverride || selectedArtisticStyle));
           
+          // Use draft prompt generation config for front cover only
           const draftConfig: DraftConfig = {
             cardType: selectedType,
             customCardType: customCardType,
@@ -161,68 +176,72 @@ export function useDraftGeneration(props: DraftGenerationProps) {
             artisticStyle: selectedStyle,
             referenceImageUrls: referenceImageUrls,
             photoReferences: props.photoReferences,
-            isDraftVariation: selectedArtisticStyle === "smart",
+            isDraftVariation: selectedArtisticStyle === "ai-smart-style",
             variationIndex: index
           };
 
-          const { prompt: frontCoverPromptQuery, images } = PromptGenerator.generateDraftPromptWithImages(draftConfig);
-          
-          
-          const frontCoverPrompt = await chatWithAI(frontCoverPromptQuery, {
-            model: "gemini-2.5-pro",
-            attachments: images
-          });
+          // Generate creative front cover prompt using AI
+          const frontCoverPrompt = await PromptGenerator.generateCreativeDraftPrompt(draftConfig);
 
           if (!frontCoverPrompt?.trim()) {
             throw new Error("Failed to generate front cover prompt");
           }
 
-          // Enhance with reference image instructions
-          let enhancedFrontCoverPrompt = frontCoverPrompt.trim();
-          enhancedFrontCoverPrompt = PromptGenerator.enhancePromptWithReferencePhotos(
-            enhancedFrontCoverPrompt,
-            referenceImageUrls.length > 0,
-            selectedDraftModel
-          );
-
-          // Generate the image
+          // Generate the images
           const jobId = `draft-${index}-${uuidv4()}`;
           const inputImages: string[] = [];
           if (referenceImageUrls.length > 0 && selectedDraftModel === "gpt-image-1") {
             inputImages.push(...referenceImageUrls);
           }
 
+          // Log the request payload for debugging
+          const requestPayload = {
+            jobId,
+            prompts: {
+              frontCover: frontCoverPrompt
+              // Only send front cover prompt for drafts
+            },
+            config: {
+              userNumber: "+17145986105",
+              modelVersion: selectedDraftModel,
+              aspectRatio: paperSizes.find(size => size.id === selectedPaperSize)?.aspectRatio || "9:16",
+              quality: "medium", // Use medium quality for drafts (better than low, faster than high)
+              outputFormat: "jpeg",
+              outputCompression: 85, // Slightly lower compression for drafts
+              moderation: "low",
+              dimensions: paperSizes.find(size => size.id === selectedPaperSize)?.dimensions || "1024x1536",
+              isFrontBackOnly: true, // Force front-only for drafts
+              userEmail,
+              cardType: cardTypeForPrompt,
+              toField,
+              fromField,
+              isDraftMode: true,
+              ...(inputImages.length > 0 && { 
+                input_images: inputImages,
+                input_images_mode: "front_cover_only"
+              })
+            }
+          };
+
+          console.log(`📦 Draft ${index + 1} request payload:`, {
+            jobId,
+            promptsExist: !!frontCoverPrompt,
+            promptKeys: ['frontCover'],
+            modelVersion: selectedDraftModel,
+            paperSize: selectedPaperSize,
+            email: userEmail
+          });
+
           const response = await fetch('/api/generate-card-async', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              jobId,
-              prompts: { frontCover: enhancedFrontCoverPrompt },
-              config: {
-                userNumber: "+17145986105",
-                modelVersion: selectedDraftModel,
-                aspectRatio: paperSizes.find(size => size.id === selectedPaperSize)?.aspectRatio || "9:16",
-                quality: "low",
-                outputFormat: "jpeg",
-                outputCompression: 100,
-                moderation: "low",
-                dimensions: paperSizes.find(size => size.id === selectedPaperSize)?.dimensions || "1024x1536",
-                isFrontBackOnly: true,
-                userEmail,
-                cardType: cardTypeForPrompt,
-                toField,
-                fromField,
-                isDraftMode: true,
-                ...(inputImages.length > 0 && { 
-                  input_images: inputImages,
-                  input_images_mode: "front_cover_only"
-                })
-              }
-            })
+            body: JSON.stringify(requestPayload)
           });
 
           if (!response.ok) {
-            throw new Error(`Server error: ${response.status}`);
+            const errorText = await response.text();
+            console.error(`Server error response for draft ${index + 1}:`, errorText);
+            throw new Error(`Server error: ${response.status} - ${errorText}`);
           }
 
           const result = await response.json();
@@ -238,7 +257,8 @@ export function useDraftGeneration(props: DraftGenerationProps) {
             isDraft: true,
             draftIndex: index,
             styleInfo: styleOverride ? { styleName: styleOverride, styleLabel: styleLabel } : undefined,
-            frontCoverPrompt: enhancedFrontCoverPrompt,
+            frontCoverPrompt: frontCoverPrompt,
+            generatedPrompts: { frontCover: frontCoverPrompt }, // Store only front cover prompt
             userEmail,
             selectedType,
             selectedTone,
@@ -252,6 +272,11 @@ export function useDraftGeneration(props: DraftGenerationProps) {
 
         } catch (error) {
           console.error(`❌ Draft variation ${index + 1} failed:`, error);
+          console.error('Full error details:', {
+            message: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : 'No stack trace',
+            error: error
+          });
           toast.error(`Draft variation ${index + 1} failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       });
@@ -314,7 +339,7 @@ export function useDraftGeneration(props: DraftGenerationProps) {
     setIsDraftMode(false); // Switch out of draft mode for final generation
     setSelectedDraftIndex(displayIndex);
     startElapsedTimeTracking('final');
-    setGenerationProgress("🎨 Creating high-quality version of your selected design...");
+    setGenerationProgress("🎨 Creating the complete card based on your selected front cover...");
 
     try {
       const jobId = uuidv4();

@@ -17,8 +17,8 @@ export const cardTones = [
 export const artisticStyles = [
   {
     id: "ai-smart-style", 
-    label: "✨ Smart Style", 
-    description: "Let our experts choose the perfect style for your card",
+    label: "🎯 Style Sampler", 
+    description: "Preview your card in 5 curated styles - perfect for finding your favorite",
     promptModifier: ""
   },
   {

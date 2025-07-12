@@ -16,10 +16,10 @@ interface Step3Props {
 const artisticStyles = [
   {
     id: "ai-smart-style", 
-    label: "✨ Smart Style", 
-    description: "Let our experts choose the perfect style for your card",
+    label: "🎯 Style Sampler (Recommended)", 
+    description: "Preview your card in 5 curated styles - perfect for finding your favorite",
     color: "from-purple-100 to-pink-100 dark:from-purple-900 dark:to-pink-900",
-    preview: "✨"
+    preview: "🎯"
   },
   {
     id: "custom", 

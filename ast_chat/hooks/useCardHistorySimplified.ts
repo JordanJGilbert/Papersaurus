@@ -16,10 +16,9 @@ export interface CardHistoryItem {
 
 export function useCardHistory() {
   const [cardHistory, setCardHistory] = useState<CardHistoryItem[]>([]);
-  // Draft sessions no longer supported in simplified version
-  const draftSessions: any[] = [];
+  const [draftSessions, setDraftSessions] = useState<any[]>([]);
 
-  // Load recent cards on mount
+  // Load recent cards and draft sessions on mount
   useEffect(() => {
     const recent = storage.getRecentCards();
     const historyItems: CardHistoryItem[] = recent.map(card => ({
@@ -33,6 +32,16 @@ export function useCardHistory() {
       thumbnailUrl: card.preview
     }));
     setCardHistory(historyItems);
+    
+    // Load draft sessions from localStorage directly
+    if (typeof window !== 'undefined') {
+      try {
+        const sessions = JSON.parse(localStorage.getItem('vibe-draft-sessions') || '[]');
+        setDraftSessions(sessions);
+      } catch {
+        setDraftSessions([]);
+      }
+    }
   }, []);
 
   // Add a new card to history
@@ -56,10 +65,77 @@ export function useCardHistory() {
     setCardHistory([]);
   };
 
-  // For compatibility - these functions don't do anything in simplified version
-  const saveDraftSession = () => {};
-  const resumeDraftSession = () => {};
-  const removeDraftSession = () => {};
+  // Draft session management
+  const saveDraftSession = (formData: any, draftCards: any[], selectedIndex: number, sessionId?: string) => {
+    if (typeof window === 'undefined') return sessionId || '';
+    
+    const id = sessionId || `draft_${Date.now()}`;
+    const session = {
+      id,
+      formData,
+      draftCards: draftCards.filter(Boolean), // Only save completed drafts
+      selectedIndex,
+      savedAt: new Date().toISOString()
+    };
+    
+    try {
+      // Save current session
+      localStorage.setItem('vibe-current-draft-session', JSON.stringify(session));
+      
+      // Update draft sessions list
+      const sessions = JSON.parse(localStorage.getItem('vibe-draft-sessions') || '[]');
+      const existingIndex = sessions.findIndex((s: any) => s.id === id);
+      if (existingIndex >= 0) {
+        sessions[existingIndex] = session;
+      } else {
+        sessions.unshift(session);
+      }
+      // Keep only the most recent session
+      const updatedSessions = sessions.slice(0, 1);
+      localStorage.setItem('vibe-draft-sessions', JSON.stringify(updatedSessions));
+      setDraftSessions(updatedSessions);
+    } catch (e) {
+      console.error('Failed to save draft session:', e);
+    }
+    
+    return id;
+  };
+  
+  const resumeDraftSession = (sessionId: string) => {
+    if (typeof window === 'undefined') return null;
+    
+    try {
+      // Check current session first
+      const currentSession = JSON.parse(localStorage.getItem('vibe-current-draft-session') || 'null');
+      if (currentSession && (sessionId === 'current' || currentSession.id === sessionId)) {
+        return currentSession;
+      }
+      
+      // Check sessions list
+      const sessions = JSON.parse(localStorage.getItem('vibe-draft-sessions') || '[]');
+      return sessions.find((s: any) => s.id === sessionId);
+    } catch {
+      return null;
+    }
+  };
+  
+  const removeDraftSession = (sessionId: string) => {
+    if (typeof window === 'undefined') return;
+    
+    try {
+      const currentSession = JSON.parse(localStorage.getItem('vibe-current-draft-session') || 'null');
+      if (currentSession && currentSession.id === sessionId) {
+        localStorage.removeItem('vibe-current-draft-session');
+      }
+      
+      const sessions = JSON.parse(localStorage.getItem('vibe-draft-sessions') || '[]');
+      const filtered = sessions.filter((s: any) => s.id !== sessionId);
+      localStorage.setItem('vibe-draft-sessions', JSON.stringify(filtered));
+      setDraftSessions(filtered);
+    } catch (e) {
+      console.error('Failed to remove draft session:', e);
+    }
+  };
 
   // Alias for backward compatibility
   const addCompletedCard = (card: any) => {
@@ -88,8 +164,8 @@ export function useCardHistory() {
     removeDraftSession,
     // Add these for backward compatibility
     hasCompletedCards: cardHistory.length > 0,
-    hasDraftSessions: false,  // No longer support draft sessions
+    hasDraftSessions: draftSessions.length > 0,
     totalCards: cardHistory.length,
-    totalDrafts: 0,
+    totalDrafts: draftSessions.length,
   };
 }

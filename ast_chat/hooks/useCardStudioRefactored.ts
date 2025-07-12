@@ -36,7 +36,7 @@ export function useCardStudio() {
   
   // Advanced options state
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [selectedArtisticStyle, setSelectedArtisticStyle] = useState<string>("watercolor");
+  const [selectedArtisticStyle, setSelectedArtisticStyle] = useState<string>("ai-smart-style");
   const [customStyleDescription, setCustomStyleDescription] = useState<string>("");
   const [selectedImageModel, setSelectedImageModel] = useState<string>("gpt-image-1");
   const [selectedDraftModel, setSelectedDraftModel] = useState<string>("gpt-image-1");
@@ -254,12 +254,15 @@ export function useCardStudio() {
           id: `draft-${draftIndex + 1}-${Date.now()}`,
           prompt: cardData.prompt || `Draft Variation ${draftIndex + 1}`,
           frontCover: cardData.frontCover || "",
-          backCover: "",
-          leftPage: "",
-          rightPage: "",
+          backCover: cardData.backCover || "",
+          leftPage: cardData.leftInterior || cardData.leftPage || "",
+          rightPage: cardData.rightInterior || cardData.rightPage || "",
           createdAt: new Date(),
-          generatedPrompts: {
-            frontCover: cardData.generatedPrompts?.frontCover || ""
+          generatedPrompts: cardData.generatedPrompts || {
+            frontCover: cardData.generatedPrompts?.frontCover || "",
+            backCover: cardData.generatedPrompts?.backCover || "",
+            leftInterior: cardData.generatedPrompts?.leftInterior || "",
+            rightInterior: cardData.generatedPrompts?.rightInterior || ""
           },
           styleInfo: styleInfo
         };

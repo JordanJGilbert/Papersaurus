@@ -253,6 +253,59 @@ Unique ID: ${uniqueId}`.trim();
       images: config.referenceImageUrls || []
     };
   }
+
+  // Generate creative prompt using AI (Gemini 2.5 Pro)
+  static async generateCreativeDraftPrompt(config: DraftConfig): Promise<string> {
+    // Import chatWithAI dynamically to avoid circular dependencies
+    const { chatWithAI } = await import('../hooks/cardStudio/utils');
+    
+    // Generate the instruction prompt
+    const instructionPrompt = this.generateDraftPrompt(config);
+    
+    // System prompt for creative image generation
+    const systemPrompt = `You are an expert creative director for greeting cards. Your job is to take card requirements and create a vivid, detailed image generation prompt that will result in a beautiful, unique greeting card design. Focus on visual creativity, specific details, and artistic composition.
+
+IMPORTANT: When reference photos are provided:
+- DO NOT describe physical features (hair, eye color, facial features) - the AI can see these from the photos
+- DO describe: actions, poses, expressions, clothing (to maintain consistency), creative additions (props, activities)
+- Focus on the creative scene, composition, and how the people interact with the card's theme`;
+    
+    try {
+      // Call Gemini 2.5 Pro to generate the creative prompt
+      const creativePrompt = await chatWithAI(instructionPrompt, {
+        systemPrompt,
+        model: 'gemini-2.5-pro',
+        attachments: config.referenceImageUrls
+      });
+      
+      return creativePrompt;
+    } catch (error) {
+      console.error('Failed to generate creative prompt with AI, using fallback:', error);
+      // Fallback to a simpler direct prompt if AI fails
+      return this.generateFallbackCreativePrompt(config);
+    }
+  }
+  
+  // Fallback method for generating creative prompts without AI
+  private static generateFallbackCreativePrompt(config: DraftConfig): string {
+    const cardTypeForPrompt = config.customCardType || config.cardType;
+    const effectivePrompt = config.theme || `A beautiful ${cardTypeForPrompt} card`;
+    const styleModifier = config.artisticStyle?.promptModifier || '';
+    
+    let prompt = `Create a ${cardTypeForPrompt} greeting card front cover. ${effectivePrompt}. `;
+    
+    if (config.toField) {
+      prompt += `Include "${config.toField}" in the greeting text. `;
+    }
+    
+    prompt += `${styleModifier}. Flat 2D artwork suitable for printing.`;
+    
+    if (config.referenceImageUrls?.length) {
+      prompt += ` Transform the people in the reference photos into cartoon/illustrated characters.`;
+    }
+    
+    return prompt;
+  }
   
   // Generate prompt for draft cards (front cover only)
   static generateDraftPrompt(config: DraftConfig): string {
@@ -302,11 +355,13 @@ Front Cover Requirements:
 - Include appropriate greeting text for a ${cardTypeForPrompt} card${config.toField ? ` (can optionally include "${config.toField}" in the greeting)` : ''}
 - Position text safely in center area (avoid top/bottom 10%)
 - Use beautiful, readable handwritten cursive script
-- ${config.referenceImageUrls?.length ? 'IMPORTANT: Analyze the attached photos and ' + this.getEnhancedReferencePhotoInstructions(config.photoReferences) : 'Create charming cartoon-style figures if needed'}
+- ${config.referenceImageUrls?.length ? 'IMPORTANT: Reference photos are attached. Transform the people into cartoon/illustrated versions. Refer to them by name or position (e.g., "Lao Lao" or "person on left") rather than describing physical features. The image AI will see their appearance from the photos.' : 'Create charming cartoon-style figures if needed'}
 - Be creative and unique, avoid generic designs
 - Flat 2D artwork for printing
 - Style: ${styleModifier}
 - IMPORTANT: Do NOT include "from" or sender information on the front cover
+
+${config.referenceImageUrls?.length ? 'PHOTO REFERENCE NOTE: Since photos are attached, focus your prompt on the creative scene, actions, and composition rather than physical descriptions of people.' : ''}
 
 Return ONLY the front cover prompt as plain text.`;
 

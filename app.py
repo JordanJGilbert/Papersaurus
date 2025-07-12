@@ -36,7 +36,7 @@ from PIL import Image
 from PIL import Image
 
 # WebSocket support
-from flask_socketio import SocketIO, emit, join_room, leave_room
+from flask_socketio import SocketIO, emit, join_room, leave_room, rooms
 
 try:
     import pillow_heif

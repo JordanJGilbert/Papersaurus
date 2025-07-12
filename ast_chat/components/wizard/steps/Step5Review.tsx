@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Check, Edit, Clock, CheckCircle, Sparkles } from "lucide-react";
+import { Check, Edit, Clock, CheckCircle, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
 import { CardFormData } from "@/hooks/useCardForm";
 import { Separator } from "@/components/ui/separator";
 
@@ -44,6 +44,20 @@ export default function Step5Review({
   onSelectDraft 
 }: Step5Props) {
   const [isReady, setIsReady] = useState(false);
+  const [currentPanels, setCurrentPanels] = useState<number[]>([0, 0, 0, 0, 0]);
+  
+  const panelNames = ['Front', 'Left Interior', 'Right Interior', 'Back'];
+  
+  const handlePanelChange = (draftIndex: number, direction: 'next' | 'prev') => {
+    setCurrentPanels(prev => {
+      const newPanels = [...prev];
+      const current = prev[draftIndex];
+      newPanels[draftIndex] = direction === 'next' 
+        ? (current + 1) % 4 
+        : current === 0 ? 3 : current - 1;
+      return newPanels;
+    });
+  };
 
   // Mark step as complete when user is ready to generate
   useEffect(() => {
@@ -84,9 +98,6 @@ export default function Step5Review({
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
               Creating Your Card
             </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              {generationProgress || "Generating your personalized card..."}
-            </p>
           </div>
         </div>
 
@@ -197,7 +208,7 @@ export default function Step5Review({
             ) : (
               <>
                 <span className="text-lg">🎨</span>
-                <span>Create 5 Front Cover Options</span>
+                <span>Create 5 Complete Card Designs</span>
               </>
             )}
           </button>
@@ -211,12 +222,11 @@ export default function Step5Review({
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
               {isGenerating ? "Preview & Select as They're Ready!" : "Choose Your Favorite Design"}
             </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              {isGenerating 
-                ? `${draftCards.length}/5 front cover variations complete... You can select one now to proceed!`
-                : "5 front cover variations created with low quality for fast preview. Select your favorite to generate the complete high-quality card!"
-              }
-            </p>
+            {!isGenerating && (
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                5 complete card variations created for preview. Select your favorite to generate the high-quality version!
+              </p>
+            )}
           </div>
           
           {/* Progress Bar when still generating */}
@@ -280,15 +290,53 @@ export default function Step5Review({
                   >
                     {card ? (
                       <>
-                        {/* Single front cover preview */}
+                        {/* Multi-panel preview with navigation */}
                         <div className="aspect-[2/3] relative overflow-hidden rounded border mb-3">
                           <img
-                            src={card.frontCover}
-                            alt={`Design ${displayIndex + 1}`}
+                            src={
+                              currentPanels[displayIndex] === 0 ? card.frontCover :
+                              currentPanels[displayIndex] === 1 ? (card.leftInterior || card.leftPage) :
+                              currentPanels[displayIndex] === 2 ? (card.rightInterior || card.rightPage) :
+                              card.backCover
+                            }
+                            alt={`Design ${displayIndex + 1} - ${panelNames[currentPanels[displayIndex]]}`}
                             className="w-full h-full object-cover"
                           />
+                          
+                          {/* Panel navigation arrows */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePanelChange(displayIndex, 'prev');
+                            }}
+                            className="absolute left-1 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white rounded-full p-1 shadow-md transition-colors"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePanelChange(displayIndex, 'next');
+                            }}
+                            className="absolute right-1 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white rounded-full p-1 shadow-md transition-colors"
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                          
+                          {/* Panel indicator dots */}
+                          <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1">
+                            {[0, 1, 2, 3].map(idx => (
+                              <div
+                                key={idx}
+                                className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                                  currentPanels[displayIndex] === idx ? 'bg-white' : 'bg-white/50'
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          
                           {selectedDraftIndex === displayIndex && (
-                            <div className="absolute inset-0 bg-purple-600/20 flex items-center justify-center">
+                            <div className="absolute inset-0 bg-purple-600/20 flex items-center justify-center pointer-events-none">
                               <div className="bg-white rounded-full p-2">
                                 <CheckCircle className="w-8 h-8 text-purple-600" />
                               </div>
@@ -298,7 +346,9 @@ export default function Step5Review({
                         
                         {/* Card info */}
                         <div className="text-center space-y-2">
-                          <h4 className="font-medium text-sm">Design {displayIndex + 1}</h4>
+                          <h4 className="font-medium text-sm">
+                            Design {displayIndex + 1} - {panelNames[currentPanels[displayIndex]]}
+                          </h4>
                           {formData.selectedArtisticStyle === "ai-smart-style" && card.styleInfo && (
                             <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
                               {card.styleInfo.styleLabel}
@@ -319,8 +369,8 @@ export default function Step5Review({
                               }}
                               className="w-full text-xs h-9 touch-manipulation"
                             >
-                              <span className="hidden sm:inline">Preview Design</span>
-                              <span className="sm:hidden">Preview</span>
+                              <span className="hidden sm:inline">View All Panels</span>
+                              <span className="sm:hidden">View All</span>
                             </Button>
                           </div>
                         </div>
