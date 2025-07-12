@@ -41,7 +41,6 @@ describe('Step5Review - Page Refresh During Generation', () => {
     userEmail: 'test@example.com',
     completedSteps: [1, 2, 3, 4],
     currentCardId: null,
-    photoAnalyses: [],
   };
 
   const defaultProps = {
