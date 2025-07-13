@@ -1,15 +1,20 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { CardFormData } from "@/hooks/useCardForm";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, ChevronDown } from "lucide-react";
+import CardDescriptionHelper from "../CardDescriptionHelper";
+import { chatWithAI } from "@/hooks/cardStudio/utils";
+import { PhotoReference } from "@/hooks/cardStudio/constants";
 
 interface Step3Props {
   formData: CardFormData;
   updateFormData: (updates: Partial<CardFormData>) => void;
   onStepComplete?: () => void;
+  photoReferences?: PhotoReference[];
 }
 
 // Curated artistic styles
@@ -75,8 +80,10 @@ const artisticStyles = [
 export default function Step3Personalization({ 
   formData, 
   updateFormData, 
-  onStepComplete
+  onStepComplete,
+  photoReferences = []
 }: Step3Props) {
+  const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
 
   React.useEffect(() => {
     // Auto-complete step when style is selected and valid
@@ -90,6 +97,54 @@ export default function Step3Personalization({
 
   return (
     <div className="space-y-6">
+      {/* Personalize the Artwork Section */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Personalize the Artwork (Optional)
+          </label>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsTextareaExpanded(!isTextareaExpanded)}
+            className="gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+          >
+            {isTextareaExpanded ? (
+              <>
+                <ChevronDown className="w-3 h-3" />
+                Collapse
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-3 h-3 rotate-180" />
+                Expand
+              </>
+            )}
+          </Button>
+        </div>
+        
+        <Textarea
+          placeholder="🎨 Share interests: 'loves skiing and craft beer' • Activities: 'yoga at sunrise' • Style: 'watercolor flowers' • Mood: 'cozy autumn vibes' • Colors: 'purple and gold'"
+          value={formData.prompt}
+          onChange={(e) => updateFormData({ prompt: e.target.value })}
+          rows={isTextareaExpanded ? 6 : 3}
+          className={isTextareaExpanded ? "resize-y" : "resize-none"}
+          style={{ fontSize: '16px' }}
+        />
+        
+        {/* Card Description Helper */}
+        <CardDescriptionHelper
+          formData={formData}
+          onAddToDescription={(text) => updateFormData({ prompt: text })}
+          chatWithAI={chatWithAI}
+          photoReferences={photoReferences}
+        />
+        
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+          💡 <strong>How it works:</strong> Everything you write here becomes visual elements in your card's artwork
+        </p>
+      </div>
+
       {/* Show confirmation if photos were uploaded in Step 1 */}
       {formData.referenceImageUrls.length > 0 && (
         <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
@@ -172,11 +227,12 @@ export default function Step3Personalization({
 
       {/* Tips - Mobile Optimized */}
       <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800">
-        <h4 className="font-medium text-purple-900 dark:text-purple-100 mb-2">🎨 Tips</h4>
+        <h4 className="font-medium text-purple-900 dark:text-purple-100 mb-2">🎨 Visual Design Tips</h4>
         <ul className="text-sm text-purple-800 dark:text-purple-200 space-y-1">
-          <li>• Smart Style picks the best style for your card</li>
-          <li>• Each style brings unique character to your design</li>
-          <li>• Custom style lets you describe exactly what you want</li>
+          <li>• <strong>Personalization:</strong> Add interests, activities, or specific design requests</li>
+          <li>• <strong>Style Sampler:</strong> Preview your card in 5 different artistic styles</li>
+          <li>• <strong>Custom Style:</strong> Describe exactly what artistic style you envision</li>
+          <li>• Both fields work together to create your perfect card design</li>
         </ul>
       </div>
     </div>

@@ -15,43 +15,44 @@ interface CardDescriptionHelperProps {
   photoReferences?: PhotoReference[];
 }
 
-// Contextual inspiration chips based on card type and tone - now focused on personal details
+// Contextual inspiration chips based on card type and tone - focused on visual design elements
 const getInspirationChips = (cardType: string, tone: string): string[] => {
   const chips: Record<string, string[]> = {
-    'birthday-funny': ['Coffee lover ☕', 'Dog person 🐕', 'Gamer 🎮', 'Always late ⏰', 'Dad jokes', 'Netflix addict 📺'],
-    'birthday-heartfelt': ['Family oriented 👨‍👩‍👧‍👦', 'Nature lover 🌿', 'Bookworm 📚', 'Music lover 🎵', 'Travel memories ✈️', 'Childhood friend'],
-    'birthday-romantic': ['First date spot 💕', 'Our song 🎵', 'Inside jokes 😄', 'Pet names', 'Anniversary trip', 'Favorite restaurant 🍽️'],
-    'anniversary-romantic': ['Wedding memories 💍', 'First date', 'Our favorite place', 'Inside jokes 😄', 'Pet together 🐾', 'Travel adventures ✈️'],
-    'anniversary-funny': ['Still tolerates me', 'Pizza nights 🍕', 'Netflix arguments', 'Snoring champion', 'Bad cooking', 'Game nights 🎲'],
-    'thank-you-professional': ['Great mentor', 'Team player', 'Problem solver', 'Always helpful', 'Goes extra mile', 'Inspiring leader'],
-    'thank-you-heartfelt': ['Always there', 'Best friend', 'Life saver', 'Kind heart', 'Great listener', 'True support'],
-    'holiday-funny': ['Holiday movies 🎬', 'Cookie monster 🍪', 'Gift wrapper fail', 'Ugly sweater champ', 'Carol singer', 'Light untangler'],
-    'holiday-heartfelt': ['Family traditions', 'Baking together 🧁', 'Decorating memories', 'Cozy nights', 'Holiday recipes', 'Annual photos'],
-    'congratulations-professional': ['Hard worker', 'Goal crusher', 'Team leader', 'Innovation driver', 'Detail oriented', 'Results focused'],
-    'congratulations-funny': ['Finally did it!', 'Overachiever', 'Boss mode 💪', 'Killing it', 'Next level', 'Unstoppable'],
-    'sympathy-heartfelt': ['Cherished memories', 'Always remembered', 'Special moments', 'Legacy lives on', 'Forever loved', 'Beautiful soul'],
-    'get-well-funny': ['Tough cookie 🍪', 'Fighter spirit', 'Bounce back champ', 'Too stubborn to quit', 'Superhero mode', 'Healing vibes'],
-    'get-well-heartfelt': ['Stay strong', 'Thinking of you', 'Sending love', 'Get rest', 'Take care', 'Here for you'],
+    'birthday-funny': ['Coffee & donuts 🍩', 'Gaming setup 🎮', 'Dogs everywhere 🐕', 'Pizza party 🍕', 'Disco vibes 🕺', 'Tacos & beer 🌮'],
+    'birthday-heartfelt': ['Garden flowers 🌸', 'Mountain sunset 🏔️', 'Books & tea 📚', 'Music notes 🎵', 'Beach waves 🌊', 'Forest trails 🌲'],
+    'birthday-romantic': ['Rose petals 🌹', 'Candlelight 🕯️', 'Paris theme 🗼', 'Heart balloons 💕', 'Wine & cheese 🍷', 'Starry night ✨'],
+    'anniversary-romantic': ['Wedding flowers 💐', 'Gold accents ✨', 'Love birds 🕊️', 'Champagne 🥂', 'Sunset beach 🌅', 'Dancing silhouettes 💃'],
+    'anniversary-funny': ['Pizza hearts 🍕', 'Couch & TV 📺', 'Snoring bears 🐻', 'Gaming couple 🎮', 'Messy kitchen 👨‍🍳', 'Cat chaos 🐱'],
+    'thank-you-professional': ['Elegant gold 🏆', 'Office plants 🌿', 'Coffee cups ☕', 'Clean lines', 'Navy & silver', 'Minimalist'],
+    'thank-you-heartfelt': ['Wildflowers 🌻', 'Warm colors 🧡', 'Handwritten feel ✍️', 'Sunshine ☀️', 'Hugging bears 🐻', 'Rainbow hearts 🌈'],
+    'holiday-funny': ['Ugly sweaters 🎅', 'Cookie chaos 🍪', 'Tangled lights 💡', 'Reindeer antics 🦌', 'Snowman party ⛄', 'Gift mountains 🎁'],
+    'holiday-heartfelt': ['Cozy fireplace 🔥', 'Snow globes ❄️', 'Pine trees 🎄', 'Hot cocoa ☕', 'Family table 🕯️', 'Gingerbread 🏠'],
+    'congratulations-professional': ['Trophy gold 🏆', 'Confetti burst 🎊', 'Success stairs 📈', 'Champagne pop 🍾', 'Star badges ⭐', 'Laurel wreaths 🌿'],
+    'congratulations-funny': ['Party animals 🦁', 'Explosion of joy 💥', 'Dancing fruits 🍌', 'Superhero cape 🦸', 'Fireworks crazy 🎆', 'Victory dance 🕺'],
+    'sympathy-heartfelt': ['Soft clouds ☁️', 'White lilies 🤍', 'Gentle doves 🕊️', 'Watercolor sky', 'Peaceful garden', 'Soft light'],
+    'get-well-funny': ['Bandaid army 🩹', 'Soup squadron 🍲', 'Vitamin warriors 💊', 'Healing ninjas 🥷', 'Happy germs 🦠', 'Super tissues 🤧'],
+    'get-well-heartfelt': ['Healing flowers 🌷', 'Sunny days ☀️', 'Tea & honey 🍯', 'Soft blankets 🛏️', 'Get well balloons 🎈', 'Hearts & hugs 💕'],
   };
 
   const key = `${cardType}-${tone}`;
-  return chips[key] || chips[cardType + '-heartfelt'] || ['Loves life', 'Great friend', 'Always smiling', 'Kind soul'];
+  return chips[key] || chips[cardType + '-heartfelt'] || ['Colorful design', 'Nature theme 🌿', 'Abstract art', 'Vintage style'];
 };
 
-// AI brainstorming prompts - now focused on personal details
+// AI brainstorming prompts - focused on visual design elements
 const getBrainstormPrompt = (cardType: string, tone: string, recipient?: string, photoContext?: string) => {
   const recipientText = recipient ? `for ${recipient}` : '';
   const photoText = photoContext ? `\n\n${photoContext}. Include these specific people in creative and imaginative ways. IMPORTANT: Only feature the people mentioned above - do not add any additional people, babies, children, or characters unless explicitly requested.` : '';
   
-  return `Generate 4 personal detail suggestions that someone might include when creating a ${tone} ${cardType} card ${recipientText}.${photoText}
+  return `Generate 4 visual design suggestions for personalizing a ${tone} ${cardType} card ${recipientText}.${photoText}
   
-  Focus on interests, hobbies, personality traits, favorite things, shared memories, or activities they enjoy.
-  Each suggestion should be 15-25 words and include specific personal details that would make the card more meaningful.
+  Focus on interests/activities that translate to visual elements, color schemes, themes, artistic styles, or specific imagery.
+  Each suggestion should be 15-25 words describing what visual elements to include in the card artwork.
   
-  Examples of good suggestions:
-  - "Loves hiking on weekends, collects vintage vinyl records, makes the best homemade pasta"
-  - "Coffee addict who never misses morning yoga, has two rescue dogs named Max and Luna"
-  - "Our weekly sushi dates, that time we got lost in Paris, your terrible dad jokes"
+  Examples of good visual suggestions:
+  - "Mountain skiing scenes with hot chocolate, cozy lodge vibes, snowflakes, pine trees"
+  - "Coffee shop aesthetic with latte art, books, plants, warm browns and creams"
+  - "Beach volleyball at sunset, surfboards, tropical flowers, ocean blues and coral colors"
+  - "Vintage travel theme with maps, passport stamps, airplanes, suitcases in retro colors"
   
   Return as a JSON array of strings.`;
 };
@@ -155,10 +156,10 @@ export default function CardDescriptionHelper({
       console.error('Error generating suggestions:', error);
       // Fallback suggestions
       setAiSuggestions([
-        'Loves morning coffee, weekend hikes with the dog, and collecting succulents for the apartment',
-        'Board game enthusiast, makes amazing chocolate chip cookies, always has the best book recommendations',
-        'Our Sunday brunch tradition, terrible at karaoke but does it anyway, gives the best hugs',
-        'Marathon runner, sushi connoisseur, has traveled to 15 countries and counting'
+        'Coffee theme with espresso machines, coffee beans, cozy café atmosphere in warm browns',
+        'Hiking adventure with mountain trails, backpacks, sunrise views, nature greens and blues',
+        'Gaming setup with controllers, neon lights, pixel art style, vibrant purple and cyan',
+        'Yoga and meditation theme with lotus flowers, peaceful sunset, calming pastels'
       ]);
     } finally {
       setIsGenerating(false);
@@ -219,7 +220,7 @@ export default function CardDescriptionHelper({
           ) : aiSuggestions.length > 0 && (
             <div className="bg-muted/50 rounded-lg p-3 space-y-2">
               <p className="text-xs text-muted-foreground mb-2">
-                💡 Click any idea to use it:
+                🎨 Click any visual theme to add it:
               </p>
               {aiSuggestions.map((suggestion, index) => (
                 <div

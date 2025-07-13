@@ -3,6 +3,9 @@
 ## Project Overview
 VibeCarding is a modern Next.js application that generates personalized greeting cards using AI. The app recently transitioned from a single-page form to a **step-based wizard interface** for better user experience.
 
+## 🚀 IMPORTANT: Testing Policy
+**ONLY run tests when explicitly requested by the user.** Do not automatically test changes unless the user specifically asks for testing. This helps maintain a faster development workflow.
+
 ## 🎯 CODING PRINCIPLES - SIMPLICITY FIRST
 
 ### Core Philosophy: "Less Code, More Clarity"
@@ -145,6 +148,14 @@ Reference photo upload has been moved from Step 3 to Step 1 for better user expe
 - **Technical**: Uses MCP `analyze_images` tool with structured JSON output
 - **Note**: Reference photos only work with GPT-1 image model
 
+### Step 3 Visual Design Consolidation (Latest)
+- **Moved "Personalize the Artwork"**: Relocated from Step 2 to Step 3 for better logical grouping
+- **Unified Visual Design**: Step 3 now contains both artwork personalization and artistic style selection
+- **Clear Purpose**: All visual design choices are now in one dedicated step
+- **Step 2 Simplified**: Now focuses solely on message composition
+- **Better User Flow**: Visual elements (personalization + style) grouped together
+- **No Breaking Changes**: All existing functionality preserved
+
 ### Message Generation UX Enhancements
 - **Message History**: Dropdown with undo/redo and "Try Another" variations
 - **Dynamic Placeholders**: Context-aware hints based on card type and tone
@@ -187,17 +198,18 @@ QR codes are automatically generated for each card:
    - Photo analysis for person selection and naming
    - Recent cards history display
 
-2. **Step 2 - Content & Message**
-   - Card description (optional prompt)
-   - Message composition with AI assistance
+2. **Step 2 - Message Composition**
+   - Card message writing with AI assistance
    - Handwritten message option
-   - Message history and variations
+   - Message history with undo/redo
+   - "Try Another" for message variations
    - Character count guidance
 
-3. **Step 3 - Personalization (Optional)**
-   - Artistic style selection
+3. **Step 3 - Visual Design (Optional)**
+   - Artwork personalization field (interests → visual elements)
+   - Artistic style selection (Style Sampler, Watercolor, etc.)
    - Shows confirmation if photos were uploaded in Step 1
-   - Smart style recommendations
+   - Unified visual customization step
 
 4. **Step 4 - Email Address**
    - Required for card delivery

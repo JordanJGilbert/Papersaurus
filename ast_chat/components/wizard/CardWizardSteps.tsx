@@ -96,7 +96,6 @@ export function CardWizardSteps({
           currentMessageIndex={cardStudio.currentMessageIndex}
           undoMessage={undoMessageWrapper}
           redoMessage={redoMessageWrapper}
-          photoReferences={cardStudio.photoReferences}
         />
       );
     
@@ -110,6 +109,7 @@ export function CardWizardSteps({
               wizardState.markStepCompleted(3);
             }
           }}
+          photoReferences={cardStudio.photoReferences}
         />
       );
     
