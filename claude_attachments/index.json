@@ -394,5 +394,27 @@
     "label": "vibecarding_card_history_view",
     "description": "Screenshot of the VibeCarding app's card history view, showing completed and draft cards, including 'Japan Trip (funny)' and 'Birthday (funny)' cards.",
     "size": 125595
+  },
+  "a856d50b-61fb-41a9-b9d5-0eaa22603ab5": {
+    "filename": "a856d50b-61fb-41a9-b9d5-0eaa22603ab5.png",
+    "path": "/var/www/flask_app/claude_attachments/a856d50b-61fb-41a9-b9d5-0eaa22603ab5.png",
+    "url": "https://vibecarding.com/serve_image?key=attachment_373c3985-a727-418f-99b4-27475a8a0007&type=image/png",
+    "mime_type": "image/png",
+    "timestamp": 1752425693675,
+    "message_id": "+17145986105_1752425693675",
+    "label": "personal_traits_interests_examples",
+    "description": "The image shows the section of a form asking for information about a person's traits and interests. Several examples are given, such as skiing, craft beer, sushi, gaming, and gardening.",
+    "size": 65428
+  },
+  "4355bc69-5199-4487-b3c3-095eb670efb5": {
+    "filename": "4355bc69-5199-4487-b3c3-095eb670efb5.jpg",
+    "path": "/var/www/flask_app/claude_attachments/4355bc69-5199-4487-b3c3-095eb670efb5.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_6c5a459e-71d9-42f4-8885-2c41bd109809&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752427149760,
+    "message_id": "+17145986105_1752427149760",
+    "label": "vibecarding_personalization_scene_creation",
+    "description": "This image shows the personalization options in Vibecarding, where users can choose artistic styles, add photos, and describe personal traits and scenes for their personalized card artwork.",
+    "size": 223127
   }
 }

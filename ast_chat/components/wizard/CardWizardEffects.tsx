@@ -144,6 +144,11 @@ export function CardWizardEffects({
 
   // Auto-save drafts when user creates draft cards
   useEffect(() => {
+    // Skip auto-save if card is already completed
+    if (cardStudio.isCardCompleted) {
+      return;
+    }
+    
     // Only save if we have draft cards and not resuming or restoring
     if (cardStudio.draftCards.length > 0) {
       console.log('🔍 Auto-save check:', {
@@ -151,11 +156,12 @@ export function CardWizardEffects({
         isInitialLoadComplete: cardForm.isInitialLoadComplete,
         isResumingDraft,
         isRestoringJobs,
-        shouldSave: cardForm.isInitialLoadComplete && !isResumingDraft && !isRestoringJobs
+        isCardCompleted: cardStudio.isCardCompleted,
+        shouldSave: cardForm.isInitialLoadComplete && !isResumingDraft && !isRestoringJobs && !cardStudio.isCardCompleted
       });
     }
     
-    if (cardStudio.draftCards.length > 0 && cardForm.isInitialLoadComplete && !isResumingDraft && !isRestoringJobs) {
+    if (cardStudio.draftCards.length > 0 && cardForm.isInitialLoadComplete && !isResumingDraft && !isRestoringJobs && !cardStudio.isCardCompleted) {
       // Count non-null draft cards
       const validDrafts = cardStudio.draftCards.filter(card => card !== null).length;
       
@@ -189,7 +195,7 @@ export function CardWizardEffects({
         console.log(`💾 Draft session saved: ${validDrafts}/5 drafts complete`);
       }
     }
-  }, [cardStudio.draftCards, cardStudio.selectedDraftIndex, cardForm.formData, cardForm.isInitialLoadComplete, isResumingDraft, isRestoringJobs, currentDraftSessionId, lastSavedDraftCount]);
+  }, [cardStudio.draftCards, cardStudio.selectedDraftIndex, cardForm.formData, cardForm.isInitialLoadComplete, isResumingDraft, isRestoringJobs, currentDraftSessionId, lastSavedDraftCount, cardStudio.isCardCompleted]);
   
   // Reset session ID when drafts are cleared
   useEffect(() => {
@@ -203,9 +209,13 @@ export function CardWizardEffects({
   // Auto-save completed cards and ensure we're on Step 6
   useEffect(() => {
     if (cardStudio.generatedCard && cardStudio.isCardCompleted) {
-      cardHistory.addCompletedCard(cardStudio.generatedCard);
+      // Only add to history if not already added (prevent duplicates)
+      const existingCard = cardHistory.cardHistory.find(card => card.id === cardStudio.generatedCard.id);
+      if (!existingCard) {
+        cardHistory.addCompletedCard(cardStudio.generatedCard);
+      }
       
-      // Clear draft session since card is completed
+      // Clear draft session since card is completed (only if not already cleared)
       if (currentDraftSessionId) {
         console.log('🧹 Clearing draft session after successful card completion');
         localStorage.removeItem('vibe-current-draft-session');
@@ -220,7 +230,7 @@ export function CardWizardEffects({
         wizardState.updateCurrentStep(6);
       }
     }
-  }, [cardStudio.generatedCard, cardStudio.isCardCompleted, wizardState.currentStep, currentDraftSessionId]);
+  }, [cardStudio.generatedCard, cardStudio.isCardCompleted]);
 
   // Sync form data with cardStudio when form data changes
   useEffect(() => {
