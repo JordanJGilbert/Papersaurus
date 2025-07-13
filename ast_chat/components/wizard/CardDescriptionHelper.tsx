@@ -13,6 +13,8 @@ interface CardDescriptionHelperProps {
   onAddToDescription: (text: string) => void;
   chatWithAI?: (message: string, options: any) => Promise<any>;
   photoReferences?: PhotoReference[];
+  fromField?: string;
+  relationshipField?: string;
 }
 
 // Contextual inspiration chips based on card type and tone - focused on visual design elements
@@ -39,11 +41,13 @@ const getInspirationChips = (cardType: string, tone: string): string[] => {
 };
 
 // AI brainstorming prompts - focused on visual design elements
-const getBrainstormPrompt = (cardType: string, tone: string, recipient?: string, photoContext?: string) => {
+const getBrainstormPrompt = (cardType: string, tone: string, recipient?: string, sender?: string, relationship?: string, photoContext?: string) => {
   const recipientText = recipient ? `for ${recipient}` : '';
+  const senderText = sender ? ` from ${sender}` : '';
+  const relationshipText = relationship ? ` (${relationship})` : '';
   const photoText = photoContext ? `\n\n${photoContext}. Include these specific people in creative and imaginative ways. IMPORTANT: Only feature the people mentioned above - do not add any additional people, babies, children, or characters unless explicitly requested.` : '';
   
-  return `Generate 4 visual design suggestions for personalizing a ${tone} ${cardType} card ${recipientText}.${photoText}
+  return `Generate 4 visual design suggestions for personalizing a ${tone} ${cardType} card ${recipientText}${senderText}${relationshipText}.${photoText}
   
   Focus on interests/activities that translate to visual elements, color schemes, themes, artistic styles, or specific imagery.
   Each suggestion should be 15-25 words describing what visual elements to include in the card artwork.
@@ -61,7 +65,9 @@ export default function CardDescriptionHelper({
   formData, 
   onAddToDescription,
   chatWithAI,
-  photoReferences = [] 
+  photoReferences = [],
+  fromField = '',
+  relationshipField = ''
 }: CardDescriptionHelperProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
@@ -138,8 +144,13 @@ export default function CardDescriptionHelper({
         formData.selectedType, 
         formData.selectedTone,
         formData.toField,
+        fromField,
+        relationshipField,
         photoContext
       );
+      
+      // Include reference images if available
+      const imageAttachments = formData.referenceImageUrls || [];
       
       const response = await chatWithAI(prompt, {
         model: 'gemini-2.5-pro',
@@ -148,7 +159,8 @@ export default function CardDescriptionHelper({
           items: { type: "string" },
           minItems: 4,
           maxItems: 4
-        }
+        },
+        ...(imageAttachments.length > 0 && { attachments: imageAttachments })
       });
       
       setAiSuggestions(response);

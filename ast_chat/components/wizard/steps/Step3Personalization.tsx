@@ -97,71 +97,6 @@ export default function Step3Personalization({
 
   return (
     <div className="space-y-6">
-      {/* Personalize the Artwork Section */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Personalize the Artwork (Optional)
-          </label>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsTextareaExpanded(!isTextareaExpanded)}
-            className="gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-          >
-            {isTextareaExpanded ? (
-              <>
-                <ChevronDown className="w-3 h-3" />
-                Collapse
-              </>
-            ) : (
-              <>
-                <ChevronDown className="w-3 h-3 rotate-180" />
-                Expand
-              </>
-            )}
-          </Button>
-        </div>
-        
-        <Textarea
-          placeholder="🎨 Share interests: 'loves skiing and craft beer' • Activities: 'yoga at sunrise' • Style: 'watercolor flowers' • Mood: 'cozy autumn vibes' • Colors: 'purple and gold'"
-          value={formData.prompt}
-          onChange={(e) => updateFormData({ prompt: e.target.value })}
-          rows={isTextareaExpanded ? 6 : 3}
-          className={isTextareaExpanded ? "resize-y" : "resize-none"}
-          style={{ fontSize: '16px' }}
-        />
-        
-        {/* Card Description Helper */}
-        <CardDescriptionHelper
-          formData={formData}
-          onAddToDescription={(text) => updateFormData({ prompt: text })}
-          chatWithAI={chatWithAI}
-          photoReferences={photoReferences}
-        />
-        
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          💡 <strong>How it works:</strong> Everything you write here becomes visual elements in your card's artwork
-        </p>
-      </div>
-
-      {/* Show confirmation if photos were uploaded in Step 1 */}
-      {formData.referenceImageUrls.length > 0 && (
-        <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
-          <div className="flex items-start gap-3">
-            <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
-            <div>
-              <h4 className="font-medium text-green-900 dark:text-green-100 mb-1">
-                ✨ Reference photos uploaded!
-              </h4>
-              <p className="text-sm text-green-700 dark:text-green-300">
-                {formData.referenceImageUrls.length} photo{formData.referenceImageUrls.length > 1 ? 's' : ''} will be used to create personalized cartoon characters
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Artistic Style Selection */}
       <div>
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
@@ -223,6 +158,73 @@ export default function Step3Personalization({
             </p>
           </div>
         )}
+      </div>
+
+      {/* Show confirmation if photos were uploaded in Step 1 */}
+      {formData.referenceImageUrls.length > 0 && (
+        <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
+          <div className="flex items-start gap-3">
+            <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+            <div>
+              <h4 className="font-medium text-green-900 dark:text-green-100 mb-1">
+                ✨ Reference photos uploaded!
+              </h4>
+              <p className="text-sm text-green-700 dark:text-green-300">
+                {formData.referenceImageUrls.length} photo{formData.referenceImageUrls.length > 1 ? 's' : ''} will be used to create personalized cartoon characters
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Personalize the Artwork Section */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Personalize the Artwork (Optional)
+          </label>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsTextareaExpanded(!isTextareaExpanded)}
+            className="gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+          >
+            {isTextareaExpanded ? (
+              <>
+                <ChevronDown className="w-3 h-3" />
+                Collapse
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-3 h-3 rotate-180" />
+                Expand
+              </>
+            )}
+          </Button>
+        </div>
+        
+        <Textarea
+          placeholder="🎨 Share interests: 'loves skiing and craft beer' • Activities: 'yoga at sunrise' • Style: 'watercolor flowers' • Mood: 'cozy autumn vibes' • Colors: 'purple and gold'"
+          value={formData.prompt}
+          onChange={(e) => updateFormData({ prompt: e.target.value })}
+          rows={isTextareaExpanded ? 6 : 3}
+          className={isTextareaExpanded ? "resize-y" : "resize-none"}
+          style={{ fontSize: '16px' }}
+        />
+        
+        {/* Card Description Helper */}
+        <CardDescriptionHelper
+          formData={formData}
+          onAddToDescription={(text) => updateFormData({ prompt: text })}
+          chatWithAI={chatWithAI}
+          photoReferences={photoReferences}
+          fromField={formData.fromField}
+          relationshipField={formData.relationshipField}
+        />
+        
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+          💡 <strong>How it works:</strong> Everything you write here becomes visual elements in your card's artwork
+        </p>
       </div>
 
       {/* Tips - Mobile Optimized */}
