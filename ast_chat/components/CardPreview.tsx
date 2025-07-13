@@ -1647,7 +1647,7 @@ ${displayCard.generatedPrompts.rightInterior}
                     >
                       <div className="h-full flex items-center justify-center">
                         {slides[currentSlide].image ? (
-                          <div className="max-w-full max-h-full">
+                          <div className="max-w-full max-h-full relative">
                             <ProgressiveImage
                               src={slides[currentSlide].image}
                               thumbnailSrc={undefined}
@@ -1655,6 +1655,19 @@ ${displayCard.generatedPrompts.rightInterior}
                               className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
                               priority={true} // Always prioritize in fullscreen
                             />
+                            
+                            {/* Handwritten Message Overlay - Only for right interior when enabled */}
+                            {enableHandwrittenOverlay && 
+                             slides[currentSlide].id === 'right-interior' && 
+                             displayCard.isHandwrittenMessage && 
+                             displayCard.message && (
+                              <HandwrittenMessageOverlay
+                                message={displayCard.message}
+                                style={displayCard.handwritingStyle || 'caveat'}
+                                inkColor="blue"
+                                fontSize="medium"
+                              />
+                            )}
                           </div>
                         ) : (
                           <div className="flex items-center justify-center bg-gray-800 rounded-lg p-8">

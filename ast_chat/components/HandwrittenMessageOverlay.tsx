@@ -46,33 +46,48 @@ export default function HandwrittenMessageOverlay({
 
   return (
     <div 
-      className="absolute inset-0 flex items-center justify-center p-8 pointer-events-none"
+      className="absolute pointer-events-none"
       style={{
-        transform: `rotate(${rotation}deg)`,
+        // Position within the message area, accounting for decorative elements
+        top: '20%',      // Leave space for decorative header
+        bottom: '15%',   // Leave space for bottom margin
+        left: '12%',     // Side margins for natural padding
+        right: '12%',
       }}
     >
       <div 
-        className="text-center max-w-full"
+        className="h-full w-full flex items-center justify-center"
         style={{
-          fontFamily: selectedFont,
-          fontSize: selectedSize.size,
-          lineHeight: selectedSize.lineHeight,
-          color: selectedColor,
-          opacity: 0.9,
-          letterSpacing: '0.02em',
-          wordSpacing: '0.1em',
-          textShadow: inkColor === 'black' ? '0.5px 0.5px 0 rgba(0,0,0,0.2)' : '0.5px 0.5px 0 rgba(26,35,126,0.2)',
-          // Make text slightly bolder for pen effect
-          fontWeight: style === 'marker' ? 700 : 500,
-          // Add slight blur for realistic ink effect
-          filter: 'contrast(1.1)',
-          // Feature settings for better handwriting appearance
-          fontFeatureSettings: "'liga' on, 'calt' on",
+          // Apply rotation to inner content only
+          transform: `rotate(${rotation}deg)`,
         }}
       >
-        {message.split('\n').map((line, index) => (
-          <div key={index}>{line}</div>
-        ))}
+        <div 
+          className="text-center px-4 max-w-full"
+          style={{
+            fontFamily: selectedFont,
+            fontSize: selectedSize.size,
+            lineHeight: selectedSize.lineHeight,
+            color: selectedColor,
+            opacity: 0.9,
+            letterSpacing: '0.02em',
+            wordSpacing: '0.1em',
+            textShadow: inkColor === 'black' ? '0.5px 0.5px 0 rgba(0,0,0,0.2)' : '0.5px 0.5px 0 rgba(26,35,126,0.2)',
+            // Make text slightly bolder for pen effect
+            fontWeight: style === 'marker' ? 700 : 500,
+            // Add slight blur for realistic ink effect
+            filter: 'contrast(1.1)',
+            // Feature settings for better handwriting appearance
+            fontFeatureSettings: "'liga' on, 'calt' on",
+            // Ensure text doesn't overflow
+            wordBreak: 'break-word',
+            hyphens: 'auto',
+          }}
+        >
+          {message.split('\n').map((line, index) => (
+            <div key={index} className="mb-2">{line || '\u00A0'}</div>
+          ))}
+        </div>
       </div>
     </div>
   );

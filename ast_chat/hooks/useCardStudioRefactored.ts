@@ -212,6 +212,19 @@ export function useCardStudio() {
     
     console.log('🔄 Processing job update:', { job_id, status, isDraftJob, draftIndex, progress });
     
+    // Handle status transitions
+    if (status === 'processing' && !cardGeneration.isGenerating && !draftGeneration.isGenerating) {
+      console.log('🔄 Job is processing, setting generation state');
+      if (isDraftJob) {
+        draftGeneration.setIsGenerating(true);
+        draftGeneration.setIsDraftMode(true);
+        jobManagement.startElapsedTimeTracking('draft');
+      } else {
+        cardGeneration.setIsGenerating(true);
+        jobManagement.startElapsedTimeTracking('final');
+      }
+    }
+    
     // Update progress if provided
     if (progress) {
       // IMPORTANT: Don't show "Generation complete!" until we've actually processed the card
@@ -228,6 +241,12 @@ export function useCardStudio() {
     
     if (status === 'completed' && cardData) {
       console.log('🎉 Job completed! Card data:', cardData, 'isDraftJob:', isDraftJob);
+      
+      // If this is the first update for a recovery job, ensure generation state is set properly
+      if (isDraftJob && !draftGeneration.isGenerating && draftGeneration.draftCards.filter(Boolean).length === 0) {
+        console.log('📥 Recovered completed draft job - not setting as generating');
+        // Don't set isGenerating for already completed jobs during recovery
+      }
       
       if (isDraftJob && draftIndex >= 0) {
         // Handle draft card completion
@@ -623,15 +642,13 @@ export function useCardStudio() {
           draftGeneration.setIsDraftMode(true);
         } else {
           console.log('🎨 Resuming incomplete draft generation');
-          // Only set as generating if drafts aren't complete
+          // Subscribe to the job to check its status
           jobManagement.setCurrentJobId(recovery.jobId);
           webSocket.subscribeToJob(recovery.jobId);
           draftGeneration.setIsDraftMode(true);
-          draftGeneration.setIsGenerating(true);
-          cardGeneration.setIsGenerating(true);
-          draftGeneration.setGenerationProgress('🎨 Resuming draft generation...');
-          cardGeneration.setGenerationProgress('🎨 Resuming draft generation...');
-          jobManagement.startElapsedTimeTracking('draft');
+          // Don't set as generating yet - wait for WebSocket to tell us the actual status
+          // This prevents navigation to Step 5 for already completed jobs
+          console.log('⏳ Waiting for job status update before setting generation state...');
         }
       } else {
         // For final card recovery, check if already completed
