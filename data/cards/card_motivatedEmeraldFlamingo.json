@@ -1,0 +1,17 @@
+{
+  "id": "motivatedEmeraldFlamingo",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_086c843c.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_bf6bbaa5.png",
+  "leftPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_5764fe40.png",
+  "rightPage": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_a73d4467.png",
+  "generatedPrompts": {
+    "frontCover": "Flat 2D illustration for a greeting card front. In a vibrant, soft watercolor style, create a humorous and whimsical scene featuring the people from the reference photo as illustrated characters.\n\nThe scene is set in a ridiculously over-the-top, cluttered video game room filled with stacks of games, multiple glowing screens, and tangled controller wires everywhere. Lao Lao is depicted as the victorious \"Level Up Queen,\" sitting triumphantly on a gamer chair throne, wearing a small, cute birthday crown tilted on her head. She holds a video game controller up in the air like a trophy, grinning with playful triumph. She is wearing the light blue sweatshirt from the photo.\n\nJordan is depicted kneeling comically on the floor beside her, presenting a large, beautifully decorated birthday cake with lit candles as if it's a precious offering or a legendary item from a video game. He has a funny, exaggerated expression of loving admiration and defeat. He is wearing the tan hoodie from the photo.\n\nColorful confetti and little video game power-up icons (like hearts and stars) float down around them. The background is a wash of soft blues, purples, and pinks, blending seamlessly with the watercolor aesthetic.\n\nIn the center, in an elegant, readable handwritten cursive script, is the text: \"Happy Birthday to my favorite Player One, Lao Lao!\"",
+    "backCover": "Flat 2D illustration for the back of a greeting card. A very minimal and simple design featuring a small, elegant cluster of video game power-up icons\u2014a heart, a star, and a plus-sign\u2014in the top-center. The icons are rendered in a soft watercolor painting style, with soft flowing colors of light blue and soft pink. The background is a plain, off-white with a subtle paper texture. The design is clean and leaves the bottom-right corner completely empty.",
+    "leftInterior": "Flat 2D illustration for the left interior panel of a greeting card. A beautiful, abstract full-bleed background in a soft watercolor painting style. A gentle wash of soft blues, purples, and pinks blends seamlessly across the page, with organic paint bleeds and visible paper texture. Floating delicately from the top-left corner is a decorative cascade of colorful confetti and small, stylized video game power-up icons like hearts and stars, leaving the majority of the page as a soft, atmospheric color field.",
+    "rightInterior": "Flat 2D illustration for the right interior panel of a greeting card, designed to leave ample space for a handwritten message. A soft, off-white background with a subtle paper texture fills the page. A minimal, elegant border decoration frames the top and bottom edges. The decoration consists of a light, whimsical string of pixelated-style hearts and stars, rendered in a soft watercolor style with light blue and soft pink colors. The central area is intentionally left clean and open."
+  },
+  "createdAt": 1752429694.4207578,
+  "expiresAt": 1783965694.4207585,
+  "version": 1
+}

@@ -40,9 +40,17 @@ export default function Step5Simple({
         <div className="w-16 h-16 bg-blue-500 rounded-full flex items-center justify-center mx-auto">
           <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
         </div>
-        <h3 className="text-lg font-semibold">Creating Your Card Variations</h3>
+        <h3 className="text-lg font-semibold">Creating Draft Previews</h3>
+        <p className="text-sm text-gray-600">
+          Generating 5 quick, rough drafts for you to choose from
+        </p>
         <p className="text-sm text-gray-600">{progress}</p>
         <p className="text-xs text-gray-500">Time: {timer}</p>
+        <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded-lg max-w-md mx-auto">
+          <p className="text-xs text-blue-700 dark:text-blue-300">
+            💡 These are quick previews only. Your final card will be generated in high quality.
+          </p>
+        </div>
       </div>
     );
   }
@@ -51,7 +59,18 @@ export default function Step5Simple({
   if (drafts.length > 0) {
     return (
       <div className="space-y-4">
-        <h3 className="text-lg font-semibold">Select Your Favorite Front Cover Design</h3>
+        <div className="text-center space-y-2">
+          <h3 className="text-lg font-semibold">Choose Your Favorite Design</h3>
+          <p className="text-sm text-gray-600">
+            Select from these rough draft previews
+          </p>
+          <div className="bg-amber-50 dark:bg-amber-950 p-3 rounded-lg max-w-md mx-auto">
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              🎨 <strong>Note:</strong> These are quick, low-resolution drafts. After you select one, 
+              we'll generate your final high-quality card with all 4 panels.
+            </p>
+          </div>
+        </div>
         
         {/* Simple grid showing only front covers */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -81,9 +100,14 @@ export default function Step5Simple({
                     )}
                   </div>
                   
-                  <p className="text-sm font-medium mt-2 text-center">
-                    Draft {index + 1}
-                  </p>
+                  <div className="mt-2 text-center">
+                    <p className="text-sm font-medium">
+                      Draft Preview {index + 1}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Front cover only
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
             );

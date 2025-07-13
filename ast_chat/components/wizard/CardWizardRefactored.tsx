@@ -60,9 +60,9 @@ const wizardSteps: WizardStep[] = [
   },
   {
     id: "drafts",
-    title: "Draft Selection",
-    mobileTitle: "Drafts",
-    description: "Choose from 5 design variations"
+    title: "Choose Draft Preview",
+    mobileTitle: "Preview",
+    description: "Select from rough drafts (final will be high quality)"
   },
   {
     id: "generate",
