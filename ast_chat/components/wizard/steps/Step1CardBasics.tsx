@@ -580,20 +580,6 @@ export default function Step1CardBasics({
                     </div>
                   )}
                   
-                  {/* Transformation Instructions */}
-                  <div className="mt-3">
-                    <label className="text-xs sm:text-sm font-medium text-indigo-800 dark:text-indigo-200 mb-1 block">
-                      Character Style Instructions (Optional)
-                    </label>
-                    <Textarea
-                      placeholder="e.g., 'Make us look like anime characters', 'Keep our exact outfits but in watercolor style'"
-                      value={formData.imageTransformation}
-                      onChange={(e) => updateFormData({ imageTransformation: e.target.value })}
-                      rows={2}
-                      className="resize-none text-sm"
-                      style={{ fontSize: '16px' }}
-                    />
-                  </div>
                 </div>
               )}
             </div>

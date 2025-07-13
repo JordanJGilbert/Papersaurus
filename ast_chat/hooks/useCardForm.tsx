@@ -22,7 +22,6 @@ export interface CardFormData {
   customStyleDescription: string;
   referenceImages: File[];
   referenceImageUrls: string[];
-  imageTransformation: string;
   photoReferences?: Array<{ imageUrl: string; imageIndex: number; description?: string; }>;
 
   // Step 4: Details
@@ -53,7 +52,6 @@ const defaultFormData: CardFormData = {
   customStyleDescription: "",
   referenceImages: [],
   referenceImageUrls: [],
-  imageTransformation: "",
 
   // Step 4: Details
   userEmail: "",

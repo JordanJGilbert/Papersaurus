@@ -6843,3 +6843,81 @@ support@vibecarding.com"""
         }), 500
 
 # Add the endpoint before the existing print queue endpoints
+@app.route('/api/generate-flyer', methods=['POST'])
+def generate_flyer():
+    """Generate a single-page portrait flyer using AI - simplified version."""
+    try:
+        data = request.get_json()
+        prompt = data.get('prompt')
+        config = data.get('config', {})
+        
+        if not prompt:
+            return jsonify({'error': 'Prompt is required'}), 400
+        
+        # Get quality from config, default to 'low'
+        quality = config.get('quality', 'low')
+        
+        # Adjust output format and compression based on quality
+        output_format = 'png' if quality == 'high' else 'jpeg'
+        output_compression = 100 if quality == 'high' else (90 if quality == 'medium' else 80)
+        
+        print(f"🎨 Generating flyer with prompt: {prompt[:100]}...")
+        print(f"📊 Quality: {quality}, Format: {output_format}, Compression: {output_compression}")
+        
+        # Direct MCP call without job storage
+        mcp_response = call_mcp_service("generate_images_with_prompts", {
+            "user_number": "+17145986105",
+            "prompts": [prompt],
+            "model_version": "gpt-image-1",
+            "aspect_ratio": "9:16",
+            "quality": quality,
+            "output_format": output_format,
+            "output_compression": output_compression,
+            "moderation": "auto"
+        })
+        
+        print(f"📋 MCP Response type: {type(mcp_response)}")
+        print(f"📋 MCP Response: {mcp_response}")
+        
+        # Extract image URL from response
+        if isinstance(mcp_response, list) and len(mcp_response) > 0:
+            image_url = mcp_response[0]
+        elif isinstance(mcp_response, dict):
+            # Check for 'results' or 'result' key
+            if 'results' in mcp_response:
+                results = mcp_response['results']
+                if isinstance(results, list) and len(results) > 0:
+                    # Handle nested list structure
+                    if isinstance(results[0], list) and len(results[0]) > 0:
+                        image_url = results[0][0]
+                    else:
+                        image_url = results[0]
+                else:
+                    raise Exception("No results in MCP response")
+            elif 'result' in mcp_response:
+                result = mcp_response['result']
+                if isinstance(result, list) and len(result) > 0:
+                    image_url = result[0]
+                else:
+                    raise Exception("No result in MCP response")
+            else:
+                raise Exception(f"Invalid MCP response format. Keys: {list(mcp_response.keys())}")
+        else:
+            raise Exception("Failed to generate flyer image")
+        
+        print(f"✅ Flyer generated successfully: {image_url}")
+        
+        return jsonify({
+            'status': 'success',
+            'imageUrl': image_url
+        })
+            
+    except Exception as e:
+        print(f"❌ Error in generate_flyer: {str(e)}")
+        return jsonify({
+            'error': 'Failed to generate flyer',
+            'details': str(e)
+        }), 500
+
+if __name__ == '__main__':
+    socketio.run(app, host='0.0.0.0', port=5001, debug=True)

@@ -711,8 +711,6 @@ export function useCardStudio() {
     setReferenceImages: fileHandling.setReferenceImages,
     referenceImageUrls: fileHandling.referenceImageUrls,
     setReferenceImageUrls: fileHandling.setReferenceImageUrls,
-    imageTransformation: fileHandling.imageTransformation,
-    setImageTransformation: fileHandling.setImageTransformation,
     isUploading: fileHandling.isUploading,
     setIsUploading: fileHandling.setIsUploading,
     

@@ -227,7 +227,6 @@ export function CardWizardEffects({
     // This should only flow from cardStudio -> form after uploads
     // cardStudio.setReferenceImages(formData.referenceImages);
     // cardStudio.setReferenceImageUrls(formData.referenceImageUrls);
-    cardStudio.setImageTransformation(formData.imageTransformation);
     cardStudio.setUserEmail(formData.userEmail);
     cardStudio.setSelectedImageModel(formData.selectedImageModel);
     cardStudio.setSelectedDraftModel(formData.selectedDraftModel);

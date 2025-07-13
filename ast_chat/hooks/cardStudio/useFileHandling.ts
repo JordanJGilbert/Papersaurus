@@ -9,7 +9,6 @@ export function useFileHandling() {
   const [handwritingSampleUrl, setHandwritingSampleUrl] = useState<string | null>(null);
   const [referenceImages, setReferenceImages] = useState<File[]>([]);
   const [referenceImageUrls, setReferenceImageUrls] = useState<string[]>([]);
-  const [imageTransformation, setImageTransformation] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
   
   // Simplified photo references with descriptions
@@ -103,8 +102,6 @@ export function useFileHandling() {
     setReferenceImages,
     referenceImageUrls,
     setReferenceImageUrls,
-    imageTransformation,
-    setImageTransformation,
     isUploading,
     setIsUploading,
     handleFileUpload,
