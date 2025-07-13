@@ -10,6 +10,7 @@ export interface CardConfig {
   toField?: string;
   fromField?: string;
   relationshipField?: string;
+  personalTraits?: string;
   message?: string;
   isHandwrittenMessage?: boolean;
   artisticStyle?: {
@@ -46,6 +47,7 @@ export interface DraftConfig {
   toField?: string;
   fromField?: string;
   relationshipField?: string;
+  personalTraits?: string;
   artisticStyle?: {
     label: string;
     promptModifier: string;
@@ -330,8 +332,10 @@ IMPORTANT: When reference photos are provided:
       }
     }
 
-    // Extract personal details if present
-    const personalDetails = this.extractPersonalDetails(effectivePrompt);
+    // Extract personal details from theme or use provided personalTraits
+    const personalDetails = config.personalTraits 
+      ? `\nPERSONAL DETAILS TO INCORPORATE:\n${config.personalTraits}\n\nIMPORTANT: These personal details should be creatively woven into the card design:\n- If they love coffee, show a cozy coffee scene\n- If they enjoy hiking, include mountain or trail elements\n- If they have pets mentioned, include those specific pets\n- Transform interests into visual elements (e.g., "loves sushi" = sushi illustrations)\n- Make the card feel personally crafted for someone with these specific interests`
+      : this.extractPersonalDetails(effectivePrompt);
 
     let prompt = `You are an expert AI greeting card designer. Create a front cover prompt for a ${cardTypeForPrompt} greeting card.
 
@@ -534,8 +538,10 @@ ${this.SAFETY_REQUIREMENTS}`;
     // Generate unique ID for this specific panel
     const uniqueId = uuidv4();
     
-    // Extract personal details if present
-    const personalDetails = this.extractPersonalDetails(theme);
+    // Extract personal details from theme or use provided personalTraits
+    const personalDetails = config.personalTraits 
+      ? `\n\nPERSONAL DETAILS TO INCORPORATE:\n${config.personalTraits}\n\nIMPORTANT: These personal details should be creatively woven into the card design:\n- If they love coffee, show a cozy coffee scene\n- If they enjoy hiking, include mountain or trail elements\n- If they have pets mentioned, include those specific pets\n- Transform interests into visual elements (e.g., "loves sushi" = sushi illustrations)\n- Make the card feel personally crafted for someone with these specific interests`
+      : this.extractPersonalDetails(theme);
     
     // Build context section
     let contextSection = '';
@@ -668,5 +674,54 @@ ${requirements}
 
 Return JSON:
 ${jsonStructure}`;
+  }
+
+  // Generate scene description from personal traits
+  static async generateSceneFromPersonalTraits(
+    personalTraits: string,
+    cardType: string,
+    tone: string,
+    photoReferences?: PhotoReference[]
+  ): Promise<string> {
+    // Import chatWithAI dynamically to avoid circular dependencies
+    const { chatWithAI } = await import('../hooks/cardStudio/utils');
+    
+    let photoContext = '';
+    if (photoReferences && photoReferences.length > 0) {
+      const photosWithDescriptions = photoReferences.filter(ref => ref.description && ref.description.trim() !== '');
+      if (photosWithDescriptions.length > 0) {
+        const descriptions = photosWithDescriptions.map(ref => ref.description).join(', ');
+        photoContext = `\n\nThe card should feature: ${descriptions}. IMPORTANT: Only include the people mentioned - do not add any additional people.`;
+      }
+    }
+    
+    const prompt = `You are a creative scene designer for greeting cards. Based on the person's interests and traits, create a personalized scene description for their ${cardType} card.
+
+Personal traits and interests:
+${personalTraits}${photoContext}
+
+Card details:
+- Card type: ${cardType}
+- Tone: ${tone}
+
+Create a scene description (20-30 words) that:
+1. Incorporates their specific interests and hobbies
+2. Feels personal and meaningful
+3. Matches the ${tone} tone
+4. Works well for a ${cardType} card
+5. Avoids generic or cliché imagery
+
+Return ONLY the scene description - no quotes, no explanations, just the creative scene in plain language.`;
+
+    try {
+      const response = await chatWithAI(prompt, {
+        model: 'gemini-2.5-pro'
+      });
+      
+      return response || `A beautiful ${cardType} card celebrating their unique interests and personality`;
+    } catch (error) {
+      console.error('Error generating scene from traits:', error);
+      return `A beautiful ${cardType} card celebrating their unique interests and personality`;
+    }
   }
 }

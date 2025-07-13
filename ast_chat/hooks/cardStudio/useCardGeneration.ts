@@ -17,6 +17,7 @@ interface CardGenerationProps {
   selectedImageModel: string;
   selectedPaperSize: string;
   prompt: string;
+  personalTraits?: string;
   toField: string;
   fromField: string;
   relationshipField: string;
@@ -279,16 +280,24 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags.`;
 
       setGenerationProgress("🎨 Creating artistic vision for your card...");
 
+      // Use prompt if provided, otherwise create a simple default
+      let effectivePrompt = prompt.trim();
+      
+      if (!effectivePrompt) {
+        effectivePrompt = `A beautiful ${cardTypeForPrompt} card`;
+      }
+
       // Use PromptGenerator for card prompts
       const cardConfig: CardConfig = {
         cardType: selectedType,
         customCardType: customCardType,
         tone: selectedTone,
         toneDescription: selectedToneObj?.description.toLowerCase() || "heartfelt and sincere",
-        theme: prompt || `A beautiful ${cardTypeForPrompt} card`,
+        theme: effectivePrompt,
         toField: toField,
         fromField: fromField,
         relationshipField: props.relationshipField,
+        personalTraits: props.personalTraits,
         message: messageContent,
         isHandwrittenMessage: isHandwrittenMessage,
         artisticStyle: selectedStyle,

@@ -30,6 +30,7 @@ export function useCardStudio() {
   const [toField, setToField] = useState("");
   const [fromField, setFromField] = useState("");
   const [relationshipField, setRelationshipField] = useState("");
+  const [personalTraits, setPersonalTraits] = useState("");
   const [selectedType, setSelectedType] = useState<string>("birthday");
   const [customCardType, setCustomCardType] = useState<string>("");
   const [selectedTone, setSelectedTone] = useState<string>("funny");
@@ -126,6 +127,7 @@ export function useCardStudio() {
     selectedImageModel,
     selectedPaperSize,
     prompt,
+    personalTraits,
     toField,
     fromField,
     userEmail,
@@ -154,6 +156,7 @@ export function useCardStudio() {
     selectedImageModel,
     selectedPaperSize,
     prompt,
+    personalTraits,
     toField,
     fromField,
     userEmail,
@@ -688,6 +691,8 @@ export function useCardStudio() {
     setFromField,
     relationshipField,
     setRelationshipField,
+    personalTraits,
+    setPersonalTraits,
     selectedType,
     setSelectedType,
     customCardType,

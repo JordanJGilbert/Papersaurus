@@ -3,13 +3,8 @@
 import React, { useState } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
 import { CardFormData } from "@/hooks/useCardForm";
-import { ChevronDown, MessageCircle } from "lucide-react";
-import CardDescriptionHelper from "../CardDescriptionHelper";
-import { chatWithAI } from "@/hooks/cardStudio/utils";
 import { PhotoReference } from "@/hooks/cardStudio/constants";
-import SceneChatInterface from "@/components/SceneChatInterface";
 
 interface Step3Props {
   formData: CardFormData;
@@ -84,11 +79,9 @@ export default function Step3Personalization({
   onStepComplete,
   photoReferences = []
 }: Step3Props) {
-  const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
-  const [showSceneChat, setShowSceneChat] = useState(false);
 
   React.useEffect(() => {
-    // Auto-complete step when style is selected and valid
+    // Auto-complete step when style is selected (personal traits are optional)
     const isValid = formData.selectedArtisticStyle && 
       (formData.selectedArtisticStyle !== "custom" || formData.customStyleDescription.trim());
     
@@ -97,70 +90,6 @@ export default function Step3Personalization({
     }
   }, [formData.selectedArtisticStyle, formData.customStyleDescription, onStepComplete]);
 
-  // Handler for chat-based scene generation
-  const handleChatSceneGeneration = async (userInput: string, conversationHistory: any[]): Promise<string> => {
-    // Build context from conversation history
-    const conversationContext = conversationHistory
-      .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
-      .join('\n\n');
-
-    // Build personal traits context
-    const traitsText = formData.personalTraits ? `\n\nPersonal traits and interests: ${formData.personalTraits}` : '';
-    
-    // Build photo context
-    let photoContext = '';
-    if (photoReferences && photoReferences.length > 0) {
-      const photosWithDescriptions = photoReferences.filter(ref => ref.description && ref.description.trim() !== '');
-      if (photosWithDescriptions.length > 0) {
-        const descriptions = photosWithDescriptions.map(ref => ref.description).join(', ');
-        photoContext = `\n\nThe card should include ${descriptions}. IMPORTANT: Only feature the people mentioned - do not add any additional people unless explicitly requested.`;
-      }
-    }
-
-    const prompt = `You are a creative scene designer for greeting cards. You're having a conversation with someone to help them create the perfect scene for their ${formData.selectedType || 'greeting'} card with a ${formData.selectedTone || 'heartfelt'} tone.
-
-Previous conversation:
-${conversationContext}
-
-User's current request: "${userInput}"${traitsText}${photoContext}
-
-Based on the conversation context and the user's request, generate a complete scene description (20-30 words) that:
-1. Addresses their specific request
-2. Incorporates any personal traits mentioned
-3. Maintains the ${formData.selectedTone || 'heartfelt'} tone
-4. Creates a cohesive visual narrative
-
-If the user is asking for variations or changes, build upon previous suggestions while addressing their feedback.
-
-Respond naturally as if continuing the conversation, then provide the scene description.`;
-
-    try {
-      const response = await chatWithAI(prompt, {
-        model: 'gemini-2.5-pro'
-      });
-      
-      return response || "I'll help you create a beautiful scene. Could you tell me more about what you envision?";
-    } catch (error) {
-      console.error('Error generating scene:', error);
-      return "I'll help you create a beautiful scene. Could you tell me more about what you envision?";
-    }
-  };
-
-  // If showing chat interface, render it instead of the regular form
-  if (showSceneChat) {
-    return (
-      <SceneChatInterface
-        formData={formData}
-        onSceneSelect={(scene) => {
-          updateFormData({ prompt: scene });
-          setShowSceneChat(false);
-        }}
-        onGenerateScene={handleChatSceneGeneration}
-        onClose={() => setShowSceneChat(false)}
-        photoReferences={photoReferences}
-      />
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -229,112 +158,39 @@ Respond naturally as if continuing the conversation, then provide the scene desc
 
 
       {/* Personal Traits Section */}
-      <div className="space-y-4">
-        <div>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
-            1. Personal Traits & Interests
-          </h3>
-          <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
-            Share what they love - these details will be woven into your card's artwork
-          </p>
+      <div>
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+          What Do They Love? <span className="text-gray-500 font-normal">(Optional)</span>
+        </label>
+        <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+          Share their interests and favorites - our AI will create a personalized scene from these details
+        </p>
           
-          <Textarea
-            placeholder="Tell me about their interests! For example:
-• Loves skiing, craft beer, and cozy mountain lodges
+        <Textarea
+          placeholder={`• Loves skiing, craft beer, and cozy mountain lodges
 • Enjoys sushi, yoga, and beach sunsets
 • Into gaming, pizza, and sci-fi movies
-• Passionate about gardening, tea, and reading mysteries"
-            value={formData.personalTraits || ''}
-            onChange={(e) => updateFormData({ personalTraits: e.target.value })}
-            rows={4}
-            className="resize-none"
-            style={{ fontSize: '16px' }}
-          />
-        </div>
+• Passionate about gardening, tea, and reading mysteries`}
+          value={formData.personalTraits || ''}
+          onChange={(e) => updateFormData({ personalTraits: e.target.value })}
+          rows={5}
+          className="resize-none"
+          style={{ fontSize: '16px' }}
+        />
         
-        {/* Scene Description Section */}
-        <div>
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
-            2. Create Your Scene
-          </h3>
-          <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
-            Describe the scene you envision, or use the button below for AI-powered suggestions
-          </p>
-          
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Scene Description
-            </label>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsTextareaExpanded(!isTextareaExpanded)}
-                className="gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-              >
-                {isTextareaExpanded ? (
-                  <>
-                    <ChevronDown className="w-3 h-3" />
-                    <span className="hidden sm:inline">Collapse</span>
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="w-3 h-3 rotate-180" />
-                    <span className="hidden sm:inline">Expand</span>
-                  </>
-                )}
-              </Button>
-              
-              {/* AI Chat Interface Button */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowSceneChat(true)}
-                className="gap-1.5 text-xs bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/20 dark:hover:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700"
-              >
-                <MessageCircle className="w-3.5 h-3.5" />
-                <span className="font-medium">AI Chat</span>
-              </Button>
-            </div>
-          </div>
-          
-          <Textarea
-            placeholder={
-              formData.personalTraits
-                ? "Click 'Need scene ideas?' to generate creative scenes based on the traits above, or describe your own..."
-                : "Describe the scene for your card... or add some personal traits above first for better suggestions"
-            }
-            value={formData.prompt}
-            onChange={(e) => updateFormData({ prompt: e.target.value })}
-            rows={isTextareaExpanded ? 6 : 3}
-            className={isTextareaExpanded ? "resize-y" : "resize-none"}
-            style={{ fontSize: '16px' }}
-          />
-          
-          {/* Card Description Helper */}
-          <CardDescriptionHelper
-            formData={formData}
-            onAddToDescription={(text) => updateFormData({ prompt: text })}
-            chatWithAI={chatWithAI}
-            photoReferences={photoReferences}
-            fromField={formData.fromField}
-            relationshipField={formData.relationshipField}
-          />
-          
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            💡 <strong>How it works:</strong> Everything you write here becomes visual elements in your card's artwork
-          </p>
-        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+          💡 <strong>The magic:</strong> AI combines these traits with your chosen style to create unique, personalized artwork. Skip this field for a general design.
+        </p>
       </div>
 
       {/* Tips - Mobile Optimized */}
       <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800">
-        <h4 className="font-medium text-purple-900 dark:text-purple-100 mb-2">🎨 Visual Design Tips</h4>
+        <h4 className="font-medium text-purple-900 dark:text-purple-100 mb-2">🎨 How It Works</h4>
         <ul className="text-sm text-purple-800 dark:text-purple-200 space-y-1">
-          <li>• <strong>Step 1:</strong> Add their favorite activities, foods, and hobbies</li>
-          <li>• <strong>Step 2:</strong> Click "Need scene ideas?" for AI-powered creative scenes</li>
-          <li>• <strong>The Magic:</strong> AI combines all traits into unique, personalized card designs</li>
-          <li>• <strong>Style Options:</strong> Choose from curated styles or create your own</li>
+          <li>• <strong>Personal Touch (Optional):</strong> Add their favorite activities, foods, hobbies, and interests</li>
+          <li>• <strong>AI Magic:</strong> Our AI automatically creates personalized scenes from these details</li>
+          <li>• <strong>Style Selection (Required):</strong> Choose an artistic style for your card</li>
+          <li>• <strong>Result:</strong> A beautiful card - either personalized with their interests or a general design</li>
         </ul>
       </div>
     </div>

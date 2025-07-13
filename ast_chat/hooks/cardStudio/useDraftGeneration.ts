@@ -18,6 +18,7 @@ interface DraftGenerationProps {
   selectedImageModel: string;
   selectedPaperSize: string;
   prompt: string;
+  personalTraits?: string;
   toField: string;
   fromField: string;
   relationshipField: string;
@@ -64,6 +65,7 @@ export function useDraftGeneration(props: DraftGenerationProps) {
       customCardType,
       selectedTone,
       prompt,
+      personalTraits,
       toField,
       fromField,
       selectedPaperSize,
@@ -130,7 +132,13 @@ export function useDraftGeneration(props: DraftGenerationProps) {
       const cardTypeForPrompt = selectedType === "custom" ? customCardType : selectedType;
       const selectedToneObj = cardTones.find(tone => tone.id === selectedTone);
       const toneDescription = selectedToneObj ? selectedToneObj.description.toLowerCase() : "heartfelt and sincere";
-      const effectivePrompt = prompt.trim() || `A beautiful ${cardTypeForPrompt} card with ${toneDescription} style`;
+      
+      // Use prompt if provided, otherwise create a simple default
+      let effectivePrompt = prompt.trim();
+      
+      if (!effectivePrompt) {
+        effectivePrompt = `A beautiful ${cardTypeForPrompt} card with ${toneDescription} style`;
+      }
 
       // Generate 5 draft variations
       const draftPromises = Array.from({ length: 5 }, async (_, index) => {
@@ -173,6 +181,7 @@ export function useDraftGeneration(props: DraftGenerationProps) {
             toField: toField,
             fromField: fromField,
             relationshipField: props.relationshipField,
+            personalTraits: props.personalTraits,
             artisticStyle: selectedStyle,
             referenceImageUrls: referenceImageUrls,
             photoReferences: props.photoReferences,
@@ -317,6 +326,7 @@ export function useDraftGeneration(props: DraftGenerationProps) {
       customCardType,
       selectedTone,
       prompt,
+      personalTraits,
       toField,
       fromField,
       finalCardMessage,

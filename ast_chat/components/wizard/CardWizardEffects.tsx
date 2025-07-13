@@ -246,6 +246,7 @@ export function CardWizardEffects({
     cardStudio.setFromField(formData.fromField);
     cardStudio.setRelationshipField(formData.relationshipField);
     cardStudio.setPrompt(formData.prompt);
+    cardStudio.setPersonalTraits(formData.personalTraits);
     cardStudio.setFinalCardMessage(formData.finalCardMessage);
     cardStudio.setIsHandwrittenMessage(formData.isHandwrittenMessage);
     cardStudio.setSelectedArtisticStyle(formData.selectedArtisticStyle);
