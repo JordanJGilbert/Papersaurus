@@ -12,7 +12,7 @@ import {
   RefreshCw, 
   Copy, 
   Check,
-  MessageSquarePlus,
+  Palette,
   ArrowLeft
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -23,30 +23,33 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
-  isMessage?: boolean; // Flag to indicate this is a generated card message
+  isScene?: boolean; // Flag to indicate this is a generated scene description
 }
 
-interface MessageChatInterfaceProps {
+interface SceneChatInterfaceProps {
   formData: {
     selectedType?: string;
     selectedTone?: string;
-    toName?: string;
-    fromName?: string;
-    finalCardMessage?: string;
+    toField?: string;
+    fromField?: string;
+    personalTraits?: string;
+    prompt?: string;
   };
-  onMessageSelect: (message: string) => void;
-  onGenerateMessage: (userInput: string, conversationHistory: ChatMessage[]) => Promise<string>;
+  onSceneSelect: (scene: string) => void;
+  onGenerateScene: (userInput: string, conversationHistory: ChatMessage[]) => Promise<string>;
   isGenerating?: boolean;
   onClose?: () => void;
+  photoReferences?: any[];
 }
 
-export default function MessageChatInterface({
+export default function SceneChatInterface({
   formData,
-  onMessageSelect,
-  onGenerateMessage,
+  onSceneSelect,
+  onGenerateScene,
   isGenerating = false,
-  onClose
-}: MessageChatInterfaceProps) {
+  onClose,
+  photoReferences = []
+}: SceneChatInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -55,16 +58,24 @@ export default function MessageChatInterface({
 
   // Initialize with a greeting
   useEffect(() => {
+    const personalTraitsText = formData.personalTraits 
+      ? ` I see you've mentioned their interests: "${formData.personalTraits}". I'll incorporate these into our scene!`
+      : '';
+    
+    const photoText = photoReferences.length > 0 
+      ? ` I also notice you've uploaded ${photoReferences.length} reference photo${photoReferences.length > 1 ? 's' : ''} - I'll make sure to include those people in creative ways.`
+      : '';
+
     const initialMessage: ChatMessage = {
       id: "initial",
       role: "assistant",
-      content: `Hi! I'm here to help you craft the perfect ${formData.selectedType || "greeting card"} message${formData.toName ? ` for ${formData.toName}` : ""}. 
+      content: `Hi! I'm here to help you create the perfect scene for your ${formData.selectedType || "greeting card"}.${personalTraitsText}${photoText}
 
-Tell me about the occasion or any specific details you'd like to include, and I'll help you create a ${formData.selectedTone || "heartfelt"} message.`,
+Tell me about the setting, activities, or visual elements you'd like to see, and I'll help you craft an amazing scene that captures the ${formData.selectedTone || "perfect"} mood!`,
       timestamp: new Date()
     };
     setMessages([initialMessage]);
-  }, [formData.selectedType, formData.selectedTone, formData.toName]);
+  }, [formData.selectedType, formData.selectedTone, formData.personalTraits, photoReferences]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -85,19 +96,19 @@ Tell me about the occasion or any specific details you'd like to include, and I'
     setInputValue("");
 
     try {
-      const generatedMessage = await onGenerateMessage(inputValue, messages);
+      const generatedScene = await onGenerateScene(inputValue, messages);
       
       const assistantMessage: ChatMessage = {
         id: Date.now().toString() + "-response",
         role: "assistant",
-        content: generatedMessage,
+        content: generatedScene,
         timestamp: new Date(),
-        isMessage: true
+        isScene: true
       };
 
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
-      toast.error("Failed to generate message. Please try again.");
+      toast.error("Failed to generate scene. Please try again.");
     }
   };
 
@@ -111,13 +122,13 @@ Tell me about the occasion or any specific details you'd like to include, and I'
   const handleCopy = (message: ChatMessage) => {
     navigator.clipboard.writeText(message.content);
     setCopiedId(message.id);
-    toast.success("Message copied!");
+    toast.success("Scene copied!");
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleUseMessage = (message: string) => {
-    onMessageSelect(message);
-    toast.success("Message selected!");
+  const handleUseScene = (scene: string) => {
+    onSceneSelect(scene);
+    toast.success("Scene selected!");
   };
 
   return (
@@ -125,8 +136,8 @@ Tell me about the occasion or any specific details you'd like to include, and I'
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b">
         <div className="flex items-center gap-2">
-          <MessageSquarePlus className="w-5 h-5 text-blue-600" />
-          <h3 className="font-semibold">Message Assistant</h3>
+          <Palette className="w-5 h-5 text-purple-600" />
+          <h3 className="font-semibold">Scene Assistant</h3>
         </div>
         {onClose && (
           <Button
@@ -153,8 +164,8 @@ Tell me about the occasion or any specific details you'd like to include, and I'
               )}
             >
               {message.role === "assistant" && (
-                <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center flex-shrink-0">
-                  <Bot className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center flex-shrink-0">
+                  <Bot className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                 </div>
               )}
               
@@ -163,22 +174,22 @@ Tell me about the occasion or any specific details you'd like to include, and I'
                   "max-w-[80%] rounded-lg p-3",
                   message.role === "user"
                     ? "bg-gray-100 dark:bg-gray-800"
-                    : "bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800"
+                    : "bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800"
                 )}
               >
                 <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                 
-                {/* Action buttons for generated messages */}
-                {message.role === "assistant" && message.isMessage && (
-                  <div className="flex gap-2 mt-3 pt-3 border-t border-blue-200 dark:border-blue-800">
+                {/* Action buttons for generated scenes */}
+                {message.role === "assistant" && message.isScene && (
+                  <div className="flex gap-2 mt-3 pt-3 border-t border-purple-200 dark:border-purple-800">
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleUseMessage(message.content)}
+                      onClick={() => handleUseScene(message.content)}
                       className="gap-1.5 text-xs"
                     >
                       <Check className="w-3 h-3" />
-                      Use This
+                      Use This Scene
                     </Button>
                     <Button
                       size="sm"
@@ -216,7 +227,7 @@ Tell me about the occasion or any specific details you'd like to include, and I'
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Tell me about the occasion or what you'd like to say..."
+            placeholder="Describe the scene you envision, or ask me for ideas..."
             className="min-h-[60px] resize-none"
             disabled={isGenerating}
           />
@@ -238,34 +249,34 @@ Tell me about the occasion or any specific details you'd like to include, and I'
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setInputValue("Make it more personal")}
+            onClick={() => setInputValue("Add more visual details")}
             className="text-xs"
           >
-            More personal
+            More details
           </Button>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setInputValue("Add some humor")}
+            onClick={() => setInputValue("Try a different setting")}
             className="text-xs"
           >
-            Add humor
+            Different setting
           </Button>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setInputValue("Make it shorter")}
+            onClick={() => setInputValue("Include their interests")}
             className="text-xs"
           >
-            Shorter
+            Include interests
           </Button>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setInputValue("More emotional")}
+            onClick={() => setInputValue("Make it simpler")}
             className="text-xs"
           >
-            More emotional
+            Simpler scene
           </Button>
         </div>
       </div>

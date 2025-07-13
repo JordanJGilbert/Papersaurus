@@ -63,8 +63,8 @@ export const createMessageHelpWrapper = (
   cardStudio: any,
   updateFormData: (updates: any) => void
 ) => {
-  return async (userInput?: string) => {
-    const generatedMessage = await cardStudio.handleGetMessageHelp(userInput);
+  return async (userInput?: string, conversationHistory?: any[]) => {
+    const generatedMessage = await cardStudio.handleGetMessageHelp(userInput, conversationHistory);
     
     // After message generation, update the form data with the new message
     if (generatedMessage) {

@@ -19,7 +19,7 @@ interface Step2Props {
   formData: CardFormData;
   updateFormData: (updates: Partial<CardFormData>) => void;
   onStepComplete?: () => void;
-  handleGetMessageHelp?: (userInput?: string) => Promise<string | void>;
+  handleGetMessageHelp?: (userInput?: string, conversationHistory?: any[]) => Promise<string | void>;
   isGeneratingMessage?: boolean;
   messageHistory?: string[];
   currentMessageIndex?: number;
@@ -74,10 +74,10 @@ export default function Step2ContentCreation({
   const characterCount = formData.finalCardMessage?.length || 0;
 
   // Handler for chat-based message generation
-  const handleChatMessageGeneration = async (userInput: string): Promise<string> => {
+  const handleChatMessageGeneration = async (userInput: string, conversationHistory: any[]): Promise<string> => {
     if (handleGetMessageHelp) {
-      // Pass the user input as context for more personalized generation
-      const generatedMessage = await handleGetMessageHelp(userInput);
+      // Pass the user input and conversation history for contextual generation
+      const generatedMessage = await handleGetMessageHelp(userInput, conversationHistory);
       return generatedMessage || "I'll help you create a heartfelt message. Could you tell me more about what you'd like to express?";
     }
     return "I'll help you create a heartfelt message. Could you tell me more about what you'd like to express?";

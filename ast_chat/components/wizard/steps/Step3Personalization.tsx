@@ -5,10 +5,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { CardFormData } from "@/hooks/useCardForm";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, MessageCircle } from "lucide-react";
 import CardDescriptionHelper from "../CardDescriptionHelper";
 import { chatWithAI } from "@/hooks/cardStudio/utils";
 import { PhotoReference } from "@/hooks/cardStudio/constants";
+import SceneChatInterface from "@/components/SceneChatInterface";
 
 interface Step3Props {
   formData: CardFormData;
@@ -84,6 +85,7 @@ export default function Step3Personalization({
   photoReferences = []
 }: Step3Props) {
   const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
+  const [showSceneChat, setShowSceneChat] = useState(false);
 
   React.useEffect(() => {
     // Auto-complete step when style is selected and valid
@@ -94,6 +96,71 @@ export default function Step3Personalization({
       onStepComplete?.();
     }
   }, [formData.selectedArtisticStyle, formData.customStyleDescription, onStepComplete]);
+
+  // Handler for chat-based scene generation
+  const handleChatSceneGeneration = async (userInput: string, conversationHistory: any[]): Promise<string> => {
+    // Build context from conversation history
+    const conversationContext = conversationHistory
+      .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+      .join('\n\n');
+
+    // Build personal traits context
+    const traitsText = formData.personalTraits ? `\n\nPersonal traits and interests: ${formData.personalTraits}` : '';
+    
+    // Build photo context
+    let photoContext = '';
+    if (photoReferences && photoReferences.length > 0) {
+      const photosWithDescriptions = photoReferences.filter(ref => ref.description && ref.description.trim() !== '');
+      if (photosWithDescriptions.length > 0) {
+        const descriptions = photosWithDescriptions.map(ref => ref.description).join(', ');
+        photoContext = `\n\nThe card should include ${descriptions}. IMPORTANT: Only feature the people mentioned - do not add any additional people unless explicitly requested.`;
+      }
+    }
+
+    const prompt = `You are a creative scene designer for greeting cards. You're having a conversation with someone to help them create the perfect scene for their ${formData.selectedType || 'greeting'} card with a ${formData.selectedTone || 'heartfelt'} tone.
+
+Previous conversation:
+${conversationContext}
+
+User's current request: "${userInput}"${traitsText}${photoContext}
+
+Based on the conversation context and the user's request, generate a complete scene description (20-30 words) that:
+1. Addresses their specific request
+2. Incorporates any personal traits mentioned
+3. Maintains the ${formData.selectedTone || 'heartfelt'} tone
+4. Creates a cohesive visual narrative
+
+If the user is asking for variations or changes, build upon previous suggestions while addressing their feedback.
+
+Respond naturally as if continuing the conversation, then provide the scene description.`;
+
+    try {
+      const response = await chatWithAI(prompt, {
+        model: 'gemini-2.5-pro'
+      });
+      
+      return response || "I'll help you create a beautiful scene. Could you tell me more about what you envision?";
+    } catch (error) {
+      console.error('Error generating scene:', error);
+      return "I'll help you create a beautiful scene. Could you tell me more about what you envision?";
+    }
+  };
+
+  // If showing chat interface, render it instead of the regular form
+  if (showSceneChat) {
+    return (
+      <SceneChatInterface
+        formData={formData}
+        onSceneSelect={(scene) => {
+          updateFormData({ prompt: scene });
+          setShowSceneChat(false);
+        }}
+        onGenerateScene={handleChatSceneGeneration}
+        onClose={() => setShowSceneChat(false)}
+        photoReferences={photoReferences}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -198,24 +265,37 @@ export default function Step3Personalization({
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Scene Description
             </label>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setIsTextareaExpanded(!isTextareaExpanded)}
-              className="gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-            >
-              {isTextareaExpanded ? (
-                <>
-                  <ChevronDown className="w-3 h-3" />
-                  Collapse
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="w-3 h-3 rotate-180" />
-                  Expand
-                </>
-              )}
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsTextareaExpanded(!isTextareaExpanded)}
+                className="gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+              >
+                {isTextareaExpanded ? (
+                  <>
+                    <ChevronDown className="w-3 h-3" />
+                    <span className="hidden sm:inline">Collapse</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-3 h-3 rotate-180" />
+                    <span className="hidden sm:inline">Expand</span>
+                  </>
+                )}
+              </Button>
+              
+              {/* AI Chat Interface Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSceneChat(true)}
+                className="gap-1.5 text-xs bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/20 dark:hover:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span className="font-medium">AI Chat</span>
+              </Button>
+            </div>
           </div>
           
           <Textarea

@@ -61,7 +61,7 @@ export function useMessageGeneration(
   };
 
   // Full message generation function
-  const handleGetMessageHelp = useCallback(async (userInput?: string) => {
+  const handleGetMessageHelp = useCallback(async (userInput?: string, conversationHistory?: any[]) => {
     // Validate custom card type if selected
     if (selectedType === "custom" && !customCardType.trim()) {
       toast.error("Please describe your custom card type first!");
@@ -95,8 +95,22 @@ export function useMessageGeneration(
       // If user input is provided, incorporate it into the prompt
       let messagePrompt = PromptGenerator.generateMessagePrompt(messageConfig);
       
+      // Build conversation context if provided
+      let conversationContext = '';
+      if (conversationHistory && conversationHistory.length > 0) {
+        conversationContext = conversationHistory
+          .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+          .join('\n\n');
+      }
+      
       if (userInput) {
-        messagePrompt = `${messagePrompt}\n\n## User Request\nThe user has provided additional context or specific requests for the message:\n\n"${userInput}"\n\nPlease incorporate their feedback and create a message that addresses their specific needs while maintaining the ${toneDescription} tone for this ${cardTypeForPrompt} card.`;
+        if (conversationContext) {
+          // If we have conversation history, include it for context
+          messagePrompt = `${messagePrompt}\n\n## Conversation History\nHere's the conversation so far:\n\n${conversationContext}\n\n## User's Current Request\n"${userInput}"\n\nBased on the conversation context and the user's current request, create a message that addresses their specific needs. If they're asking for changes or variations, modify the previous suggestions accordingly while maintaining the ${toneDescription} tone for this ${cardTypeForPrompt} card.`;
+        } else {
+          // Original behavior for non-chat context
+          messagePrompt = `${messagePrompt}\n\n## User Request\nThe user has provided additional context or specific requests for the message:\n\n"${userInput}"\n\nPlease incorporate their feedback and create a message that addresses their specific needs while maintaining the ${toneDescription} tone for this ${cardTypeForPrompt} card.`;
+        }
       }
 
       const generatedMessage = await chatWithAI(messagePrompt, {
