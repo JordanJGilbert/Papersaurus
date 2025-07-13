@@ -3494,6 +3494,10 @@ html, body, #__next {
 .focus\:ring-ring:focus {
   --tw-ring-color: hsl(var(--ring));
 }
+.focus\:ring-purple-500:focus {
+  --tw-ring-opacity: 1;
+  --tw-ring-color: rgb(168 85 247 / var(--tw-ring-opacity, 1));
+}
 .focus\:ring-offset-2:focus {
   --tw-ring-offset-width: 2px;
 }

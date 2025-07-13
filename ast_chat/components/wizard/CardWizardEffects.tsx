@@ -42,26 +42,34 @@ export function CardWizardEffects({
       if (currentSession && currentSession.draftCards && currentSession.draftCards.length > 0) {
         console.log('🔄 Found saved draft session with', currentSession.draftCards.length, 'drafts');
         
-        // Restore draft cards
-        cardStudio.setDraftCards(currentSession.draftCards);
-        cardStudio.setIsDraftMode(true);
+        // Check if draft is less than 2 hours old
+        const draftAge = Date.now() - new Date(currentSession.savedAt).getTime();
+        const twoHours = 2 * 60 * 60 * 1000;
         
-        // Restore form data if needed
-        if (currentSession.formData) {
-          cardForm.updateFormData(currentSession.formData);
+        if (draftAge < twoHours) {
+          // Restore draft cards but don't navigate
+          cardStudio.setDraftCards(currentSession.draftCards);
+          cardStudio.setIsDraftMode(true);
+          
+          // Restore form data if needed
+          if (currentSession.formData) {
+            cardForm.updateFormData(currentSession.formData);
+          }
+          
+          // Don't auto-navigate - let user choose via Resume Draft button
+          console.log('🔄 Draft session restored, user can resume via UI');
+          
+          // Set the current session ID for updates
+          setCurrentDraftSessionId(currentSession.id);
+          setLastSavedDraftCount(currentSession.draftCards.length);
+        } else {
+          // Draft is too old, remove it
+          console.log('🔄 Draft session expired, removing...');
+          localStorage.removeItem('vibe-current-draft-session');
+          cardHistory.removeDraftSession(currentSession.id);
         }
         
-        // Navigate to Step 5 to show the drafts
-        console.log('🔄 Restoring to Step 5 with saved drafts');
-        for (let i = 1; i <= 4; i++) {
-          if (!wizardState.completedSteps.includes(i)) wizardState.markStepCompleted(i);
-        }
-        wizardState.updateCurrentStep(5);
-        
-        // Set the current session ID for updates
-        setCurrentDraftSessionId(currentSession.id);
-        setLastSavedDraftCount(currentSession.draftCards.length);
-        return; // Skip pending jobs check if we restored a draft session
+        return; // Skip pending jobs check if we processed a draft session
       }
       
       await cardStudio.checkPendingJobs();
@@ -197,13 +205,22 @@ export function CardWizardEffects({
     if (cardStudio.generatedCard && cardStudio.isCardCompleted) {
       cardHistory.addCompletedCard(cardStudio.generatedCard);
       
+      // Clear draft session since card is completed
+      if (currentDraftSessionId) {
+        console.log('🧹 Clearing draft session after successful card completion');
+        localStorage.removeItem('vibe-current-draft-session');
+        cardHistory.removeDraftSession(currentDraftSessionId);
+        setCurrentDraftSessionId(null);
+        setLastSavedDraftCount(0);
+      }
+      
       // Ensure we're on Step 6 to see the completed card
       if (wizardState.currentStep !== 6) {
         console.log('📍 Card completed but not on Step 6, navigating there now...');
         wizardState.updateCurrentStep(6);
       }
     }
-  }, [cardStudio.generatedCard, cardStudio.isCardCompleted, wizardState.currentStep]);
+  }, [cardStudio.generatedCard, cardStudio.isCardCompleted, wizardState.currentStep, currentDraftSessionId]);
 
   // Sync form data with cardStudio when form data changes
   useEffect(() => {

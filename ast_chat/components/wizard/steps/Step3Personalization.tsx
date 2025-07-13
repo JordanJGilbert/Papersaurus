@@ -177,54 +177,120 @@ export default function Step3Personalization({
         </div>
       )}
 
-      {/* Personalize the Artwork Section */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Personalize the Artwork (Optional)
-          </label>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsTextareaExpanded(!isTextareaExpanded)}
-            className="gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-          >
-            {isTextareaExpanded ? (
-              <>
-                <ChevronDown className="w-3 h-3" />
-                Collapse
-              </>
-            ) : (
-              <>
-                <ChevronDown className="w-3 h-3 rotate-180" />
-                Expand
-              </>
-            )}
-          </Button>
+      {/* Personal Traits Section */}
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+            1. Personal Traits & Preferences
+          </h3>
+          <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+            Tell us about their interests - these will be woven into the card design
+          </p>
+          
+          <div className="space-y-3">
+            {/* Favorite Activities */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+                Favorite Activities
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., skiing, hiking, yoga, gaming, reading"
+                value={formData.favoriteActivities || ''}
+                onChange={(e) => updateFormData({ favoriteActivities: e.target.value })}
+                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                style={{ fontSize: '16px' }}
+              />
+            </div>
+            
+            {/* Favorite Foods */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+                Favorite Foods & Drinks
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., sushi, coffee, craft beer, chocolate, tacos"
+                value={formData.favoriteFoods || ''}
+                onChange={(e) => updateFormData({ favoriteFoods: e.target.value })}
+                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                style={{ fontSize: '16px' }}
+              />
+            </div>
+            
+            {/* Hobbies & Interests */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+                Hobbies & Interests
+              </label>
+              <input
+                type="text"
+                placeholder="e.g., travel, photography, gardening, music, sports"
+                value={formData.hobbiesInterests || ''}
+                onChange={(e) => updateFormData({ hobbiesInterests: e.target.value })}
+                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                style={{ fontSize: '16px' }}
+              />
+            </div>
+          </div>
         </div>
         
-        <Textarea
-          placeholder="🎨 Share interests: 'loves skiing and craft beer' • Activities: 'yoga at sunrise' • Style: 'watercolor flowers' • Mood: 'cozy autumn vibes' • Colors: 'purple and gold'"
-          value={formData.prompt}
-          onChange={(e) => updateFormData({ prompt: e.target.value })}
-          rows={isTextareaExpanded ? 6 : 3}
-          className={isTextareaExpanded ? "resize-y" : "resize-none"}
-          style={{ fontSize: '16px' }}
-        />
-        
-        {/* Card Description Helper */}
-        <CardDescriptionHelper
-          formData={formData}
-          onAddToDescription={(text) => updateFormData({ prompt: text })}
-          chatWithAI={chatWithAI}
-          photoReferences={photoReferences}
-          fromField={formData.fromField}
-          relationshipField={formData.relationshipField}
-        />
-        
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-          💡 <strong>How it works:</strong> Everything you write here becomes visual elements in your card's artwork
-        </p>
+        {/* Scene Description Section */}
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+            2. Create Your Scene
+          </h3>
+          <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+            Describe the scene you envision, or use the button below for AI-powered suggestions
+          </p>
+          
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Scene Description
+            </label>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsTextareaExpanded(!isTextareaExpanded)}
+              className="gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+            >
+              {isTextareaExpanded ? (
+                <>
+                  <ChevronDown className="w-3 h-3" />
+                  Collapse
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="w-3 h-3 rotate-180" />
+                  Expand
+                </>
+              )}
+            </Button>
+          </div>
+          
+          <Textarea
+            placeholder="Describe the scene for your card... or click 'Need ideas?' below to generate suggestions based on the personal traits above"
+            value={formData.prompt}
+            onChange={(e) => updateFormData({ prompt: e.target.value })}
+            rows={isTextareaExpanded ? 6 : 3}
+            className={isTextareaExpanded ? "resize-y" : "resize-none"}
+            style={{ fontSize: '16px' }}
+          />
+          
+          {/* Card Description Helper */}
+          <CardDescriptionHelper
+            formData={formData}
+            onAddToDescription={(text) => updateFormData({ prompt: text })}
+            chatWithAI={chatWithAI}
+            photoReferences={photoReferences}
+            fromField={formData.fromField}
+            relationshipField={formData.relationshipField}
+          />
+          
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            💡 <strong>How it works:</strong> Everything you write here becomes visual elements in your card's artwork
+          </p>
+        </div>
       </div>
 
       {/* Tips - Mobile Optimized */}

@@ -37,7 +37,21 @@ export function useCardHistory() {
     if (typeof window !== 'undefined') {
       try {
         const sessions = JSON.parse(localStorage.getItem('vibe-draft-sessions') || '[]');
-        setDraftSessions(sessions);
+        const twoHours = 2 * 60 * 60 * 1000;
+        
+        // Filter out expired sessions
+        const validSessions = sessions.filter((session: any) => {
+          if (!session.savedAt) return false;
+          const age = Date.now() - new Date(session.savedAt).getTime();
+          return age < twoHours;
+        });
+        
+        // Update localStorage if we removed any expired sessions
+        if (validSessions.length !== sessions.length) {
+          localStorage.setItem('vibe-draft-sessions', JSON.stringify(validSessions));
+        }
+        
+        setDraftSessions(validSessions);
       } catch {
         setDraftSessions([]);
       }

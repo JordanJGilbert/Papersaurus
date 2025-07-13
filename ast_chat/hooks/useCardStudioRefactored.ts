@@ -609,25 +609,44 @@ export function useCardStudio() {
     if (recovery) {
       console.log('🔄 Found active job to recover:', recovery.jobId);
       
-      // Restore job state and subscribe to updates
-      jobManagement.setCurrentJobId(recovery.jobId);
-      webSocket.subscribeToJob(recovery.jobId);
-      
-      // Set generation state
+      // For draft jobs, check if we already have completed drafts
       const isDraft = recovery.jobId.startsWith('draft-');
-      if (isDraft) {
-        draftGeneration.setIsDraftMode(true);
-        draftGeneration.setIsGenerating(true);
-        cardGeneration.setIsGenerating(true);
-        draftGeneration.setGenerationProgress('🎨 Resuming draft generation...');
-        cardGeneration.setGenerationProgress('🎨 Resuming draft generation...');
-      } else {
-        cardGeneration.setIsGenerating(true);
-        cardGeneration.setGenerationProgress('🎨 Resuming card generation...');
-      }
       
-      // Start elapsed time tracking
-      jobManagement.startElapsedTimeTracking(isDraft ? 'draft' : 'final');
+      if (isDraft) {
+        // Check if we already have completed draft cards
+        const hasCompletedDrafts = draftGeneration.draftCards.filter(card => card !== null).length > 0;
+        
+        if (hasCompletedDrafts) {
+          console.log('✅ Draft job already completed, not setting as generating');
+          // Just restore the job ID for reference, but don't set as generating
+          jobManagement.setCurrentJobId(recovery.jobId);
+          draftGeneration.setIsDraftMode(true);
+        } else {
+          console.log('🎨 Resuming incomplete draft generation');
+          // Only set as generating if drafts aren't complete
+          jobManagement.setCurrentJobId(recovery.jobId);
+          webSocket.subscribeToJob(recovery.jobId);
+          draftGeneration.setIsDraftMode(true);
+          draftGeneration.setIsGenerating(true);
+          cardGeneration.setIsGenerating(true);
+          draftGeneration.setGenerationProgress('🎨 Resuming draft generation...');
+          cardGeneration.setGenerationProgress('🎨 Resuming draft generation...');
+          jobManagement.startElapsedTimeTracking('draft');
+        }
+      } else {
+        // For final card recovery, check if already completed
+        if (cardGeneration.generatedCard && cardGeneration.isCardCompleted) {
+          console.log('✅ Final card already completed, not setting as generating');
+          jobManagement.setCurrentJobId(recovery.jobId);
+        } else {
+          console.log('🎯 Resuming incomplete final card generation');
+          jobManagement.setCurrentJobId(recovery.jobId);
+          webSocket.subscribeToJob(recovery.jobId);
+          cardGeneration.setIsGenerating(true);
+          cardGeneration.setGenerationProgress('🎨 Resuming card generation...');
+          jobManagement.startElapsedTimeTracking('final');
+        }
+      }
     }
     
     // Always mark restoration as complete

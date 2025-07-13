@@ -235,9 +235,24 @@ export default function Step1CardBasics({
 
   // Get the most recent draft session if available
   const mostRecentDraft = cardHistory?.draftSessions?.[0];
-  const hasRecentDraft = mostRecentDraft && 
-    // Only show if less than 24 hours old
-    (Date.now() - new Date(mostRecentDraft.lastModified).getTime() < 24 * 60 * 60 * 1000);
+  const hasRecentDraft = mostRecentDraft && mostRecentDraft.draftCards?.length > 0;
+  
+  // Calculate draft age for display
+  const getDraftAge = () => {
+    if (!mostRecentDraft?.savedAt) return '';
+    
+    const ageMs = Date.now() - new Date(mostRecentDraft.savedAt).getTime();
+    const minutes = Math.floor(ageMs / 60000);
+    const hours = Math.floor(minutes / 60);
+    
+    if (hours > 0) {
+      return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+    } else if (minutes > 0) {
+      return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+    } else {
+      return 'just now';
+    }
+  };
   
   // Debug logging
   console.log('Step1 Debug:', {
@@ -273,14 +288,8 @@ export default function Step1CardBasics({
                 Resume Your Recent Draft
               </h3>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                {mostRecentDraft.title || 'Untitled Draft'} • {
-                  new Date(mostRecentDraft.lastModified).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit'
-                  })
-                }
+                {mostRecentDraft.formData?.selectedType || 'Custom'} • {mostRecentDraft.formData?.selectedTone || 'Casual'} Card
+                {getDraftAge() && <span className="text-xs ml-2">• Saved {getDraftAge()}</span>}
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -295,7 +304,12 @@ export default function Step1CardBasics({
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    // Just continue with new card - do nothing
+                    // Clear the draft and start fresh
+                    if (cardHistory?.removeDraftSession) {
+                      cardHistory.removeDraftSession(mostRecentDraft.id);
+                      localStorage.removeItem('vibe-current-draft-session');
+                      toast.success("Draft cleared. Starting fresh!");
+                    }
                   }}
                 >
                   Start Fresh
