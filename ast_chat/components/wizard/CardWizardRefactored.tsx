@@ -41,9 +41,9 @@ const wizardSteps: WizardStep[] = [
   },
   {
     id: "content",
-    title: "Content & Message", 
-    mobileTitle: "Content",
-    description: "Describe your card and write your message"
+    title: "Message", 
+    mobileTitle: "Message",
+    description: "Write your personalized card message"
   },
   {
     id: "personalization",

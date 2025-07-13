@@ -61,7 +61,7 @@ export function useMessageGeneration(
   };
 
   // Full message generation function
-  const handleGetMessageHelp = useCallback(async () => {
+  const handleGetMessageHelp = useCallback(async (userInput?: string) => {
     // Validate custom card type if selected
     if (selectedType === "custom" && !customCardType.trim()) {
       toast.error("Please describe your custom card type first!");
@@ -92,7 +92,12 @@ export function useMessageGeneration(
         photoReferences: photoReferences
       };
 
-      const messagePrompt = PromptGenerator.generateMessagePrompt(messageConfig);
+      // If user input is provided, incorporate it into the prompt
+      let messagePrompt = PromptGenerator.generateMessagePrompt(messageConfig);
+      
+      if (userInput) {
+        messagePrompt = `${messagePrompt}\n\n## User Request\nThe user has provided additional context or specific requests for the message:\n\n"${userInput}"\n\nPlease incorporate their feedback and create a message that addresses their specific needs while maintaining the ${toneDescription} tone for this ${cardTypeForPrompt} card.`;
+      }
 
       const generatedMessage = await chatWithAI(messagePrompt, {
         model: "gemini-2.5-pro",

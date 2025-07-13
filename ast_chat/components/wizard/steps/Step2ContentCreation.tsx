@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, MessageSquarePlus, RefreshCw, Undo2, Redo2, History } from "lucide-react";
+import { ChevronDown, Undo2, Redo2, History, MessageCircle } from "lucide-react";
 import { CardFormData } from "@/hooks/useCardForm";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -13,12 +13,13 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import MessageChatInterface from "@/components/MessageChatInterface";
 
 interface Step2Props {
   formData: CardFormData;
   updateFormData: (updates: Partial<CardFormData>) => void;
   onStepComplete?: () => void;
-  handleGetMessageHelp?: () => Promise<void>;
+  handleGetMessageHelp?: (userInput?: string) => Promise<string | void>;
   isGeneratingMessage?: boolean;
   messageHistory?: string[];
   currentMessageIndex?: number;
@@ -38,17 +39,14 @@ export default function Step2ContentCreation({
   redoMessage
 }: Step2Props) {
   const [isMessageExpanded, setIsMessageExpanded] = useState(false);
+  const [showChatInterface, setShowChatInterface] = useState(false);
 
   React.useEffect(() => {
     // This step is always "complete" since all fields are optional
     onStepComplete?.();
   }, [onStepComplete]);
 
-  const handleMessageGeneration = async () => {
-    if (handleGetMessageHelp) {
-      await handleGetMessageHelp();
-    }
-  };
+  // Removed handleMessageGeneration since we're using AI Chat interface only
 
   // Dynamic placeholder based on card type and tone
   const messagePlaceholder = useMemo(() => {
@@ -68,12 +66,37 @@ export default function Step2ContentCreation({
       return "💝 Share sincere feelings and warm wishes...";
     }
     
-    return "💝 Your message here... (or click 'Help me write')";
+    return "💝 Your message here... (or click 'AI Chat' for help)";
   }, [formData.selectedType, formData.selectedTone, formData.isHandwrittenMessage]);
 
   const canUndo = currentMessageIndex > 0;
   const canRedo = currentMessageIndex < messageHistory.length - 1;
   const characterCount = formData.finalCardMessage?.length || 0;
+
+  // Handler for chat-based message generation
+  const handleChatMessageGeneration = async (userInput: string): Promise<string> => {
+    if (handleGetMessageHelp) {
+      // Pass the user input as context for more personalized generation
+      const generatedMessage = await handleGetMessageHelp(userInput);
+      return generatedMessage || "I'll help you create a heartfelt message. Could you tell me more about what you'd like to express?";
+    }
+    return "I'll help you create a heartfelt message. Could you tell me more about what you'd like to express?";
+  };
+
+  if (showChatInterface) {
+    return (
+      <MessageChatInterface
+        formData={formData}
+        onMessageSelect={(message) => {
+          updateFormData({ finalCardMessage: message });
+          setShowChatInterface(false);
+        }}
+        onGenerateMessage={handleChatMessageGeneration}
+        isGenerating={isGeneratingMessage}
+        onClose={() => setShowChatInterface(false)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -169,25 +192,16 @@ export default function Step2ContentCreation({
               )}
             </Button>
             
-            {/* AI Generation Button */}
+            {/* AI Chat Interface Button - Primary CTA */}
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              onClick={handleMessageGeneration}
-              disabled={isGeneratingMessage || formData.isHandwrittenMessage}
-              className="gap-1 text-xs"
+              onClick={() => setShowChatInterface(true)}
+              disabled={formData.isHandwrittenMessage}
+              className="gap-1.5 text-xs bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700"
             >
-              {formData.finalCardMessage ? (
-                <>
-                  <RefreshCw className="w-3 h-3" />
-                  {isGeneratingMessage ? "Writing..." : <span className="hidden sm:inline">Try another</span>}
-                </>
-              ) : (
-                <>
-                  <MessageSquarePlus className="w-3 h-3" />
-                  {isGeneratingMessage ? "Writing..." : "Help me write"}
-                </>
-              )}
+              <MessageCircle className="w-3.5 h-3.5" />
+              <span className="font-medium">AI Chat</span>
             </Button>
           </div>
         </div>
@@ -206,7 +220,7 @@ export default function Step2ContentCreation({
               placeholder={messagePlaceholder}
               value={formData.finalCardMessage}
               onChange={(e) => updateFormData({ finalCardMessage: e.target.value })}
-              rows={isMessageExpanded ? 6 : 3}
+              rows={isMessageExpanded ? 14 : 10}
               className={isMessageExpanded ? "resize-y" : "resize-none"}
               style={{ fontSize: '16px' }}
               disabled={formData.isHandwrittenMessage}
@@ -253,8 +267,8 @@ export default function Step2ContentCreation({
         <h4 className="font-medium text-green-900 dark:text-green-100 mb-2">✨ Message Tips</h4>
         <ul className="text-sm text-green-800 dark:text-green-200 space-y-1">
           <li>• Keep it personal and heartfelt</li>
-          <li>• AI suggestions adapt to your card type and tone</li>
-          <li>• You can always edit the AI-generated message</li>
+          <li>• Use AI Chat for interactive message creation</li>
+          <li>• Have a conversation to refine your message</li>
           <li>• Leave blank if you prefer to handwrite</li>
         </ul>
       </div>
