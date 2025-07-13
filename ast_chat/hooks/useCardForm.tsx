@@ -23,9 +23,7 @@ export interface CardFormData {
   referenceImages: File[];
   referenceImageUrls: string[];
   photoReferences?: Array<{ imageUrl: string; imageIndex: number; description?: string; }>;
-  favoriteActivities?: string;
-  favoriteFoods?: string;
-  hobbiesInterests?: string;
+  personalTraits?: string;
 
   // Step 4: Details
   userEmail: string;

@@ -181,58 +181,24 @@ export default function Step3Personalization({
       <div className="space-y-4">
         <div>
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
-            1. Personal Traits & Preferences
+            1. Personal Traits & Interests
           </h3>
           <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
-            Tell us about their interests - these will be woven into the card design
+            Share what they love - these details will be woven into your card's artwork
           </p>
           
-          <div className="space-y-3">
-            {/* Favorite Activities */}
-            <div>
-              <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">
-                Favorite Activities
-              </label>
-              <input
-                type="text"
-                placeholder="e.g., skiing, hiking, yoga, gaming, reading"
-                value={formData.favoriteActivities || ''}
-                onChange={(e) => updateFormData({ favoriteActivities: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                style={{ fontSize: '16px' }}
-              />
-            </div>
-            
-            {/* Favorite Foods */}
-            <div>
-              <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">
-                Favorite Foods & Drinks
-              </label>
-              <input
-                type="text"
-                placeholder="e.g., sushi, coffee, craft beer, chocolate, tacos"
-                value={formData.favoriteFoods || ''}
-                onChange={(e) => updateFormData({ favoriteFoods: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                style={{ fontSize: '16px' }}
-              />
-            </div>
-            
-            {/* Hobbies & Interests */}
-            <div>
-              <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">
-                Hobbies & Interests
-              </label>
-              <input
-                type="text"
-                placeholder="e.g., travel, photography, gardening, music, sports"
-                value={formData.hobbiesInterests || ''}
-                onChange={(e) => updateFormData({ hobbiesInterests: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                style={{ fontSize: '16px' }}
-              />
-            </div>
-          </div>
+          <Textarea
+            placeholder="Tell me about their interests! For example:
+• Loves skiing, craft beer, and cozy mountain lodges
+• Enjoys sushi, yoga, and beach sunsets
+• Into gaming, pizza, and sci-fi movies
+• Passionate about gardening, tea, and reading mysteries"
+            value={formData.personalTraits || ''}
+            onChange={(e) => updateFormData({ personalTraits: e.target.value })}
+            rows={4}
+            className="resize-none"
+            style={{ fontSize: '16px' }}
+          />
         </div>
         
         {/* Scene Description Section */}
@@ -269,7 +235,11 @@ export default function Step3Personalization({
           </div>
           
           <Textarea
-            placeholder="Describe the scene for your card... or click 'Need ideas?' below to generate suggestions based on the personal traits above"
+            placeholder={
+              formData.personalTraits
+                ? "Click 'Need scene ideas?' to generate creative scenes based on the traits above, or describe your own..."
+                : "Describe the scene for your card... or add some personal traits above first for better suggestions"
+            }
             value={formData.prompt}
             onChange={(e) => updateFormData({ prompt: e.target.value })}
             rows={isTextareaExpanded ? 6 : 3}
@@ -297,10 +267,10 @@ export default function Step3Personalization({
       <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800">
         <h4 className="font-medium text-purple-900 dark:text-purple-100 mb-2">🎨 Visual Design Tips</h4>
         <ul className="text-sm text-purple-800 dark:text-purple-200 space-y-1">
-          <li>• <strong>Personalization:</strong> Add interests, activities, or specific design requests</li>
-          <li>• <strong>Style Sampler:</strong> Preview your card in 5 different artistic styles</li>
-          <li>• <strong>Custom Style:</strong> Describe exactly what artistic style you envision</li>
-          <li>• Both fields work together to create your perfect card design</li>
+          <li>• <strong>Step 1:</strong> Add their favorite activities, foods, and hobbies</li>
+          <li>• <strong>Step 2:</strong> Click "Need scene ideas?" for AI-powered creative scenes</li>
+          <li>• <strong>The Magic:</strong> AI combines all traits into unique, personalized card designs</li>
+          <li>• <strong>Style Options:</strong> Choose from curated styles or create your own</li>
         </ul>
       </div>
     </div>

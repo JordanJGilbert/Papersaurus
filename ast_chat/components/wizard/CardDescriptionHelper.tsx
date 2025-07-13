@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sparkles, RefreshCw } from "lucide-react";
 import { CardFormData } from "@/hooks/useCardForm";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PhotoReference } from "@/hooks/cardStudio/constants";
 
@@ -17,46 +16,36 @@ interface CardDescriptionHelperProps {
   relationshipField?: string;
 }
 
-// Contextual inspiration chips based on card type and tone - focused on visual design elements
-const getInspirationChips = (cardType: string, tone: string): string[] => {
-  const chips: Record<string, string[]> = {
-    'birthday-funny': ['Coffee & donuts 🍩', 'Gaming setup 🎮', 'Dogs everywhere 🐕', 'Pizza party 🍕', 'Disco vibes 🕺', 'Tacos & beer 🌮'],
-    'birthday-heartfelt': ['Garden flowers 🌸', 'Mountain sunset 🏔️', 'Books & tea 📚', 'Music notes 🎵', 'Beach waves 🌊', 'Forest trails 🌲'],
-    'birthday-romantic': ['Rose petals 🌹', 'Candlelight 🕯️', 'Paris theme 🗼', 'Heart balloons 💕', 'Wine & cheese 🍷', 'Starry night ✨'],
-    'anniversary-romantic': ['Wedding flowers 💐', 'Gold accents ✨', 'Love birds 🕊️', 'Champagne 🥂', 'Sunset beach 🌅', 'Dancing silhouettes 💃'],
-    'anniversary-funny': ['Pizza hearts 🍕', 'Couch & TV 📺', 'Snoring bears 🐻', 'Gaming couple 🎮', 'Messy kitchen 👨‍🍳', 'Cat chaos 🐱'],
-    'thank-you-professional': ['Elegant gold 🏆', 'Office plants 🌿', 'Coffee cups ☕', 'Clean lines', 'Navy & silver', 'Minimalist'],
-    'thank-you-heartfelt': ['Wildflowers 🌻', 'Warm colors 🧡', 'Handwritten feel ✍️', 'Sunshine ☀️', 'Hugging bears 🐻', 'Rainbow hearts 🌈'],
-    'holiday-funny': ['Ugly sweaters 🎅', 'Cookie chaos 🍪', 'Tangled lights 💡', 'Reindeer antics 🦌', 'Snowman party ⛄', 'Gift mountains 🎁'],
-    'holiday-heartfelt': ['Cozy fireplace 🔥', 'Snow globes ❄️', 'Pine trees 🎄', 'Hot cocoa ☕', 'Family table 🕯️', 'Gingerbread 🏠'],
-    'congratulations-professional': ['Trophy gold 🏆', 'Confetti burst 🎊', 'Success stairs 📈', 'Champagne pop 🍾', 'Star badges ⭐', 'Laurel wreaths 🌿'],
-    'congratulations-funny': ['Party animals 🦁', 'Explosion of joy 💥', 'Dancing fruits 🍌', 'Superhero cape 🦸', 'Fireworks crazy 🎆', 'Victory dance 🕺'],
-    'sympathy-heartfelt': ['Soft clouds ☁️', 'White lilies 🤍', 'Gentle doves 🕊️', 'Watercolor sky', 'Peaceful garden', 'Soft light'],
-    'get-well-funny': ['Bandaid army 🩹', 'Soup squadron 🍲', 'Vitamin warriors 💊', 'Healing ninjas 🥷', 'Happy germs 🦠', 'Super tissues 🤧'],
-    'get-well-heartfelt': ['Healing flowers 🌷', 'Sunny days ☀️', 'Tea & honey 🍯', 'Soft blankets 🛏️', 'Get well balloons 🎈', 'Hearts & hugs 💕'],
-  };
-
-  const key = `${cardType}-${tone}`;
-  return chips[key] || chips[cardType + '-heartfelt'] || ['Colorful design', 'Nature theme 🌿', 'Abstract art', 'Vintage style'];
-};
-
 // AI brainstorming prompts - focused on visual design elements
-const getBrainstormPrompt = (cardType: string, tone: string, recipient?: string, sender?: string, relationship?: string, photoContext?: string) => {
+const getBrainstormPrompt = (
+  cardType: string, 
+  tone: string, 
+  recipient?: string, 
+  sender?: string, 
+  relationship?: string, 
+  photoContext?: string,
+  personalTraits?: string
+) => {
   const recipientText = recipient ? `for ${recipient}` : '';
   const senderText = sender ? ` from ${sender}` : '';
   const relationshipText = relationship ? ` (${relationship})` : '';
   const photoText = photoContext ? `\n\n${photoContext}. Include these specific people in creative and imaginative ways. IMPORTANT: Only feature the people mentioned above - do not add any additional people, babies, children, or characters unless explicitly requested.` : '';
   
-  return `Generate 4 visual design suggestions for personalizing a ${tone} ${cardType} card ${recipientText}${senderText}${relationshipText}.${photoText}
+  // Build personal traits context
+  const traitsText = personalTraits ? `\n\nPersonal traits and interests: ${personalTraits}` : '';
   
-  Focus on interests/activities that translate to visual elements, color schemes, themes, artistic styles, or specific imagery.
-  Each suggestion should be 15-25 words describing what visual elements to include in the card artwork.
+  return `Generate 4 unique scene suggestions for a ${tone} ${cardType} card ${recipientText}${senderText}${relationshipText}.${photoText}${traitsText}
   
-  Examples of good visual suggestions:
-  - "Mountain skiing scenes with hot chocolate, cozy lodge vibes, snowflakes, pine trees"
-  - "Coffee shop aesthetic with latte art, books, plants, warm browns and creams"
-  - "Beach volleyball at sunset, surfboards, tropical flowers, ocean blues and coral colors"
-  - "Vintage travel theme with maps, passport stamps, airplanes, suitcases in retro colors"
+  Create complete scene descriptions that creatively combine their personal traits into cohesive visual narratives.
+  Each suggestion should be 20-30 words describing a complete scene with setting, activities, and visual elements.
+  
+  Examples of good scene suggestions:
+  - "Cozy ski lodge scene with them enjoying craft beer by the fireplace after hitting the slopes, mountain views through windows"
+  - "Sushi restaurant setting with them as a happy chef preparing their favorite rolls, sake bottles and cherry blossoms decorating"
+  - "Morning yoga session on a beach at sunrise, surrounded by their favorite tropical fruits and meditation elements"
+  - "Gaming tournament setup with their favorite snacks, neon lights, and victory celebration with pizza and energy drinks"
+  
+  Make each scene unique and imaginative while incorporating their specific interests.
   
   Return as a JSON array of strings.`;
 };
@@ -72,53 +61,6 @@ export default function CardDescriptionHelper({
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-
-  // Get contextual chips (including photo-aware suggestions)
-  const inspirationChips = useMemo(() => {
-    const baseChips = getInspirationChips(formData.selectedType, formData.selectedTone);
-    
-    // Add photo-specific chips if we have photos with descriptions
-    if (photoReferences && photoReferences.length > 0) {
-      const photosWithDescriptions = photoReferences.filter(ref => ref.description && ref.description.trim() !== '');
-      
-      if (photosWithDescriptions.length > 0) {
-        const photoChips: string[] = [];
-        
-        // Extract names from descriptions
-        const allDescriptions = photosWithDescriptions.map(ref => ref.description).join(' ');
-        
-        // Simple heuristic to find potential names
-        const namePattern = /\b(my\s+)?(daughter|son|wife|husband|friend|sister|brother|mom|dad|mother|father)\s+(\w+)/gi;
-        const matches = Array.from(allDescriptions.matchAll(namePattern));
-        const names = matches.map(match => match[3]);
-        
-        if (names.length > 0) {
-          if (names.length === 1) {
-            photoChips.push(`${names[0]} portrait 🎨`);
-            photoChips.push(`${names[0]} in action`);
-          } else {
-            photoChips.push('group portrait 👥');
-            photoChips.push('everyone together');
-          }
-        } else {
-          photoChips.push('family portrait 👨‍👩‍👧‍👦');
-          photoChips.push('special moment 📸');
-        }
-        
-        // Combine photo chips with base chips, photo chips first
-        return [...photoChips, ...baseChips].slice(0, 6); // Limit to 6 chips total
-      }
-    }
-    
-    return baseChips;
-  }, [formData.selectedType, formData.selectedTone, photoReferences]);
-
-  // Handle chip click
-  const handleChipClick = (chip: string) => {
-    const currentDescription = formData.prompt || '';
-    const separator = currentDescription.trim() ? ', ' : '';
-    onAddToDescription(currentDescription + separator + chip);
-  };
 
   // Generate AI suggestions
   const handleGenerateSuggestions = async () => {
@@ -146,7 +88,8 @@ export default function CardDescriptionHelper({
         formData.toField,
         fromField,
         relationshipField,
-        photoContext
+        photoContext,
+        formData.personalTraits
       );
       
       // Include reference images if available
@@ -180,20 +123,6 @@ export default function CardDescriptionHelper({
 
   return (
     <div className="space-y-3 mt-2">
-      {/* Quick inspiration chips */}
-      <div className="flex flex-wrap gap-2">
-        {inspirationChips.map((chip, index) => (
-          <Badge
-            key={index}
-            variant="secondary"
-            className="cursor-pointer hover:bg-secondary/80 transition-colors text-xs"
-            onClick={() => handleChipClick(chip)}
-          >
-            {chip}
-          </Badge>
-        ))}
-      </div>
-
       {/* AI Brainstorm Button */}
       <div className="flex items-center gap-2">
         <Button
@@ -204,7 +133,7 @@ export default function CardDescriptionHelper({
           className="gap-1.5"
         >
           <Sparkles className="w-3.5 h-3.5" />
-          {isGenerating ? 'Thinking...' : 'Need ideas?'}
+          {isGenerating ? 'Creating scenes...' : 'Need scene ideas?'}
         </Button>
         
         {aiSuggestions.length > 0 && !isGenerating && (
@@ -215,7 +144,7 @@ export default function CardDescriptionHelper({
             className="gap-1 text-muted-foreground"
           >
             <RefreshCw className="w-3 h-3" />
-            New ideas
+            New scenes
           </Button>
         )}
       </div>
@@ -232,7 +161,7 @@ export default function CardDescriptionHelper({
           ) : aiSuggestions.length > 0 && (
             <div className="bg-muted/50 rounded-lg p-3 space-y-2">
               <p className="text-xs text-muted-foreground mb-2">
-                🎨 Click any visual theme to add it:
+                🎨 Click any scene to use it as your card design:
               </p>
               {aiSuggestions.map((suggestion, index) => (
                 <div
