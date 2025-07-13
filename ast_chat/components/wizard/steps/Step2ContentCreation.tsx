@@ -115,8 +115,7 @@ export default function Step2ContentCreation({
                     variant="ghost"
                     size="sm"
                     className="gap-1 text-xs"
-                    disabled={formData.isHandwrittenMessage}
-                  >
+                        >
                     <History className="w-3 h-3" />
                     <span className="hidden sm:inline">History</span>
                   </Button>
@@ -197,7 +196,6 @@ export default function Step2ContentCreation({
               variant="outline"
               size="sm"
               onClick={() => setShowChatInterface(true)}
-              disabled={formData.isHandwrittenMessage}
               className="gap-1.5 text-xs bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700"
             >
               <MessageCircle className="w-3.5 h-3.5" />
@@ -217,30 +215,31 @@ export default function Step2ContentCreation({
             </div>
           ) : (
             <Textarea
-              placeholder={messagePlaceholder}
+              placeholder={formData.isHandwrittenMessage 
+                ? "Type your message here - it will appear in handwritten style on the card..." 
+                : messagePlaceholder}
               value={formData.finalCardMessage}
               onChange={(e) => updateFormData({ finalCardMessage: e.target.value })}
               rows={isMessageExpanded ? 14 : 10}
               className={isMessageExpanded ? "resize-y" : "resize-none"}
               style={{ fontSize: '16px' }}
-              disabled={formData.isHandwrittenMessage}
             />
           )}
         </div>
         
         {/* Character Count and Helper Text */}
-        {!formData.isHandwrittenMessage && (
-          <div className="mt-1 space-y-0.5">
-            {formData.finalCardMessage && (
-              <div className="text-xs text-muted-foreground">
-                {characterCount} characters
-              </div>
-            )}
-            <div className="text-xs text-muted-foreground/70">
-              💡 Messages typically work best between 50-350 characters
+        <div className="mt-1 space-y-0.5">
+          {formData.finalCardMessage && (
+            <div className="text-xs text-muted-foreground">
+              {characterCount} characters
             </div>
+          )}
+          <div className="text-xs text-muted-foreground/70">
+            {formData.isHandwrittenMessage 
+              ? "💡 Your message will appear in handwritten style on the card"
+              : "💡 Messages typically work best between 50-350 characters"}
           </div>
-        )}
+        </div>
         
         {/* Handwritten Message Option */}
         <div className="flex items-center space-x-2 mt-2">
@@ -250,14 +249,13 @@ export default function Step2ContentCreation({
             checked={formData.isHandwrittenMessage}
             onChange={(e) => {
               updateFormData({ 
-                isHandwrittenMessage: e.target.checked,
-                finalCardMessage: e.target.checked ? "" : formData.finalCardMessage
+                isHandwrittenMessage: e.target.checked
               });
             }}
             className="rounded"
           />
           <label htmlFor="handwritten-message" className="text-sm text-gray-600 dark:text-gray-400">
-            Leave blank space for handwritten message
+            Display message in handwritten style (creates blank space with CSS overlay)
           </label>
         </div>
       </div>
@@ -269,7 +267,7 @@ export default function Step2ContentCreation({
           <li>• Keep it personal and heartfelt</li>
           <li>• Use AI Chat for interactive message creation</li>
           <li>• Have a conversation to refine your message</li>
-          <li>• Leave blank if you prefer to handwrite</li>
+          <li>• Check "handwritten style" to display your typed message in handwriting font</li>
         </ul>
       </div>
     </div>

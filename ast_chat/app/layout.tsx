@@ -55,6 +55,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link 
+          href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Patrick+Hand&family=Kalam:wght@300;400;700&family=Architects+Daughter&family=Indie+Flower&family=Permanent+Marker&display=swap" 
+          rel="stylesheet" 
+        />
+      </head>
       <body className={inter.className}>
         <ThemeProvider
           attribute="class"

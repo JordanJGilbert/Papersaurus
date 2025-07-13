@@ -5,10 +5,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, Play, Pause, RotateCcw, Maximize2, X, Edit3, Wand2, Loader2, Printer, CheckCircle, AlertCircle, Share2, Mail, Copy, Eye } from "lucide-react";
+import { ChevronLeft, ChevronRight, Play, Pause, RotateCcw, Maximize2, X, Edit3, Wand2, Loader2, Printer, CheckCircle, AlertCircle, Share2, Mail, Copy, Eye, Type } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import ProgressiveImage from "./ProgressiveImage";
+import HandwrittenMessageOverlay from "./HandwrittenMessageOverlay";
 import { generateSizesAttribute, preloadCriticalImages, generateMultipleThumbnails } from "../utils/imageUtils";
 
 // Configuration for the backend API endpoint
@@ -37,6 +38,10 @@ interface GeneratedCard {
     leftPage?: string;
     rightPage?: string;
   };
+  // Message data for handwritten overlay
+  message?: string;
+  isHandwrittenMessage?: boolean;
+  handwritingStyle?: 'caveat' | 'patrick' | 'kalam' | 'architect' | 'indie' | 'marker';
 }
 
 interface PaperConfig {
@@ -157,6 +162,9 @@ export default function CardPreview({
 
   // Thumbnail generation state
   const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
+  
+  // Test toggle for handwritten overlay
+  const [enableHandwrittenOverlay, setEnableHandwrittenOverlay] = useState(true);
 
   // Generate thumbnail for an image
   const generateThumbnail = async (imageUrl: string): Promise<string | null> => {
@@ -1154,8 +1162,21 @@ ${displayCard.generatedPrompts.rightInterior}
                         sizes={generateSizesAttribute()}
                       />
                       
+                      {/* Handwritten Message Overlay - Only for right interior when enabled */}
+                      {enableHandwrittenOverlay && 
+                       slides[currentSlide].id === 'right-interior' && 
+                       displayCard.isHandwrittenMessage && 
+                       displayCard.message && (
+                        <HandwrittenMessageOverlay
+                          message={displayCard.message}
+                          style={displayCard.handwritingStyle || 'caveat'}
+                          inkColor="blue"
+                          fontSize="medium"
+                        />
+                      )}
+                      
                       {/* Fullscreen hint overlay */}
-                      <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/10 transition-all duration-200 flex items-center justify-center">
+                      <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/10 transition-all duration-200 flex items-center justify-center pointer-events-none">
                         <div className="opacity-0 group-hover/image:opacity-100 transition-opacity duration-200 bg-white/90 rounded-full p-3 shadow-lg">
                           <Maximize2 className="w-6 h-6 text-gray-700" />
                         </div>
@@ -1366,6 +1387,36 @@ ${displayCard.generatedPrompts.rightInterior}
                 </SelectContent>
               </Select>
             </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Test Toggle for Handwritten Overlay */}
+      {displayCard.isHandwrittenMessage && (
+        <motion.div 
+          className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-3 border border-yellow-200 dark:border-yellow-800"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.5 }}
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex-1">
+              <h4 className="text-sm font-medium text-yellow-900 dark:text-yellow-100 mb-1">
+                Test: Handwritten Overlay
+              </h4>
+              <p className="text-xs text-yellow-700 dark:text-yellow-300">
+                Toggle the CSS overlay for handwritten messages
+              </p>
+            </div>
+            <Button
+              onClick={() => setEnableHandwrittenOverlay(!enableHandwrittenOverlay)}
+              variant="outline"
+              size="sm"
+              className={`border-yellow-500 ${enableHandwrittenOverlay ? 'bg-yellow-100 dark:bg-yellow-900/50' : ''}`}
+            >
+              <Type className="w-4 h-4 mr-2" />
+              {enableHandwrittenOverlay ? 'Overlay ON' : 'Overlay OFF'}
+            </Button>
           </div>
         </motion.div>
       )}

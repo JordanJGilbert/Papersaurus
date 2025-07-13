@@ -79,6 +79,14 @@ export function useCardGeneration(props: CardGenerationProps) {
       cardWithQR.id = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     }
     
+    // Add message data for handwritten overlay
+    if (props.isHandwrittenMessage) {
+      cardWithQR.message = props.finalCardMessage;
+      cardWithQR.isHandwrittenMessage = true;
+      // TODO: Add handwriting style preference when implemented in UI
+      cardWithQR.handwritingStyle = 'caveat'; // Default for now
+    }
+    
     console.log('🔄 Final card data prepared:', cardWithQR);
     
     // Note: QR code overlay is now handled automatically by the backend
@@ -368,6 +376,12 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags.`;
             ...(inputImages.length > 0 && { 
               input_images: inputImages,
               input_images_mode: "front_cover_only"
+            }),
+            // Include message data for handwritten overlay
+            ...(isHandwrittenMessage && {
+              message: finalCardMessage,
+              isHandwrittenMessage: true,
+              handwritingStyle: 'caveat' // Default for now
             })
           }
         })

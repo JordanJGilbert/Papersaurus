@@ -5863,6 +5863,12 @@ def generate_card_images_background(job_id, prompts, config):
             "generationTimeSeconds": generation_duration
         }
         
+        # Add message data for handwritten overlay if provided
+        if config.get('isHandwrittenMessage'):
+            card_data['message'] = config.get('message', '')
+            card_data['isHandwrittenMessage'] = True
+            card_data['handwritingStyle'] = config.get('handwritingStyle', 'caveat')
+        
         # Add QR code to back cover for final cards (not drafts)
         if not is_draft_mode and generated_images.get("backCover"):
             try:

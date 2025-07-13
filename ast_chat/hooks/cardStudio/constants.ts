@@ -155,6 +155,10 @@ export interface GeneratedCard {
     styleName?: string;
     styleLabel?: string;
   };
+  // Message data for handwritten overlay
+  message?: string;
+  isHandwrittenMessage?: boolean;
+  handwritingStyle?: 'caveat' | 'patrick' | 'kalam' | 'architect' | 'indie' | 'marker';
 }
 
 // Helper function to format generation time
