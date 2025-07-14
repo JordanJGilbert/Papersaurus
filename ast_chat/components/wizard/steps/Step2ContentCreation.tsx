@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, Undo2, Redo2, History, MessageCircle } from "lucide-react";
+import { ChevronDown, Undo2, Redo2, History, Sparkles } from "lucide-react";
 import { CardFormData } from "@/hooks/useCardForm";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import MessageChatInterface from "@/components/MessageChatInterface";
 
 interface Step2Props {
   formData: CardFormData;
@@ -39,64 +38,91 @@ export default function Step2ContentCreation({
   redoMessage
 }: Step2Props) {
   const [isMessageExpanded, setIsMessageExpanded] = useState(false);
-  const [showChatInterface, setShowChatInterface] = useState(false);
+  const [modificationPrompt, setModificationPrompt] = useState("");
 
   React.useEffect(() => {
     // This step is always "complete" since all fields are optional
     onStepComplete?.();
   }, [onStepComplete]);
 
-  // Removed handleMessageGeneration since we're using AI Chat interface only
+  // Handle message modification based on prompt
+  const handleModifyMessage = async () => {
+    if (!modificationPrompt.trim() || !handleGetMessageHelp) return;
+    
+    // Create a context-aware prompt for modification
+    const currentMessage = formData.finalCardMessage || "";
+    const modificationContext = currentMessage 
+      ? `Please modify this message according to the instruction: "${modificationPrompt}"\n\nCurrent message: "${currentMessage}"`
+      : `Please create a message based on this instruction: "${modificationPrompt}"`;
+    
+    await handleGetMessageHelp(modificationContext);
+    setModificationPrompt(""); // Clear the prompt after use
+  };
 
   // Dynamic placeholder based on card type and tone
   const messagePlaceholder = useMemo(() => {
     if (formData.isHandwrittenMessage) return "✍️ Leave blank - you'll handwrite";
     
-    const { selectedType, selectedTone } = formData;
+    const { selectedType, selectedTone, toField } = formData;
+    const name = toField || "them";
     
-    if (selectedType === 'birthday' && selectedTone === 'funny') {
-      return "💝 Add a joke about their age or a funny memory...";
-    } else if (selectedType === 'anniversary' && selectedTone === 'romantic') {
-      return "💝 Express your love and cherished memories...";
-    } else if (selectedType === 'thank-you' && selectedTone === 'professional') {
-      return "💝 Express gratitude professionally...";
-    } else if (selectedTone === 'funny') {
-      return "💝 Add humor, jokes, or funny memories...";
-    } else if (selectedTone === 'heartfelt') {
-      return "💝 Share sincere feelings and warm wishes...";
+    // Birthday placeholders
+    if (selectedType === 'birthday') {
+      if (selectedTone === 'funny') {
+        return `Happy Birthday ${toField || '[Name]'}! Another year older means... [add joke about age/getting older/specific quirk]`;
+      } else if (selectedTone === 'heartfelt') {
+        return `Dear ${toField || '[Name]'}, On your special day, I want you to know... [share what they mean to you]`;
+      } else if (selectedTone === 'romantic') {
+        return `To my love, Every birthday with you is... [express your love and future wishes]`;
+      }
     }
     
-    return "💝 Your message here... (or click 'AI Chat' for help)";
-  }, [formData.selectedType, formData.selectedTone, formData.isHandwrittenMessage]);
+    // Anniversary placeholders
+    else if (selectedType === 'anniversary') {
+      if (selectedTone === 'romantic') {
+        return `My darling, [Number] years ago we... [share favorite memory and express love]`;
+      } else if (selectedTone === 'funny') {
+        return `Happy Anniversary! [Number] years and you still... [add funny observation about relationship]`;
+      }
+    }
+    
+    // Thank you placeholders
+    else if (selectedType === 'thank-you') {
+      if (selectedTone === 'professional') {
+        return `Dear ${toField || '[Name]'}, Thank you for... [be specific about what you're thanking them for]`;
+      } else if (selectedTone === 'heartfelt') {
+        return `I can't thank you enough for... [explain how their help/gift made a difference]`;
+      }
+    }
+    
+    // Get well placeholders
+    else if (selectedType === 'get-well') {
+      return `Thinking of you and hoping... [share encouraging words and well wishes]`;
+    }
+    
+    // Sympathy placeholders
+    else if (selectedType === 'sympathy') {
+      return `Dear ${toField || '[Name]'}, My heart goes out to you... [offer comfort and support]`;
+    }
+    
+    // Holiday placeholders
+    else if (selectedType === 'holiday') {
+      return `Wishing you and your family... [share holiday wishes and memories]`;
+    }
+    
+    // Generic fallback based on tone
+    if (selectedTone === 'funny') {
+      return `Hey ${toField || '[Name]'}! [Start with humor or inside joke]... [add your message]`;
+    } else if (selectedTone === 'heartfelt') {
+      return `Dear ${toField || '[Name]'}, I wanted to let you know... [share sincere thoughts]`;
+    }
+    
+    return `Dear ${toField || '[Name]'}, [Write your personal message here...]`;
+  }, [formData.selectedType, formData.selectedTone, formData.isHandwrittenMessage, formData.toField]);
 
   const canUndo = currentMessageIndex > 0;
   const canRedo = currentMessageIndex < messageHistory.length - 1;
   const characterCount = formData.finalCardMessage?.length || 0;
-
-  // Handler for chat-based message generation
-  const handleChatMessageGeneration = async (userInput: string, conversationHistory: any[]): Promise<string> => {
-    if (handleGetMessageHelp) {
-      // Pass the user input and conversation history for contextual generation
-      const generatedMessage = await handleGetMessageHelp(userInput, conversationHistory);
-      return generatedMessage || "I'll help you create a heartfelt message. Could you tell me more about what you'd like to express?";
-    }
-    return "I'll help you create a heartfelt message. Could you tell me more about what you'd like to express?";
-  };
-
-  if (showChatInterface) {
-    return (
-      <MessageChatInterface
-        formData={formData}
-        onMessageSelect={(message) => {
-          updateFormData({ finalCardMessage: message });
-          setShowChatInterface(false);
-        }}
-        onGenerateMessage={handleChatMessageGeneration}
-        isGenerating={isGeneratingMessage}
-        onClose={() => setShowChatInterface(false)}
-      />
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -190,21 +216,10 @@ export default function Step2ContentCreation({
                 </>
               )}
             </Button>
-            
-            {/* AI Chat Interface Button - Primary CTA */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowChatInterface(true)}
-              className="gap-1.5 text-xs bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700"
-            >
-              <MessageCircle className="w-3.5 h-3.5" />
-              <span className="font-medium">AI Chat</span>
-            </Button>
           </div>
         </div>
         
-        {/* Message Textarea with Loading State */}
+        {/* Message Input Container with Integrated AI Helper */}
         <div className="relative">
           {isGeneratingMessage ? (
             <div className="space-y-2">
@@ -214,21 +229,61 @@ export default function Step2ContentCreation({
               </div>
             </div>
           ) : (
-            <Textarea
-              placeholder={formData.isHandwrittenMessage 
-                ? "Type your message here - it will appear in handwritten style on the card..." 
-                : messagePlaceholder}
-              value={formData.finalCardMessage}
-              onChange={(e) => updateFormData({ finalCardMessage: e.target.value })}
-              rows={isMessageExpanded ? 14 : 10}
-              className={isMessageExpanded ? "resize-y" : "resize-none"}
-              style={{ fontSize: '16px' }}
-            />
+            <div className="border border-gray-300 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
+              {/* Main Message Textarea */}
+              <Textarea
+                placeholder={formData.isHandwrittenMessage 
+                  ? "Type your message here - it will appear in handwritten style on the card..." 
+                  : messagePlaceholder}
+                value={formData.finalCardMessage}
+                onChange={(e) => updateFormData({ finalCardMessage: e.target.value })}
+                rows={isMessageExpanded ? 12 : 8}
+                className={`border-0 focus:ring-0 ${isMessageExpanded ? "resize-y" : "resize-none"}`}
+                style={{ fontSize: '16px' }}
+              />
+              
+              {/* Integrated AI Helper - Connected visually */}
+              {!formData.isHandwrittenMessage && (
+                <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+                  <div className="flex gap-2">
+                    <div className="flex-1 relative">
+                      <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder={formData.finalCardMessage 
+                          ? "Try: 'make it funnier' or 'add a joke about her dogs'" 
+                          : "Try: 'write a funny birthday message for my wife'"}
+                        value={modificationPrompt}
+                        onChange={(e) => setModificationPrompt(e.target.value)}
+                        className="w-full pl-10 pr-3 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleModifyMessage();
+                          }
+                        }}
+                      />
+                    </div>
+                    <Button
+                      onClick={handleModifyMessage}
+                      disabled={!modificationPrompt.trim() || isGeneratingMessage}
+                      className="px-4 bg-gray-900 hover:bg-gray-800 dark:bg-gray-100 dark:hover:bg-gray-200 dark:text-gray-900"
+                      size="sm"
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 ml-10">
+                    AI will modify your message based on your instructions
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
         
         {/* Character Count and Helper Text */}
-        <div className="mt-1 space-y-0.5">
+        <div className="mt-2 space-y-0.5">
           {formData.finalCardMessage && (
             <div className="text-xs text-muted-foreground">
               {characterCount} characters
@@ -265,8 +320,8 @@ export default function Step2ContentCreation({
         <h4 className="font-medium text-green-900 dark:text-green-100 mb-2">✨ Message Tips</h4>
         <ul className="text-sm text-green-800 dark:text-green-200 space-y-1">
           <li>• Keep it personal and heartfelt</li>
-          <li>• Use AI Chat for interactive message creation</li>
-          <li>• Have a conversation to refine your message</li>
+          <li>• Use the AI helper to create or modify your message</li>
+          <li>• Try prompts like "make it funnier" or "add a personal touch"</li>
           <li>• Check "handwritten style" to display your typed message in handwriting font</li>
         </ul>
       </div>

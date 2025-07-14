@@ -403,6 +403,14 @@ export function useDraftGeneration(props: DraftGenerationProps) {
       
       // Prepare input images for final generation
       const inputImages: string[] = [];
+      
+      // Add the selected draft's front cover as a reference image for the final front cover
+      if (selectedDraft.frontCover) {
+        inputImages.push(selectedDraft.frontCover);
+        console.log('🖼️ Adding draft front cover as reference for final front cover generation');
+      }
+      
+      // Also include any user-uploaded reference images
       if (referenceImageUrls.length > 0 && selectedImageModel === "gpt-image-1") {
         inputImages.push(...referenceImageUrls);
       }
@@ -430,7 +438,7 @@ export function useDraftGeneration(props: DraftGenerationProps) {
             isDraftMode: false,
             ...(inputImages.length > 0 && { 
               input_images: inputImages,
-              input_images_mode: "front_cover_only"
+              input_images_mode: "front_cover_only"  // Use images as reference for front cover only
             })
           }
         })
@@ -447,6 +455,28 @@ export function useDraftGeneration(props: DraftGenerationProps) {
       }
 
       setCurrentJobId(jobId);
+      
+      // Save job data for recovery
+      const jobData = {
+        jobId,
+        selectedDraftIndex: displayIndex,
+        cardType: selectedType,
+        customCardType,
+        tone: selectedTone,
+        prompt,
+        personalTraits,
+        toField,
+        fromField,
+        finalCardMessage,
+        isHandwrittenMessage,
+        selectedArtisticStyle,
+        isFrontBackOnly,
+        selectedPaperSize,
+        userEmail,
+        referenceImageUrls
+      };
+      props.saveJobToStorage(jobId, jobData);
+      
       toast.success("🎨 Generating high-quality version of your selected design!");
       
       // Subscribe to WebSocket updates
