@@ -35,6 +35,7 @@ interface DraftGenerationProps {
   unsubscribeFromAllJobs?: () => void;
   startElapsedTimeTracking: (jobType?: 'draft' | 'final') => void;
   stopElapsedTimeTracking: () => void;
+  setProgressPercentage?: (percentage: number) => void;
 }
 
 export function useDraftGeneration(props: DraftGenerationProps) {
@@ -124,6 +125,10 @@ export function useDraftGeneration(props: DraftGenerationProps) {
     setGeneratedCard(null);
     setGeneratedCards([]);
     setIsCardCompleted(false);
+    
+    // Clear saved final card from localStorage when starting new generation
+    localStorage.removeItem('vibe-final-card');
+    console.log('🧹 Cleared saved final card');
     
 
     try {
@@ -348,6 +353,12 @@ export function useDraftGeneration(props: DraftGenerationProps) {
     setIsGeneratingFinalCard(true);
     setIsDraftMode(false); // Switch out of draft mode for final generation
     setSelectedDraftIndex(displayIndex);
+    
+    // Reset progress percentage to 0 when starting final generation
+    if (props.setProgressPercentage) {
+      props.setProgressPercentage(0);
+    }
+    
     startElapsedTimeTracking('final');
     setGenerationProgress("🎨 Creating the complete card based on your selected front cover...");
 

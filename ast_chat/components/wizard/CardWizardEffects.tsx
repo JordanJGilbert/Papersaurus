@@ -106,6 +106,26 @@ export function CardWizardEffects({
       }
       // If we have completed drafts but no active generation, stay on Step 1
       // User can choose to resume via the UI
+      
+      // Check for completed final card in localStorage
+      const savedFinalCard = localStorage.getItem('vibe-final-card');
+      if (savedFinalCard) {
+        try {
+          const finalCardData = JSON.parse(savedFinalCard);
+          console.log('🎯 Found saved final card, restoring...');
+          
+          // Restore the final card state
+          cardStudio.setGeneratedCard(finalCardData.card);
+          cardStudio.setIsCardCompleted(true);
+          
+          // Navigate to Step 6 to show the completed card
+          wizardState.updateCurrentStep(6);
+          console.log('✅ Final card restored successfully');
+        } catch (e) {
+          console.error('Failed to restore final card:', e);
+          localStorage.removeItem('vibe-final-card');
+        }
+      }
     };
     
     restorePendingJobs();
@@ -216,6 +236,17 @@ export function CardWizardEffects({
       const existingCard = cardHistory.cardHistory.find(card => card.id === cardStudio.generatedCard.id);
       if (!existingCard) {
         cardHistory.addCompletedCard(cardStudio.generatedCard);
+      }
+      
+      // Save the final card to localStorage for persistence
+      try {
+        localStorage.setItem('vibe-final-card', JSON.stringify({
+          card: cardStudio.generatedCard,
+          savedAt: new Date().toISOString()
+        }));
+        console.log('💾 Final card saved to localStorage');
+      } catch (e) {
+        console.error('Failed to save final card:', e);
       }
       
       // Clear draft session since card is completed (only if not already cleared)

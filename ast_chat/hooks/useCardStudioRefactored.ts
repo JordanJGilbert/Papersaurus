@@ -142,6 +142,7 @@ export function useCardStudio() {
     unsubscribeFromAllJobs: webSocket.unsubscribeFromAllJobs,
     startElapsedTimeTracking: jobManagement.startElapsedTimeTracking,
     stopElapsedTimeTracking: jobManagement.stopElapsedTimeTracking,
+    setProgressPercentage: jobManagement.setProgressPercentage,
   };
   
   const draftGeneration = useDraftGeneration(draftGenerationProps);

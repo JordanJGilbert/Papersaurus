@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sparkles, Clock, CheckCircle, Printer, Mail } from "lucide-react";
+import { Sparkles, Clock, CheckCircle, Printer, Mail, ChevronLeft } from "lucide-react";
 import { CardFormData } from "@/hooks/useCardForm";
 import CardPreview from "@/components/CardPreview";
 import { toast } from "sonner";
@@ -86,6 +86,7 @@ interface Step6FinalGenerationProps {
   isCardCompleted: boolean;
   onGenerateFinalCard: (draftIndex: number) => void;
   formatGenerationTime: (seconds: number) => string;
+  onBackToDrafts: () => void;
 }
 
 export default function Step6FinalGeneration({
@@ -99,7 +100,8 @@ export default function Step6FinalGeneration({
   generatedCard,
   isCardCompleted,
   onGenerateFinalCard,
-  formatGenerationTime
+  formatGenerationTime,
+  onBackToDrafts
 }: Step6FinalGenerationProps) {
 
   // Print-related state
@@ -371,7 +373,18 @@ export default function Step6FinalGeneration({
             selectedPaperSize={selectedPaperSize}
             onPaperSizeChange={setSelectedPaperSize}
             paperSizes={paperSizes}
+            referenceImageUrls={formData.referenceImageUrls}
+            personalTraits={formData.personalTraits}
+            relationshipField={formData.relationshipField}
+            photoReferences={formData.photoReferences}
           />
+
+          <div className="flex justify-center mt-4">
+            <Button variant="outline" onClick={onBackToDrafts}>
+              <ChevronLeft className="w-4 h-4 mr-2" />
+              Select Different Draft
+            </Button>
+          </div>
         </div>
       )}
 
@@ -405,15 +418,6 @@ export default function Step6FinalGeneration({
                     <Sparkles className="w-5 h-5 mr-2" />
                     Generate Final Card
                   </Button>
-                  <div>
-                    <Button 
-                      variant="outline"
-                      onClick={() => setShowConfirmation(false)}
-                      size="sm"
-                    >
-                      Not ready yet
-                    </Button>
-                  </div>
                 </div>
               )}
             </div>
