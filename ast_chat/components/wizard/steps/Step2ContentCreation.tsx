@@ -233,7 +233,7 @@ export default function Step2ContentCreation({
               {/* Main Message Textarea */}
               <Textarea
                 placeholder={formData.isHandwrittenMessage 
-                  ? "Type your message here - it will appear in handwritten style on the card..." 
+                  ? "This space will be left empty on the card for your handwritten message..." 
                   : messagePlaceholder}
                 value={formData.finalCardMessage}
                 onChange={(e) => updateFormData({ finalCardMessage: e.target.value })}
@@ -310,7 +310,7 @@ export default function Step2ContentCreation({
             className="rounded"
           />
           <label htmlFor="handwritten-message" className="text-sm text-gray-600 dark:text-gray-400">
-            Display message in handwritten style (creates blank space with CSS overlay)
+            Leave space for handwritten message
           </label>
         </div>
       </div>

@@ -84,8 +84,6 @@ export function useCardGeneration(props: CardGenerationProps) {
     if (props.isHandwrittenMessage) {
       cardWithQR.message = props.finalCardMessage;
       cardWithQR.isHandwrittenMessage = true;
-      // TODO: Add handwriting style preference when implemented in UI
-      cardWithQR.handwritingStyle = 'caveat'; // Default for now
     }
     
     console.log('🔄 Final card data prepared:', cardWithQR);
@@ -390,7 +388,6 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags.`;
             ...(isHandwrittenMessage && {
               message: finalCardMessage,
               isHandwrittenMessage: true,
-              handwritingStyle: 'caveat' // Default for now
             })
           }
         })
