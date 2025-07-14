@@ -4657,10 +4657,10 @@ def create_card_pdf():
             print("Creating front/back only PDF...")
             
             # Left half: Back cover (when folded, this becomes the back)
-            pdf.drawImage(back_img, 0, 0, width=card_width, height=card_height, preserveAspectRatio=True, anchor='c')
+            pdf.drawImage(back_img, 0, 0, width=card_width, height=card_height, preserveAspectRatio=False)
             
             # Right half: Front cover 
-            pdf.drawImage(front_img, card_width, 0, width=card_width, height=card_height, preserveAspectRatio=True, anchor='c')
+            pdf.drawImage(front_img, card_width, 0, width=card_width, height=card_height, preserveAspectRatio=False)
             
             # Add fold line guide (very light)
             pdf.setStrokeColorRGB(0.9, 0.9, 0.9)
