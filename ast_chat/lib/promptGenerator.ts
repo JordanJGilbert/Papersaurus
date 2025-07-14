@@ -235,7 +235,7 @@ Unique ID: ${uniqueId}`.trim();
 
     // Generate individual section prompts
     const frontCover = this.generateFrontCoverPrompt(cardTypeForPrompt, effectivePrompt, styleModifier, config);
-    const backCover = this.generateBackCoverPrompt(styleModifier, config.cardType);
+    const backCover = this.generateBackCoverPrompt(styleModifier, config.cardType, config.isFrontBackOnly);
     
     const prompts: CardPrompts = {
       frontCover,
@@ -426,7 +426,7 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
 
     // For now, keep the existing individual generation approach
     // TODO: Implement combined generation with AI chat
-    const backCover = this.generateBackCoverPromptFromFront(config.frontCoverPrompt, styleModifier, config.cardType);
+    const backCover = this.generateBackCoverPromptFromFront(config.frontCoverPrompt, styleModifier, config.cardType, config.isFrontBackOnly);
     
     // Add refinement instructions to the front cover prompt
     const refinedFrontCoverPrompt = config.frontCoverPrompt + `
@@ -619,9 +619,24 @@ Include appropriate greeting text for a ${cardType} card${config.toField ? ` (ca
     return prompt;
   }
 
-  private static generateBackCoverPrompt(styleModifier: string, cardType: string): string {
+  private static generateBackCoverPrompt(styleModifier: string, cardType: string, isFrontBackOnly: boolean = false): string {
     const density = this.getVisualDensity(cardType);
     const uniqueId = uuidv4();
+    
+    // For front/back only cards, make the back more creative and visually interesting
+    if (isFrontBackOnly) {
+      return `Create a beautiful and creative back cover design for a greeting card. Since this is a two-sided card without interior pages, make the back visually interesting and complementary to the front. Use ${Math.min(density.back * 3, 60)}% decoration - this can include:
+- Rich decorative patterns or borders
+- Artistic elements that echo the front design's theme
+- Beautiful background textures or gradients
+- Whimsical flourishes or ornamental designs
+- Elegant geometric patterns
+- Nature-inspired motifs (flowers, leaves, stars, etc.)
+
+The design should be sophisticated and complete, not just minimal. Think of it as an artistic companion to the front cover that makes the card feel special from both sides. IMPORTANT: NO PEOPLE, NO CHARACTERS, NO FIGURES, NO TEXT, NO WORDS, NO GREETING - only decorative and artistic elements. ${styleModifier} ${this.LAYOUT_REQUIREMENTS} ${this.QR_CODE_SPACE} Unique ID: ${uniqueId}`;
+    }
+    
+    // Original minimal back cover for 4-panel cards
     return `Create a very minimal back cover design for a greeting card. Use only ${density.back}% decoration - perhaps a single small motif, a subtle pattern border, or gentle color wash. The design should be understated and elegant, leaving most of the space clean and peaceful. Think of it as a quiet ending to the card experience. IMPORTANT: NO PEOPLE, NO CHARACTERS, NO FIGURES, NO TEXT, NO WORDS, NO GREETING - only minimal abstract decorative elements. ${styleModifier} ${this.LAYOUT_REQUIREMENTS} ${this.QR_CODE_SPACE} Unique ID: ${uniqueId}`;
   }
 
@@ -654,9 +669,24 @@ The decoration should enhance the message, not compete with it. Think of a premi
   }
 
   // Methods for generating from existing front cover
-  private static generateBackCoverPromptFromFront(frontPrompt: string, styleModifier: string, cardType: string): string {
+  private static generateBackCoverPromptFromFront(frontPrompt: string, styleModifier: string, cardType: string, isFrontBackOnly: boolean = false): string {
     const density = this.getVisualDensity(cardType);
-    // Extract style elements from front cover but explicitly exclude any people/characters AND TEXT
+    
+    // For front/back only cards, make the back more creative
+    if (isFrontBackOnly) {
+      return `Create a beautiful and creative back cover for a greeting card. Extract the color palette, artistic style, and thematic elements from this front cover description: "${frontPrompt}". 
+    
+Since this is a two-sided card without interior pages, make the back visually rich and interesting. Use ${Math.min(density.back * 3, 60)}% decoration - create:
+- Complementary patterns or artistic elements that echo the front's theme
+- Rich background designs or textures
+- Beautiful ornamental borders or frames  
+- Decorative motifs that make the back feel complete and special
+- Artistic elements that give the card a premium feel from both sides
+
+The back should feel like an artistic companion to the front, not just an afterthought. IMPORTANT: DO NOT include any people, characters, figures, text, words, or greeting messages. NO TEXT AT ALL - only decorative and artistic elements. ${styleModifier} ${this.LAYOUT_REQUIREMENTS} ${this.QR_CODE_SPACE}`;
+    }
+    
+    // Original minimal version for 4-panel cards
     return `Create a very minimal back cover for a greeting card. Extract ONLY the color palette and artistic style from this description BUT create a much simpler design: "${frontPrompt}". 
     
 Use only ${density.back}% visual density - perhaps a single small element, subtle corner detail, or soft color gradient. Most of the back should be clean, peaceful space. Think elegant minimalism. IMPORTANT: DO NOT include any people, characters, figures, text, words, or greeting messages. NO TEXT AT ALL - only minimal decorative elements. ${styleModifier} ${this.LAYOUT_REQUIREMENTS} ${this.QR_CODE_SPACE}`;

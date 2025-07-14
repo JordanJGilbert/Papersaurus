@@ -416,5 +416,159 @@
     "label": "vibecarding_personalization_scene_creation",
     "description": "This image shows the personalization options in Vibecarding, where users can choose artistic styles, add photos, and describe personal traits and scenes for their personalized card artwork.",
     "size": 223127
+  },
+  "4395c557-176e-4eb6-939f-46c8b0ac2edd": {
+    "filename": "4395c557-176e-4eb6-939f-46c8b0ac2edd.png",
+    "path": "/var/www/flask_app/claude_attachments/4395c557-176e-4eb6-939f-46c8b0ac2edd.png",
+    "url": "https://vibecarding.com/serve_image?key=attachment_27bf9865-5b8b-4821-8b2c-e3499e470b18&type=image/png",
+    "mime_type": "image/png",
+    "timestamp": 1752454342815,
+    "message_id": "+17145986105_1752454342815",
+    "label": "birthday_card_message_generation",
+    "description": "This is a screenshot of a birthday card message with an AI message helper feature. The user can input instructions to modify the message.",
+    "size": 166934
+  },
+  "afb9a98a-d582-46b6-b092-5cd3dc6a6a9d": {
+    "filename": "afb9a98a-d582-46b6-b092-5cd3dc6a6a9d.png",
+    "path": "/var/www/flask_app/claude_attachments/afb9a98a-d582-46b6-b092-5cd3dc6a6a9d.png",
+    "url": "https://vibecarding.com/serve_image?key=attachment_7166aa52-92d2-40ff-b680-af0b8b4f14e3&type=image/png",
+    "mime_type": "image/png",
+    "timestamp": 1752512939380,
+    "message_id": "+17145986105_1752512939380",
+    "label": "generate_final_card_prompt",
+    "description": "A prompt from Vibecarding.com asking if you are ready to generate your final card based on the selected design.",
+    "size": 105056
+  },
+  "47a1cd31-0fe2-44a1-bd5b-d5c33ce8f6a1": {
+    "filename": "47a1cd31-0fe2-44a1-bd5b-d5c33ce8f6a1.png",
+    "path": "/var/www/flask_app/claude_attachments/47a1cd31-0fe2-44a1-bd5b-d5c33ce8f6a1.png",
+    "url": "https://vibecarding.com/serve_image?key=attachment_1a7251f3-a227-40b6-9d62-3f273a61a2e5&type=image/png",
+    "mime_type": "image/png",
+    "timestamp": 1752513314195,
+    "message_id": "+17145986105_1752513314195",
+    "label": "unknown_attachment",
+    "description": "Could not auto-label this attachment.",
+    "size": 63344
+  },
+  "d5ccf8df-522c-489f-b7f2-b3354ba26593": {
+    "filename": "d5ccf8df-522c-489f-b7f2-b3354ba26593.jpg",
+    "path": "/var/www/flask_app/claude_attachments/d5ccf8df-522c-489f-b7f2-b3354ba26593.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_2dad7508-3b9a-4c5f-9a82-29fa4339976a&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752513447236,
+    "message_id": "+17145986105_1752513447236",
+    "label": "card_preview_back_cover",
+    "description": "This is a screenshot of the card preview, displaying the back cover design with a seashell and starfish on a sandy beach background. It is part of a card creation app or website, offering different card design options.",
+    "size": 162824
+  },
+  "e081885d-611f-4f7c-beef-b51dfa029269": {
+    "filename": "e081885d-611f-4f7c-beef-b51dfa029269.jpg",
+    "path": "/var/www/flask_app/claude_attachments/e081885d-611f-4f7c-beef-b51dfa029269.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_4261dd34-e9c3-4696-a2e4-4feb0704fee1&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752513610588,
+    "message_id": "+17145986105_1752513610588",
+    "label": "unknown_attachment",
+    "description": "Could not auto-label this attachment.",
+    "size": 199875
+  },
+  "dc1882dc-794c-4a77-b8d9-0c54a0adc4af": {
+    "filename": "dc1882dc-794c-4a77-b8d9-0c54a0adc4af.jpg",
+    "path": "/var/www/flask_app/claude_attachments/dc1882dc-794c-4a77-b8d9-0c54a0adc4af.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_769f6adb-c72a-4a37-bd5d-18e241675967&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752514043830,
+    "message_id": "+17145986105_1752514043830",
+    "label": "birthday_card_creation_interface",
+    "description": "Screenshot of the Vibecarding interface showing a 'Happy Birthday, Lao Lao!' card that is ready for printing or sending to a factory.",
+    "size": 291786
+  },
+  "2f9d54db-0b12-41d8-b68b-14a982d441e6": {
+    "filename": "2f9d54db-0b12-41d8-b68b-14a982d441e6.jpg",
+    "path": "/var/www/flask_app/claude_attachments/2f9d54db-0b12-41d8-b68b-14a982d441e6.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_22792715-328c-446e-af1c-68d2f867f3ea&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752514538318,
+    "message_id": "+17145986105_1752514538318",
+    "label": "vibecarding_card_final_generation",
+    "description": "Screenshot of the final generation screen in the VibeCarding app, displaying a personalized greeting card preview with the message 'Happy Birthday, Lao Lao!'",
+    "size": 258780
+  },
+  "1f082b43-2db9-452e-93a4-fe363162b563": {
+    "filename": "1f082b43-2db9-452e-93a4-fe363162b563.jpg",
+    "path": "/var/www/flask_app/claude_attachments/1f082b43-2db9-452e-93a4-fe363162b563.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_60340b74-7be7-4183-8a1e-c6ec38add19f&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752514930149,
+    "message_id": "+17145986105_1752514930149",
+    "label": "vibecarding_card_right_interior",
+    "description": "This image shows the right interior of a Vibecarding greeting card, featuring a personalized birthday message and beach illustration.",
+    "size": 224700
+  },
+  "c23c4cf1-5789-4bbf-b80e-b63333f9e0d8": {
+    "filename": "c23c4cf1-5789-4bbf-b80e-b63333f9e0d8.jpg",
+    "path": "/var/www/flask_app/claude_attachments/c23c4cf1-5789-4bbf-b80e-b63333f9e0d8.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_cbe585ce-7ccb-4088-b9c6-a897e47c216f&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752515306000,
+    "message_id": "+17145986105_1752515306000",
+    "label": "birthday_card_sandcastle_beach_scene",
+    "description": "A birthday card image shows two people building a sandcastle at the beach, with \"Happy Birthday, Lao Lao!\" written above them.",
+    "size": 325888
+  },
+  "0cbd76a8-20d1-4739-91c9-d7d06fbd4510": {
+    "filename": "0cbd76a8-20d1-4739-91c9-d7d06fbd4510.png",
+    "path": "/var/www/flask_app/claude_attachments/0cbd76a8-20d1-4739-91c9-d7d06fbd4510.png",
+    "url": "https://vibecarding.com/serve_image?key=attachment_0e209b4d-7a1d-4a1a-8356-dec43bf9e838&type=image/png",
+    "mime_type": "image/png",
+    "timestamp": 1752515934770,
+    "message_id": "+17145986105_1752515934770",
+    "label": "vibecarding_card_generation_complete",
+    "description": "The screenshot shows the final step of the vibecarding card generation process, with the card successfully generated and ready for preview.",
+    "size": 188301
+  },
+  "82847e4c-c2b5-4acf-8665-20b94e98c592": {
+    "filename": "82847e4c-c2b5-4acf-8665-20b94e98c592.jpg",
+    "path": "/var/www/flask_app/claude_attachments/82847e4c-c2b5-4acf-8665-20b94e98c592.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_c8ce2c6f-d500-41b8-b8d1-911e69c28e13&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752516080196,
+    "message_id": "+17145986105_1752516080196",
+    "label": "vibecarding_birthday_card_generation",
+    "description": "Screenshot of VibeCarding, an AI-powered greeting card generator. The user is on the final generation step, with a birthday card preview visible featuring cartoon characters on a beach.",
+    "size": 268965
+  },
+  "617d4526-d7d9-4517-85af-71189ddf290d": {
+    "filename": "617d4526-d7d9-4517-85af-71189ddf290d.jpg",
+    "path": "/var/www/flask_app/claude_attachments/617d4526-d7d9-4517-85af-71189ddf290d.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_93f85d60-4773-49c9-92f5-1ef9b29b5eaa&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752516600939,
+    "message_id": "+17145986105_1752516600939",
+    "label": "vibecarding_card_gallery_grandpa",
+    "description": "A screenshot of the Vibecarding card gallery, featuring multiple 'Happy Birthday Grandpa' cards.",
+    "size": 253534
+  },
+  "10157075-4630-45a2-816d-a6eb1cf32cea": {
+    "filename": "10157075-4630-45a2-816d-a6eb1cf32cea.jpg",
+    "path": "/var/www/flask_app/claude_attachments/10157075-4630-45a2-816d-a6eb1cf32cea.jpg",
+    "url": "https://vibecarding.com/serve_image?key=attachment_80c1742b-1c81-4b6a-a365-009c87740d34&type=image/jpeg",
+    "mime_type": "image/jpeg",
+    "timestamp": 1752517003343,
+    "message_id": "+17145986105_1752517003343",
+    "label": "card_wizard_message_editing",
+    "description": "Screenshot of the 'Message' editing section in the Card Wizard tool, where users can write personalized messages for their cards, with AI-powered suggestions and helpful tips provided.",
+    "size": 210786
+  },
+  "304455e3-10a8-40e7-85a3-76319e8d257d": {
+    "filename": "304455e3-10a8-40e7-85a3-76319e8d257d.png",
+    "path": "/var/www/flask_app/claude_attachments/304455e3-10a8-40e7-85a3-76319e8d257d.png",
+    "url": "https://vibecarding.com/serve_image?key=attachment_b7771877-64f2-4ff0-b3e7-126db030b014&type=image/png",
+    "mime_type": "image/png",
+    "timestamp": 1752517401324,
+    "message_id": "+17145986105_1752517401324",
+    "label": "vibecarding_birthday_message_interface",
+    "description": "Screenshot of the vibecarding interface showing a birthday message being composed. It highlights the AI-powered message modification feature with a prompt to generate a funny birthday message for a wife.",
+    "size": 127792
   }
 }

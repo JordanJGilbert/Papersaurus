@@ -3201,7 +3201,7 @@ def initialize_gmail_client(delegate_email):
         print(f"Gmail initialization error: {error_msg}")
         raise Exception(error_msg)
 
-def send_email_with_attachment(gmail_service, to, subject, body, attachment_base64=None, filename=None):
+def send_email_with_attachment(gmail_service, to, subject, body, attachment_base64=None, filename=None, attachments=None):
     """
     Send professional email with attachment using proper MIME construction and anti-spam headers.
     
@@ -3210,8 +3210,9 @@ def send_email_with_attachment(gmail_service, to, subject, body, attachment_base
         to (str): Recipient email address
         subject (str): Email subject
         body (str): Email body (HTML)
-        attachment_base64 (str, optional): Base64 encoded attachment data
-        filename (str, optional): Attachment filename
+        attachment_base64 (str, optional): Base64 encoded attachment data (legacy single attachment)
+        filename (str, optional): Attachment filename (legacy single attachment)
+        attachments (list, optional): List of attachments with 'attachment_base64' and 'filename' keys
     
     Returns:
         dict: Gmail API response
@@ -3277,7 +3278,7 @@ def send_email_with_attachment(gmail_service, to, subject, body, attachment_base
         # Attach the multipart alternative to the main message
         message.attach(msg_alternative)
         
-        # Add PDF attachment if provided
+        # Add PDF attachment if provided (legacy single attachment support)
         if attachment_base64 and filename:
             # Decode base64 attachment
             pdf_data = base64.b64decode(attachment_base64)
@@ -3292,6 +3293,38 @@ def send_email_with_attachment(gmail_service, to, subject, body, attachment_base
             pdf_attachment.add_header('Content-ID', f'<{filename}>')
             
             message.attach(pdf_attachment)
+        
+        # Add multiple attachments if provided
+        elif attachments and isinstance(attachments, list):
+            for idx, attachment in enumerate(attachments):
+                if isinstance(attachment, dict) and 'attachment_base64' in attachment and 'filename' in attachment:
+                    try:
+                        # Decode base64 attachment
+                        att_data = base64.b64decode(attachment['attachment_base64'])
+                        att_filename = attachment['filename']
+                        
+                        # Determine subtype from filename
+                        subtype = 'octet-stream'
+                        if att_filename.lower().endswith('.pdf'):
+                            subtype = 'pdf'
+                        elif att_filename.lower().endswith(('.jpg', '.jpeg')):
+                            subtype = 'jpeg'
+                        elif att_filename.lower().endswith('.png'):
+                            subtype = 'png'
+                        
+                        # Create attachment
+                        mime_attachment = MIMEApplication(att_data, _subtype=subtype, name=att_filename)
+                        mime_attachment.add_header(
+                            'Content-Disposition', 
+                            f'attachment; filename="{att_filename}"'
+                        )
+                        mime_attachment.add_header('Content-Transfer-Encoding', 'base64')
+                        mime_attachment.add_header('Content-ID', f'<{att_filename}>')
+                        
+                        message.attach(mime_attachment)
+                    except Exception as e:
+                        print(f"Error processing attachment {idx}: {str(e)}")
+                        continue
         
         # Convert to Gmail API format
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
@@ -5227,6 +5260,7 @@ def send_email_nodejs_style():
         body = data.get('body', '')
         attachment_base64 = data.get('attachment_base64')
         filename = data.get('filename')
+        attachments = data.get('attachments', [])  # New field for multiple attachments
         
         # Set sender email (must be in ast.engineer domain for delegation to work)
         from_email = data.get('from', 'vibecarding@ast.engineer')
@@ -5255,7 +5289,8 @@ def send_email_nodejs_style():
                 subject=subject,
                 body=body,
                 attachment_base64=attachment_base64,
-                filename=filename
+                filename=filename,
+                attachments=attachments
             )
             
             return jsonify({

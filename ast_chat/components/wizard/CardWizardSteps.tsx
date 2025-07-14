@@ -185,6 +185,17 @@ export function CardWizardSteps({
           isCardCompleted={cardStudio.isCardCompleted}
           onGenerateFinalCard={cardStudio.handleGenerateFinalFromDraft}
           formatGenerationTime={cardStudio.formatGenerationTime}
+          onBackToDrafts={() => {
+            cardStudio.setGeneratedCard(null);
+            cardStudio.setIsCardCompleted(false);
+            cardStudio.setIsGeneratingFinalCard(false);
+            cardStudio.setCurrentJobId(null);
+            cardStudio.setGenerationProgress('');
+            cardStudio.setProgressPercentage(0);
+            cardStudio.stopElapsedTimeTracking();
+            cardStudio.unsubscribeFromAllJobs();
+            wizardState.updateCurrentStep(5);
+          }}
         />
       );
     

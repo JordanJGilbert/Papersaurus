@@ -6,6 +6,13 @@ import { BACKEND_API_BASE_URL } from './constants';
 // Email Helper Function
 export async function sendThankYouEmail(toEmail: string, cardType: string, cardUrl: string) {
   console.log('📧 sendThankYouEmail called with:', { toEmail, cardType, cardUrl });
+  
+  // Type validation
+  if (typeof toEmail !== 'string') {
+    console.error('📧 sendThankYouEmail - toEmail is not a string:', typeof toEmail, toEmail);
+    return;
+  }
+  
   if (!toEmail.trim()) {
     console.log('📧 sendThankYouEmail - toEmail is empty, returning');
     return;

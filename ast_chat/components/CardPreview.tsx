@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { ChevronLeft, ChevronRight, Play, Pause, RotateCcw, Maximize2, X, Edit3, Wand2, Loader2, Printer, CheckCircle, AlertCircle, Share2, Mail, Copy, Eye } from "lucide-react";
+import { ChevronLeft, ChevronRight, Play, Pause, RotateCcw, Maximize2, X, Edit3, Wand2, Loader2, Printer, CheckCircle, AlertCircle, Share2, Mail, Copy, Eye, Factory } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import ProgressiveImage from "./ProgressiveImage";
@@ -950,6 +950,59 @@ ${displayCard.generatedPrompts.rightInterior}
 
 ` : ''}`;
 
+      // Define attachment interface
+      interface Attachment {
+        attachment_base64: string;
+        filename: string;
+      }
+      
+      // Collect only the final card images (front and back)
+      const attachments: Attachment[] = [];
+      
+      // Add front cover first
+      if (displayCard.frontCover) {
+        try {
+          const frontRes = await fetch(displayCard.frontCover);
+          const frontBlob = await frontRes.blob();
+          const frontBase64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(frontBlob);
+            reader.onloadend = () => {
+              const result = reader.result as string;
+              resolve(result.split(',')[1]);
+            };
+          });
+          attachments.push({
+            attachment_base64: frontBase64,
+            filename: 'card_front_cover.jpg'
+          });
+        } catch (err) {
+          console.error('Error converting front cover to base64:', err);
+        }
+      }
+      
+      // Add back cover second
+      if (displayCard.backCover) {
+        try {
+          const backRes = await fetch(displayCard.backCover);
+          const backBlob = await backRes.blob();
+          const backBase64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(backBlob);
+            reader.onloadend = () => {
+              const result = reader.result as string;
+              resolve(result.split(',')[1]);
+            };
+          });
+          attachments.push({
+            attachment_base64: backBase64,
+            filename: 'card_back_cover.jpg'
+          });
+        } catch (err) {
+          console.error('Error converting back cover to base64:', err);
+        }
+      }
+
       const response = await fetch('https://vibecarding.com/send_email_nodejs_style', {
         method: 'POST',
         headers: {
@@ -960,6 +1013,7 @@ ${displayCard.generatedPrompts.rightInterior}
           from: 'vibecarding@ast.engineer',
           subject: 'New Card Request',
           body: promptDetails,
+          attachments: attachments  // Send all attachments (front cover first, back cover second)
         }),
       });
 
@@ -1154,6 +1208,26 @@ ${displayCard.generatedPrompts.rightInterior}
             </span>
           </Button>
         )}
+        
+        {/* Send to Factory Button */}
+        <Button
+          onClick={handleSendToFactory}
+          disabled={isSendingToFactory || isLoadingCard}
+          size="lg"
+          className="flex-1 bg-purple-500 hover:bg-purple-600 text-white font-semibold shadow-lg disabled:opacity-50"
+        >
+          {isSendingToFactory ? (
+            <>
+              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+              Sending...
+            </>
+          ) : (
+            <>
+              <Factory className="w-5 h-5 mr-2" />
+              Send to Factory
+            </>
+          )}
+        </Button>
         
         {/* Share Button */}
         <Button

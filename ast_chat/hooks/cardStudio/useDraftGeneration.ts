@@ -112,6 +112,9 @@ export function useDraftGeneration(props: DraftGenerationProps) {
     
     // No longer need to clear old draft jobs - storage manager handles this automatically
     
+    // Clear progress text immediately before setting new state
+    setGenerationProgress("");
+    
     setIsDraftMode(true);
     setIsGenerating(true);
     startElapsedTimeTracking('draft');
@@ -358,6 +361,9 @@ export function useDraftGeneration(props: DraftGenerationProps) {
     if (props.setProgressPercentage) {
       props.setProgressPercentage(0);
     }
+    
+    // Clear progress text immediately before setting new state
+    setGenerationProgress("");
     
     startElapsedTimeTracking('final');
     setGenerationProgress("🎨 Creating the complete card based on your selected front cover...");

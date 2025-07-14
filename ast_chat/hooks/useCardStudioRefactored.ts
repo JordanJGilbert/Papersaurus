@@ -246,6 +246,35 @@ export function useCardStudio() {
     if (status === 'completed' && cardData) {
       console.log('🎉 Job completed! Card data:', cardData, 'isDraftJob:', isDraftJob);
       
+      // Normalize field names to handle backend inconsistencies
+      const normalizedCardData = {
+        ...cardData,
+        leftInterior: cardData.leftInterior || cardData.leftPage || cardData.left_interior || cardData.left_page,
+        rightInterior: cardData.rightInterior || cardData.rightPage || cardData.right_interior || cardData.right_page,
+        frontCover: cardData.frontCover || cardData.front_cover || cardData.front,
+        backCover: cardData.backCover || cardData.back_cover || cardData.back,
+        // Keep original fields for backward compatibility
+        leftPage: cardData.leftPage || cardData.leftInterior || cardData.left_page || cardData.left_interior,
+        rightPage: cardData.rightPage || cardData.rightInterior || cardData.right_page || cardData.right_interior
+      };
+      
+      // Validate that we have the minimum required fields for a complete card
+      const hasRequiredFields = normalizedCardData.frontCover && 
+        (isDraftJob || (
+          isFrontBackOnly 
+            ? normalizedCardData.backCover 
+            : (normalizedCardData.backCover && normalizedCardData.leftInterior && normalizedCardData.rightInterior)
+        ));
+      
+      if (!hasRequiredFields) {
+        console.warn('⚠️ Card data missing required fields:', {
+          frontCover: !!normalizedCardData.frontCover,
+          backCover: !!normalizedCardData.backCover,
+          leftInterior: !!normalizedCardData.leftInterior,
+          rightInterior: !!normalizedCardData.rightInterior
+        });
+      }
+      
       // If this is the first update for a recovery job, ensure generation state is set properly
       if (isDraftJob && !draftGeneration.isGenerating && draftGeneration.draftCards.filter(Boolean).length === 0) {
         console.log('📥 Recovered completed draft job - not setting as generating');
@@ -275,13 +304,13 @@ export function useCardStudio() {
 
         const draftCard: GeneratedCard = {
           id: `draft-${draftIndex + 1}-${Date.now()}`,
-          prompt: cardData.prompt || `Draft Variation ${draftIndex + 1}`,
-          frontCover: cardData.frontCover || "",
-          backCover: cardData.backCover || "",
-          leftPage: cardData.leftInterior || cardData.leftPage || "",
-          rightPage: cardData.rightInterior || cardData.rightPage || "",
+          prompt: normalizedCardData.prompt || `Draft Variation ${draftIndex + 1}`,
+          frontCover: normalizedCardData.frontCover || "",
+          backCover: normalizedCardData.backCover || "",
+          leftPage: normalizedCardData.leftInterior || "",
+          rightPage: normalizedCardData.rightInterior || "",
           createdAt: new Date(),
-          generatedPrompts: cardData.generatedPrompts || {
+          generatedPrompts: normalizedCardData.generatedPrompts || {
             frontCover: cardData.generatedPrompts?.frontCover || "",
             backCover: cardData.generatedPrompts?.backCover || "",
             leftInterior: cardData.generatedPrompts?.leftInterior || "",
@@ -353,28 +382,33 @@ export function useCardStudio() {
           leftPage: cardData?.leftPage ? 'Present' : 'Missing',
           rightPage: cardData?.rightPage ? 'Present' : 'Missing',
         });
-        console.log('📝 Full card data:', JSON.stringify(cardData, null, 2));
+        console.log('📝 Full card data:', JSON.stringify(normalizedCardData, null, 2));
         
-        // Map backend field names to frontend field names
-        const mappedCardData = {
-          ...cardData,
-          leftInterior: cardData.leftInterior || cardData.leftPage,
-          rightInterior: cardData.rightInterior || cardData.rightPage,
-          // Keep original fields for backward compatibility
-          leftPage: cardData.leftPage || cardData.leftInterior,
-          rightPage: cardData.rightPage || cardData.rightInterior,
-        };
+        // Use the already normalized card data
+        const mappedCardData = normalizedCardData;
         
-        console.log('🔄 Mapped card data for frontend compatibility:', {
+        console.log('🔄 Normalized card data for frontend:', {
           frontCover: mappedCardData.frontCover ? 'Present' : 'Missing',
           backCover: mappedCardData.backCover ? 'Present' : 'Missing',
           leftInterior: mappedCardData.leftInterior ? 'Present' : 'Missing',
           rightInterior: mappedCardData.rightInterior ? 'Present' : 'Missing',
+          hasAllRequiredFields: hasRequiredFields
         });
         
-        // Call the completion handler
-        console.log('🚀 Calling handleFinalCardCompletion...');
-        cardGeneration.handleFinalCardCompletion(mappedCardData);
+        // Only process completion if we have all required fields
+        if (hasRequiredFields) {
+          // Call the completion handler
+          console.log('🚀 Calling handleFinalCardCompletion...');
+          cardGeneration.handleFinalCardCompletion(mappedCardData);
+        } else {
+          console.error('❌ Cannot complete card - missing required fields');
+          toast.error("Card generation incomplete - missing some panels. Please try again.");
+          // Force clear the loading state
+          cardGeneration.setIsGenerating(false);
+          draftGeneration.setIsGeneratingFinalCard(false);
+          jobManagement.stopElapsedTimeTracking();
+          jobManagement.setGenerationProgress("");
+        }
         
         // Card is automatically added to recent cards by markJobComplete
         

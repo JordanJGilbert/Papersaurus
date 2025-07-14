@@ -119,7 +119,9 @@ export function useCardGeneration(props: CardGenerationProps) {
     });
     
     try {
-      await sendThankYouEmail(cardWithQR, props.userEmail);
+      const cardUrl = `https://vibecarding.com/cards/${cardWithQR.id}`;
+      const cardType = props.customCardType || props.selectedType || 'Card';
+      await sendThankYouEmail(props.userEmail, cardType, cardUrl);
       console.log('✅ Thank you email sent successfully');
     } catch (error) {
       console.error('❌ Failed to send thank you email:', error);

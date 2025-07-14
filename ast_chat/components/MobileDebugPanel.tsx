@@ -11,6 +11,9 @@ interface LogEntry {
 }
 
 export default function MobileDebugPanel() {
+  // Debug panel disabled - return null to hide it
+  return null;
+  
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isVisible, setIsVisible] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);

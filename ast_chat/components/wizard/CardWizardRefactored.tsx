@@ -163,6 +163,11 @@ export default function CardWizard() {
     if (wizardState.currentStep > 1 || cardForm.formData.selectedType || cardForm.formData.selectedTone) {
       // Show confirmation if user has made progress
       if (window.confirm('Are you sure you want to start over? All current progress will be lost.')) {
+        // Clear all session storage
+        if (typeof window !== 'undefined') {
+          sessionStorage.clear();
+        }
+        
         cardForm.resetForm();
         wizardState.resetWizardState();
         // TODO: Add resetStudio method to cardStudio hook

@@ -1,0 +1,15 @@
+{
+  "id": "motivatedSwampGeese",
+  "prompt": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_54ae728b.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_f5317de1.png",
+  "leftPage": "",
+  "rightPage": "",
+  "generatedPrompts": {
+    "frontCover": "A whimsical and funny watercolor greeting card. A charming cartoon pig, wearing a jaunty little party hat slightly askew on its head, is gleefully leaping into a giant, messy chocolate birthday cake. Splatters of chocolate frosting and colorful sprinkles fly through the air in an artistic, joyful explosion. The pig has a look of pure, unadulterated bliss on its face. The background is a soft wash of pastel watercolor, with confetti gently floating down. The entire scene is painted in a vibrant, flowing watercolor style with soft edges and beautiful color bleeds. In the center, in a beautiful, readable, elegant cursive script, the words \"Go hog wild, it's your birthday!\" are written. Flat 2D artwork, perfect for printing.\n\nREFINEMENT NOTE: A rough draft of this exact image is provided as reference. Create a high-quality final version that:\n- Maintains the exact same composition, character positions, and overall design\n- Enhances details, textures, and color vibrancy\n- Corrects any minor imperfections or artifacts\n- Adds professional polish while staying true to the draft\n- Think of this as the \"final art\" version of the provided sketch\n\nORIGINAL CONTEXT TO MAINTAIN:\n\n\n\n\n",
+    "backCover": "A minimalist and elegant back cover for a greeting card, in a beautiful watercolor painting style. The background is a soft wash of clean pastel colors, primarily creams and soft pinks, with a visible paper texture and organic paint bleeds. In the top-left corner, there is a small, artful cluster of watercolor chocolate splatters and colorful sprinkles, echoing the theme from the front cover. The design is very sparse, with the bottom-right corner intentionally left clean and empty for a logo or QR code. Flat 2D artwork for printing, full-bleed."
+  },
+  "createdAt": 1752511902.1616964,
+  "expiresAt": 1784047902.1616974,
+  "version": 1
+}
