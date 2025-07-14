@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sparkles, Clock, CheckCircle, Printer, Mail, ChevronLeft } from "lucide-react";
 import { CardFormData } from "@/hooks/useCardForm";
 import CardPreview from "@/components/CardPreview";
@@ -32,47 +31,6 @@ interface GeneratedCard {
     styleLabel?: string;
   };
 }
-
-interface PaperConfig {
-  id: string;
-  label: string;
-  description: string;
-  aspectRatio: string;
-  dimensions: string;
-  printWidth: string;
-  printHeight: string;
-}
-
-// Paper size options - same as main page
-const paperSizes: PaperConfig[] = [
-  {
-    id: "standard",
-    label: "5×7 Card (Standard)",
-    description: "Standard 5×7 greeting card (10×7 print layout)",
-    aspectRatio: "9:16",
-    dimensions: "1024x1536",
-    printWidth: "10in",
-    printHeight: "7in"
-  },
-  {
-    id: "compact",
-    label: "4×6 Card (Compact)",
-    description: "Compact 4×6 greeting card (8×6 print layout)",
-    aspectRatio: "2:3",
-    dimensions: "768x1152",
-    printWidth: "8in",
-    printHeight: "6in"
-  },
-  {
-    id: "a6",
-    label: "A6 Card (4×6)",
-    description: "A6 paper size (8.3×5.8 print layout)",
-    aspectRatio: "2:3",
-    dimensions: "768x1152",
-    printWidth: "8.3in",
-    printHeight: "5.8in"
-  }
-];
 
 interface Step6FinalGenerationProps {
   formData: CardFormData;
@@ -107,7 +65,6 @@ export default function Step6FinalGeneration({
   // Print-related state
   const [showPrintConfirmation, setShowPrintConfirmation] = useState(false);
   const [printOption, setPrintOption] = useState<'physical' | 'email'>('physical');
-  const [selectedPaperSize, setSelectedPaperSize] = useState<string>("standard");
 
   // State for confirmation flow
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -178,7 +135,7 @@ export default function Step6FinalGeneration({
         left_page: cardToPrint.leftPage,
         right_page: cardToPrint.rightPage,
         card_name: (cardToPrint.prompt || 'Custom Card').substring(0, 50) + ((cardToPrint.prompt || '').length > 50 ? '...' : ''),
-        paper_size: selectedPaperSize,
+        paper_size: 'standard', // Always use standard 10x7
         is_front_back_only: formData.isFrontBackOnly,
         copies: 1,
         color_mode: 'color',
@@ -351,28 +308,16 @@ export default function Step6FinalGeneration({
             <CardHeader>
               <CardTitle className="text-xl flex items-center gap-2 text-green-800 dark:text-green-200">
                 <CheckCircle className="w-6 h-6" />
-                Your Card is Ready!
+                Your Card is Ready! 🎉
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="text-center">
-                <p className="text-green-700 dark:text-green-300">
-                  🎉 Your complete high-quality card has been generated successfully!
-                </p>
-              </div>
-            </CardContent>
           </Card>
 
           {/* Full Card Preview with all functionality */}
           <CardPreview 
             card={generatedCard}
             isFrontBackOnly={formData.isFrontBackOnly}
-            isCardCompleted={true}
             onPrint={handlePrintClick}
-            paperConfig={paperSizes.find(size => size.id === selectedPaperSize) || paperSizes[0]}
-            selectedPaperSize={selectedPaperSize}
-            onPaperSizeChange={setSelectedPaperSize}
-            paperSizes={paperSizes}
             referenceImageUrls={formData.referenceImageUrls}
             personalTraits={formData.personalTraits}
             relationshipField={formData.relationshipField}
@@ -504,25 +449,9 @@ export default function Step6FinalGeneration({
             {printOption === 'physical' && (
               <div className="space-y-3">
                 <h4 className="text-sm font-medium">Print Settings</h4>
-                <div>
-                  <label className="text-sm text-gray-600 dark:text-gray-400 mb-2 block">
-                    Paper Size
-                  </label>
-                  <Select value={selectedPaperSize} onValueChange={setSelectedPaperSize}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {paperSizes.map((size) => (
-                        <SelectItem key={size.id} value={size.id}>
-                          <div className="text-left">
-                            <div className="font-medium">{size.label}</div>
-                            <div className="text-xs text-muted-foreground">{size.description}</div>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+                  <div className="text-sm font-medium">5×7 Card (Standard)</div>
+                  <div className="text-xs text-gray-600 dark:text-gray-400">10×7 print layout</div>
                 </div>
               </div>
             )}

@@ -4,8 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, Play, Pause, RotateCcw, Maximize2, X, Edit3, Wand2, Loader2, Printer, CheckCircle, AlertCircle, Share2, Mail, Copy, Eye, Type } from "lucide-react";
+import { ChevronLeft, ChevronRight, Play, Pause, RotateCcw, Maximize2, X, Edit3, Wand2, Loader2, Printer, CheckCircle, AlertCircle, Share2, Mail, Copy, Eye } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import ProgressiveImage from "./ProgressiveImage";
@@ -42,36 +41,29 @@ interface GeneratedCard {
   isHandwrittenMessage?: boolean;
 }
 
-interface PaperConfig {
-  id: string;
-  label: string;
-  description: string;
-  aspectRatio: string;
-  dimensions: string;
-  printWidth: string;
-  printHeight: string;
-}
-
 interface CardPreviewProps {
   card: GeneratedCard;
   onCardUpdate?: (updatedCard: GeneratedCard) => void;
   isFrontBackOnly?: boolean;
   onPrint?: () => void;
-  paperConfig?: PaperConfig;
   sectionLoadingStates?: {
     frontCover: 'idle' | 'loading' | 'completed' | 'error';
     backCover: 'idle' | 'loading' | 'completed' | 'error';
     leftInterior: 'idle' | 'loading' | 'completed' | 'error';
     rightInterior: 'idle' | 'loading' | 'completed' | 'error';
   };
-  // Paper size control props
-  selectedPaperSize?: string;
-  onPaperSizeChange?: (paperSize: string) => void;
-  paperSizes?: PaperConfig[];
-  isCardCompleted?: boolean;
   // Fast preview mode - show only front cover for quick loading
   fastPreviewMode?: boolean;
   onViewFullCard?: () => void;
+  // Additional context for edits
+  referenceImageUrls?: string[];
+  personalTraits?: string;
+  relationshipField?: string;
+  photoReferences?: Array<{
+    imageUrl: string;
+    imageIndex: number;
+    description?: string;
+  }>;
 }
 
 const slideVariants = {
@@ -104,14 +96,13 @@ export default function CardPreview({
   onCardUpdate, 
   isFrontBackOnly = false, 
   onPrint, 
-  paperConfig, 
   sectionLoadingStates,
-  selectedPaperSize,
-  onPaperSizeChange,
-  paperSizes,
-  isCardCompleted,
   fastPreviewMode = false,
-  onViewFullCard
+  onViewFullCard,
+  referenceImageUrls = [],
+  personalTraits,
+  relationshipField,
+  photoReferences = []
 }: CardPreviewProps) {
   
   // Check if we're in a loading state (when card is null but we have loading states)
@@ -476,6 +467,25 @@ export default function CardPreview({
       let finalEditPrompt = "";
 
       if (originalPrompt) {
+        // Build additional context information
+        let additionalContext = "";
+        if (editingSection === "front-cover" && referenceImageUrls.length > 0) {
+          additionalContext += `\n\nREFERENCE PHOTOS: ${referenceImageUrls.length} reference photos are attached showing the people to be included in the card.`;
+          if (photoReferences.length > 0) {
+            additionalContext += "\nPeople in photos:";
+            photoReferences.forEach((ref, idx) => {
+              additionalContext += `\n- Photo ${idx + 1}: ${ref.description || 'Person in photo'}`;
+            });
+          }
+          additionalContext += "\nIMPORTANT: Transform these people into cartoon/illustrated characters. Keep their clothing but omit any text/logos on clothes.";
+        }
+        if (personalTraits) {
+          additionalContext += `\n\nPERSONAL TRAITS: ${personalTraits}`;
+        }
+        if (relationshipField) {
+          additionalContext += `\n\nRELATIONSHIP: ${relationshipField}`;
+        }
+
         // Use AI to intelligently modify the original prompt based on user's edit request
         const promptModificationQuery = `You are an expert AI prompt engineer specializing in image generation prompts for greeting cards. Your task is to modify an existing image generation prompt based on a user's edit request.
 
@@ -483,7 +493,7 @@ ORIGINAL PROMPT:
 "${originalPrompt}"
 
 USER'S EDIT REQUEST:
-"${editPrompt}"
+"${editPrompt}"${additionalContext}
 
 CRITICAL INSTRUCTIONS:
 1. You MUST return the ENTIRE modified prompt, not just the changes
@@ -555,7 +565,7 @@ Return the ENTIRE modified prompt that incorporates the user's requested changes
 
 ORIGINAL IMAGE DESCRIPTION: The current image was created with this prompt: "${originalPrompt}"
 
-Your edit request: "${editPrompt}"
+Your edit request: "${editPrompt}"${additionalContext}
 
 IMPORTANT INSTRUCTIONS:
 - This is a portrait (vertical) image for a greeting card
@@ -572,9 +582,28 @@ Apply the requested changes while preserving the complete image structure and po
         }
       } else {
         // Fallback when no original prompt is available
+        // Build context for fallback
+        let fallbackContext = "";
+        if (editingSection === "front-cover" && referenceImageUrls.length > 0) {
+          fallbackContext += `\n\nREFERENCE PHOTOS: ${referenceImageUrls.length} reference photos are attached.`;
+          if (photoReferences.length > 0) {
+            fallbackContext += "\nPeople in photos:";
+            photoReferences.forEach((ref, idx) => {
+              fallbackContext += `\n- Photo ${idx + 1}: ${ref.description || 'Person in photo'}`;
+            });
+          }
+          fallbackContext += "\nTransform these people into cartoon/illustrated characters. Keep their clothing but omit any text/logos on clothes.";
+        }
+        if (personalTraits) {
+          fallbackContext += `\n\nPERSONAL TRAITS: ${personalTraits}`;
+        }
+        if (relationshipField) {
+          fallbackContext += `\n\nRELATIONSHIP: ${relationshipField}`;
+        }
+
         finalEditPrompt = `CRITICAL: This is a greeting card ${editingSection.replace('-', ' ')} in portrait format.
 
-Your edit request: "${editPrompt}"
+Your edit request: "${editPrompt}"${fallbackContext}
 
 IMPORTANT INSTRUCTIONS:
 - This is a portrait (vertical) image for a greeting card
@@ -589,6 +618,15 @@ IMPORTANT INSTRUCTIONS:
 Apply the requested changes while preserving the complete image structure and portrait format.`;
       }
 
+      // Prepare images array with current card image first, then reference images
+      const imagesForEdit: string[] = [sourceImageUrl];
+      
+      // Add reference images if available (for front cover edits especially)
+      if (referenceImageUrls.length > 0 && editingSection === "front-cover") {
+        imagesForEdit.push(...referenceImageUrls);
+        console.log(`🖼️ Including ${referenceImageUrls.length} reference images for front cover edit`);
+      }
+
       // Call the edit_images tool
       const response = await fetch('/internal/call_mcp_tool', {
         method: 'POST',
@@ -596,14 +634,14 @@ Apply the requested changes while preserving the complete image structure and po
         body: JSON.stringify({
           tool_name: 'edit_images',
           arguments: {
-            images: [sourceImageUrl],
+            images: imagesForEdit,
             edit_prompt: finalEditPrompt,
             user_number: "+17145986105",
             model: "gpt-image-1",
             output_format: "jpeg",
-            quality: "auto",
+            quality: "high",
             output_compression: 100,
-            size: paperConfig?.dimensions || "1024x1536", // Use paper config dimensions
+            size: "1024x1536", // Always use standard 10x7 dimensions
             n: 1
           }
         })
@@ -1017,439 +1055,131 @@ ${displayCard.generatedPrompts.rightInterior}
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
-      <motion.div 
-        className="text-center"
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
-        <h3 className="text-xl font-bold mb-2">Card Preview</h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          {isFrontBackOnly 
-            ? "Swipe through your card: front cover and back cover"
-            : "Swipe through your card: front cover, left interior, right interior, and back cover"
-          }
+      <div className="text-center">
+        <h3 className="text-xl font-bold">Card Preview</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+          {currentSlide + 1} / {slides.length} - {slides[currentSlide].title}
         </p>
-      </motion.div>
+      </div>
 
-      {/* Main Carousel Container */}
-      <motion.div 
-        className="relative bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 rounded-2xl p-6 overflow-hidden shadow-xl"
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.6, delay: 0.2 }}
-      >
-        {/* Slide Counter & Auto-play Controls */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
+      {/* Simple Card Display */}
+      <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
+        {/* Card Image */}
+        {slides[currentSlide].image ? (
+          <div className="flex justify-center mb-4">
+            <img
+              src={slides[currentSlide].image}
+              alt={slides[currentSlide].title}
+              className="max-h-[400px] w-auto rounded-lg shadow-lg cursor-pointer"
+              onClick={openFullscreen}
+            />
+          </div>
+        ) : (
+          <div className="flex justify-center mb-4">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-12 shadow-lg">
+              <Loader2 className="w-12 h-12 animate-spin text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600 dark:text-gray-300">
+                {getLoadingState(slides[currentSlide].id) === 'loading' ? 'Generating...' : 'Loading...'}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Simple Navigation */}
+        <div className="flex items-center justify-center gap-4">
+          <button
+            onClick={() => paginate(-1)}
+            className="p-2 rounded-lg bg-white dark:bg-gray-800 shadow hover:bg-gray-50 dark:hover:bg-gray-700"
+            disabled={currentSlide === 0}
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+
+          <div className="flex gap-2">
             {slides.map((_, index) => (
-              <motion.button
+              <button
                 key={index}
-                className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                  index === currentSlide 
-                    ? 'bg-blue-500 scale-125' 
-                    : 'bg-gray-300 dark:bg-gray-600 hover:bg-gray-400'
-                }`}
                 onClick={() => goToSlide(index)}
-                whileHover={{ scale: 1.2 }}
-                whileTap={{ scale: 0.9 }}
+                className={`w-2 h-2 rounded-full transition-all ${
+                  index === currentSlide
+                    ? 'bg-blue-500 w-6'
+                    : 'bg-gray-300 hover:bg-gray-400'
+                }`}
               />
             ))}
-                </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-              {currentSlide + 1} / {slides.length}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleAutoPlay}
-              className="h-8 w-8 p-0"
-            >
-              {isAutoPlay ? (
-                <Pause className="w-4 h-4" />
-              ) : (
-                <Play className="w-4 h-4" />
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setCurrentSlide(0)}
-              className="h-8 w-8 p-0"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={openFullscreen}
-              className="h-8 w-8 p-0"
-              title="View in fullscreen"
-            >
-              <Maximize2 className="w-4 h-4" />
-            </Button>
           </div>
+
+          <button
+            onClick={() => paginate(1)}
+            className="p-2 rounded-lg bg-white dark:bg-gray-800 shadow hover:bg-gray-50 dark:hover:bg-gray-700"
+            disabled={currentSlide === slides.length - 1}
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
         </div>
+      </div>
 
-        {/* Carousel */}
-        <div className="relative h-[60vh] sm:h-80 md:h-96 overflow-hidden rounded-xl">
-          <AnimatePresence initial={false} custom={direction}>
-            <motion.div
-              key={currentSlide}
-              custom={direction}
-              variants={slideVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{
-                x: { type: "spring", stiffness: 300, damping: 30 },
-                opacity: { duration: 0.2 },
-                scale: { duration: 0.2 },
-              }}
-              drag="x"
-              dragConstraints={{ left: 0, right: 0 }}
-              dragElastic={1}
-              onDragEnd={(e, { offset, velocity }) => {
-                const swipe = swipePower(offset.x, velocity.x);
-
-                if (swipe < -swipeConfidenceThreshold) {
-                  paginate(1);
-                } else if (swipe > swipeConfidenceThreshold) {
-                  paginate(-1);
-                }
-              }}
-              className="absolute inset-0 cursor-grab active:cursor-grabbing"
-            >
-              <div className="h-full flex flex-col">
-                {/* Slide Header */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
-                >
-                  <Badge className={`${slides[currentSlide].color} text-white w-full justify-center py-2 mb-4 text-sm font-medium`}>
-                    {slides[currentSlide].title} ({slides[currentSlide].subtitle})
-                  </Badge>
-                </motion.div>
-
-                {/* Image Container - Shows single or double images */}
-                <motion.div 
-                  className="flex-1 relative border-2 border-white/20 rounded-lg overflow-hidden shadow-2xl bg-white group"
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.4, duration: 0.4 }}
-                >
-                  {/* Single image layout with click-to-fullscreen */}
-                  {slides[currentSlide].image ? (
-                    <div 
-                      className="w-full h-full relative cursor-pointer group/image"
-                      onClick={openFullscreen}
-                      title="Click to view fullscreen"
-                    >
-                      <ProgressiveImage
-                        src={slides[currentSlide].image}
-                        thumbnailSrc={undefined}
-                        alt={slides[currentSlide].title}
-                        className="w-full h-full object-contain bg-white"
-                        priority={currentSlide === 0} // Only prioritize front cover
-                        sizes={generateSizesAttribute()}
-                      />
-                      
-                      
-                      {/* Fullscreen hint overlay */}
-                      <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/10 transition-all duration-200 flex items-center justify-center pointer-events-none">
-                        <div className="opacity-0 group-hover/image:opacity-100 transition-opacity duration-200 bg-white/90 rounded-full p-3 shadow-lg">
-                          <Maximize2 className="w-6 h-6 text-gray-700" />
-                        </div>
-                      </div>
-                      
-                      {/* Edit Buttons - Always visible */}
-                      <div className="absolute inset-0 pointer-events-none">
-                        {/* Loading State Indicator */}
-                        <div className="absolute top-3 left-3 pointer-events-auto">
-                          {renderLoadingIndicator(getLoadingState(slides[currentSlide].id))}
-                        </div>
-
-                        {/* Edit Button - Always visible */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEditSection(slides[currentSlide].id);
-                          }}
-                          className="absolute top-3 right-3 bg-white/90 hover:bg-white text-gray-700 rounded-full p-2 shadow-lg transition-all duration-200 pointer-events-auto"
-                          title={slides[currentSlide].editLabel}
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-
-                        
-                        {/* Reset Button - Show only if has version history */}
-                        {versionHistory[slides[currentSlide].id] && versionHistory[slides[currentSlide].id].length > 0 && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              resetSection(slides[currentSlide].id);
-                            }}
-                            className="absolute top-3 left-3 bg-amber-500/90 hover:bg-amber-500 text-white rounded-full p-2 shadow-lg transition-all duration-200 pointer-events-auto"
-                            title="Reset to original"
-                          >
-                            <RotateCcw className="w-3 h-3" />
-                          </button>
-                        )}
-                        
-                        {/* Version Navigation - Show only if has version history */}
-                        {versionHistory[slides[currentSlide].id] && versionHistory[slides[currentSlide].id].length > 0 && (
-                          <div className="absolute bottom-3 left-3 bg-white/90 rounded-lg shadow-lg p-2 flex items-center gap-2 pointer-events-auto">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                goToPreviousVersion(slides[currentSlide].id);
-                              }}
-                              disabled={!canGoBack(slides[currentSlide].id)}
-                              className="p-1 rounded-full hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                              title="Previous version"
-                            >
-                              <ChevronLeft className="w-3 h-3" />
-                            </button>
-                            <span className="text-xs text-gray-700 px-1">
-                              {(currentVersionIndex[slides[currentSlide].id] || 0) + 1}/{versionHistory[slides[currentSlide].id].length}
-                            </span>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                goToNextVersion(slides[currentSlide].id);
-                              }}
-                              disabled={!canGoForward(slides[currentSlide].id)}
-                              className="p-1 rounded-full hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                              title="Next version"
-                            >
-                              <ChevronRight className="w-3 h-3" />
-                            </button>
-                          </div>
-                        )}
-                        
-                        {/* Edited Indicator */}
-                        {versionHistory[slides[currentSlide].id] && versionHistory[slides[currentSlide].id].length > 0 && (
-                          <div className="absolute bottom-3 right-3 bg-emerald-500 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 pointer-events-auto">
-                            <Wand2 className="w-3 h-3" />
-                            Edited
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-gray-100 dark:bg-gray-800">
-                      <div className="bg-gray-200 dark:bg-gray-700 rounded-lg p-8 flex flex-col items-center gap-4">
-                        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                        <div className="text-center">
-                          <p className="text-gray-500 dark:text-gray-400 font-medium">
-                            {getLoadingState(slides[currentSlide].id) === 'loading' ? 'Generating...' : 'Loading section...'}
-                          </p>
-                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                            {slides[currentSlide].title}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </motion.div>
-
-                {/* Description */}
-                <motion.p 
-                  className="text-sm text-gray-600 dark:text-gray-400 text-center mt-3 px-4 leading-relaxed"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.5 }}
-                >
-                  {slides[currentSlide].description}
-                </motion.p>
-              </div>
-            </motion.div>
-          </AnimatePresence>
-        </div>
-
-        {/* Navigation Arrows */}
-        <motion.button
-          className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-full p-2 shadow-lg hover:bg-white dark:hover:bg-gray-700 transition-colors z-10"
-          onClick={() => paginate(-1)}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </motion.button>
-        
-        <motion.button
-          className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-full p-2 shadow-lg hover:bg-white dark:hover:bg-gray-700 transition-colors z-10"
-          onClick={() => paginate(1)}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-        >
-          <ChevronRight className="w-5 h-5" />
-        </motion.button>
-      </motion.div>
-
-      {/* Quick Navigation Cards */}
-      <motion.div 
-        className={`grid ${isFrontBackOnly ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4'} gap-3`}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.4 }}
-      >
-        {slides.map((slide, index) => {
-          const loadingState = getLoadingState(slide.id);
-          return (
-            <motion.button
-              key={slide.id}
-              onClick={() => goToSlide(index)}
-              className={`p-3 rounded-lg border-2 transition-all duration-300 text-left relative ${
-                index === currentSlide
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                  : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-              }`}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              {/* Loading state indicator for navigation cards */}
-              <div className="absolute top-2 right-2">
-                {loadingState === 'loading' && (
-                  <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
-                )}
-                {loadingState === 'completed' && (
-                  <CheckCircle className="w-3 h-3 text-green-500" />
-                )}
-                {loadingState === 'error' && (
-                  <AlertCircle className="w-3 h-3 text-red-500" />
-                )}
-              </div>
-              
-              <div className={`w-3 h-3 rounded-full mb-2 ${slide.color}`}></div>
-              <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                {slide.title}
-              </h4>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {slide.subtitle}
-              </p>
-            </motion.button>
-          );
-        })}
-      </motion.div>
-
-      {/* Paper Size Selector - Only show if card is completed and props are provided */}
-      {isCardCompleted && paperSizes && onPaperSizeChange && (
-        <motion.div 
-          className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.5 }}
-        >
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex-1">
-              <h4 className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
-                Print Size
-              </h4>
-              <p className="text-xs text-blue-700 dark:text-blue-300">
-                Change the paper size for printing (doesn't affect your images)
-              </p>
-            </div>
-            <div className="w-48">
-              <Select value={selectedPaperSize} onValueChange={onPaperSizeChange}>
-                <SelectTrigger className="border-blue-300 dark:border-blue-700">
-                  <SelectValue placeholder="Choose paper size" />
-                </SelectTrigger>
-                <SelectContent>
-                  {paperSizes.map((size) => (
-                    <SelectItem key={size.id} value={size.id}>
-                      <div className="text-left">
-                        <div className="font-medium">{size.label}</div>
-                        <div className="text-xs text-muted-foreground">{size.description}</div>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
+      {/* Quick Navigation Tabs */}
+      <div className={`grid ${isFrontBackOnly ? 'grid-cols-2' : 'grid-cols-4'} gap-2 max-w-2xl mx-auto`}>
+        {slides.map((slide, index) => (
+          <button
+            key={slide.id}
+            onClick={() => goToSlide(index)}
+            className={`px-3 py-2 rounded-lg transition-all ${
+              index === currentSlide
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            {slide.title}
+          </button>
+        ))}
+      </div>
 
       {/* Card Actions */}
-      <motion.div 
-        className="flex flex-col sm:flex-row gap-3 pt-4"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.6 }}
-      >
+      <div className="flex flex-col sm:flex-row gap-3 max-w-full px-4 sm:px-0 sm:max-w-2xl mx-auto">
         {/* Print Button */}
         {onPrint && (
           <Button
             onClick={onPrint}
-            className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white"
+            size="lg"
+            className="flex-1 bg-green-500 hover:bg-green-600 text-white font-semibold shadow-lg"
           >
-            <Printer className="w-4 h-4 mr-2" />
+            <Printer className="w-5 h-5 mr-2" />
             Print Card
-            {paperConfig && (
-              <span className="ml-2 text-xs opacity-75">
-                ({paperConfig.printWidth} × {paperConfig.printHeight})
-              </span>
-            )}
+            <span className="ml-2 text-sm opacity-80">
+              (10×7)
+            </span>
           </Button>
         )}
-
-        {/* Send to Factory Button */}
-        <Button
-          onClick={handleSendToFactory}
-          disabled={isSendingToFactory || isLoadingCard}
-          variant="outline"
-          className="flex-1 border-orange-500 text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/20 disabled:opacity-50"
-        >
-          {isSendingToFactory ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Sending...
-            </>
-          ) : isLoadingCard ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Generating...
-            </>
-          ) : (
-            <>
-              🏭
-              <span className="ml-2">Send to Factory</span>
-            </>
-          )}
-        </Button>
         
         {/* Share Button */}
         <Button
           onClick={handleShareCard}
           disabled={isSharing || isLoadingCard}
-          variant="outline"
-          className="flex-1 border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50"
+          size="lg"
+          className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-semibold shadow-lg disabled:opacity-50"
         >
           {isSharing ? (
             <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
               Preparing...
             </>
           ) : isLoadingCard ? (
             <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
               Generating...
             </>
           ) : (
             <>
-              <Share2 className="w-4 h-4 mr-2" />
+              <Share2 className="w-5 h-5 mr-2" />
               Share Card
             </>
           )}
         </Button>
-      </motion.div>
+      </div>
 
       {/* Share Dialog */}
       <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
@@ -1572,8 +1302,8 @@ ${displayCard.generatedPrompts.rightInterior}
               </div>
 
               {/* Fullscreen Image Container */}
-              <div className="flex-1 relative px-4 md:px-6 pb-6">
-                <div className="h-full relative">
+              <div className="flex-1 relative px-4 md:px-6 pb-6 overflow-auto">
+                <div className="h-full relative flex items-center justify-center">
                   <AnimatePresence initial={false} custom={direction}>
                     <motion.div
                       key={`fullscreen-${currentSlide}`}
@@ -1598,30 +1328,26 @@ ${displayCard.generatedPrompts.rightInterior}
                           paginate(-1);
                         }
                       }}
-                      className="absolute inset-0 cursor-grab active:cursor-grabbing"
+                      className="w-full h-full cursor-grab active:cursor-grabbing flex items-center justify-center"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <div className="h-full flex items-center justify-center">
-                        {slides[currentSlide].image ? (
-                          <div className="max-w-full max-h-full relative">
-                            <ProgressiveImage
-                              src={slides[currentSlide].image}
-                              thumbnailSrc={undefined}
-                              alt={slides[currentSlide].title}
-                              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-                              priority={true} // Always prioritize in fullscreen
-                            />
-                            
-                          </div>
+                      {slides[currentSlide].image ? (
+                        <div className="relative p-4">
+                          <ProgressiveImage
+                            src={slides[currentSlide].image}
+                            thumbnailSrc={undefined}
+                            alt={slides[currentSlide].title}
+                            className="max-w-full max-h-[calc(100vh-200px)] w-auto h-auto object-contain rounded-lg shadow-2xl"
+                            priority={true} // Always prioritize in fullscreen
+                          />
+                        </div>
                         ) : (
                           <div className="flex items-center justify-center bg-gray-800 rounded-lg p-8">
                             <p className="text-white/70">Loading section...</p>
                           </div>
                         )}
-                      </div>
                     </motion.div>
                   </AnimatePresence>
-
                   {/* Fullscreen Navigation Arrows */}
                   <motion.button
                     className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 backdrop-blur-sm rounded-full p-3 text-white hover:bg-black/70 transition-colors z-10"
