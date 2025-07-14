@@ -330,6 +330,9 @@ export function useCardStudio() {
         if (completedCount === 5 && !draftGeneration.isGeneratingFinalCard) {
           draftGeneration.setIsGenerating(false);
           jobManagement.stopElapsedTimeTracking();
+          // Clear recovery data for completed draft jobs
+          storage.clearRecovery();
+          console.log('🧹 Cleared recovery data for completed draft job');
           toast.success("🎨 All 5 front cover variations ready! Choose your favorite below.");
         }
         
@@ -374,7 +377,10 @@ export function useCardStudio() {
         
         // Card is automatically added to recent cards by markJobComplete
         
-        jobManagement.removeJobFromStorage(job_id);
+        // Only clear recovery if we're not in the middle of restoring
+        if (!isRestoringJobs) {
+          jobManagement.removeJobFromStorage(job_id);
+        }
         jobManagement.setCurrentJobId(null);
         webSocket.unsubscribeFromJob(job_id);
       }
@@ -395,7 +401,10 @@ export function useCardStudio() {
         webSocket.unsubscribeFromJob(job_id);
       }
       
-      jobManagement.removeJobFromStorage(job_id);
+      // Only clear recovery if we're not in the middle of restoring
+      if (!isRestoringJobs) {
+        jobManagement.removeJobFromStorage(job_id);
+      }
     } else if (status === 'not_found') {
       console.warn('⚠️ Job not found on server, cleaning up stale reference:', job_id);
       
@@ -416,7 +425,10 @@ export function useCardStudio() {
       }
       
       // Clean up storage
-      jobManagement.removeJobFromStorage(job_id);
+      // Only clear recovery if we're not in the middle of restoring
+      if (!isRestoringJobs) {
+        jobManagement.removeJobFromStorage(job_id);
+      }
       webSocket.unsubscribeFromJob(job_id);
     }
   }, [selectedArtisticStyle, draftGeneration, cardGeneration, jobManagement, webSocket, isRestoringJobs]);
@@ -617,6 +629,14 @@ export function useCardStudio() {
     
     // For final card recovery, we can try to restore the job
     console.log('🎯 Recovering from final card generation');
+    
+    // Restore generation state
+    jobManagement.setCurrentJobId(recovery.jobId);
+    cardGeneration.setIsGenerating(true);
+    cardGeneration.setGenerationProgress("🔄 Resuming generation...");
+    jobManagement.startElapsedTimeTracking('final');
+    
+    // Subscribe to the job to get updates
     webSocket.subscribeToJob(recovery.jobId);
     setIsRestoringJobs(false);
   }, [webSocket, storage]);
@@ -627,6 +647,7 @@ export function useCardStudio() {
     
     // Check for active recovery job
     const recovery = storage.getRecovery();
+    console.log('📦 Recovery data:', recovery);
     
     if (recovery) {
       console.log('🔄 Found active job to recover:', recovery.jobId);
@@ -665,6 +686,12 @@ export function useCardStudio() {
           cardGeneration.setIsGenerating(true);
           cardGeneration.setGenerationProgress('🎨 Resuming card generation...');
           jobManagement.startElapsedTimeTracking('final');
+          
+          // If this is a final card generation from a draft, set the appropriate state
+          if (recovery.formData && recovery.formData.selectedDraftIndex !== undefined) {
+            draftGeneration.setIsGeneratingFinalCard(true);
+            draftGeneration.setSelectedDraftIndex(recovery.formData.selectedDraftIndex);
+          }
         }
       }
     }
@@ -744,6 +771,7 @@ export function useCardStudio() {
     generationProgress: draftGeneration.isGenerating ? draftGeneration.generationProgress : cardGeneration.generationProgress,
     setGenerationProgress: cardGeneration.setGenerationProgress,
     progressPercentage: jobManagement.progressPercentage,
+    setProgressPercentage: jobManagement.setProgressPercentage,
     isCardCompleted: cardGeneration.isCardCompleted,
     setIsCardCompleted: cardGeneration.setIsCardCompleted,
     
@@ -781,7 +809,6 @@ export function useCardStudio() {
     generationDuration: cardGeneration.generationDuration,
     setGenerationDuration: cardGeneration.setGenerationDuration,
     currentElapsedTime: jobManagement.currentElapsedTime,
-    setCurrentElapsedTime: jobManagement.setCurrentElapsedTime,
     
     // Helper functions
     formatGenerationTime,
@@ -816,7 +843,6 @@ export function useCardStudio() {
     isRestoringJobs,
     
     // Main generation functions
-    handleGenerateCardAsync: cardGeneration.handleGenerateCardAsync,
     handleGenerateDraftCards: draftGeneration.handleGenerateDraftCards,
     handleGenerateFinalFromDraft: draftGeneration.handleGenerateFinalFromDraft,
     
@@ -886,9 +912,6 @@ export function useCardStudio() {
     
     // Elapsed time tracking
     generationStartTime: jobManagement.generationStartTime,
-    setGenerationStartTime: jobManagement.setGenerationStartTime,
-    elapsedTimeInterval: jobManagement.elapsedTimeInterval,
-    setElapsedTimeInterval: jobManagement.setElapsedTimeInterval,
     
     // Constants for UI
     cardTones,
@@ -901,6 +924,7 @@ export function useCardStudio() {
     disconnectWebSocket: webSocket.disconnectWebSocket,
     subscribeToJob: webSocket.subscribeToJob,
     unsubscribeFromJob: webSocket.unsubscribeFromJob,
+    unsubscribeFromAllJobs: webSocket.unsubscribeFromAllJobs,
     handleJobUpdate,
     handleFinalCardCompletion: cardGeneration.handleFinalCardCompletion,
   };

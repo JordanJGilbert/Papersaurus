@@ -216,7 +216,7 @@ export function useDraftGeneration(props: DraftGenerationProps) {
               aspectRatio: paperSizes.find(size => size.id === selectedPaperSize)?.aspectRatio || "9:16",
               quality: "medium", // Use medium quality for drafts (better than low, faster than high)
               outputFormat: "jpeg",
-              outputCompression: 85, // Slightly lower compression for drafts
+              outputCompression: 100, // Maximum quality compression
               moderation: "low",
               dimensions: paperSizes.find(size => size.id === selectedPaperSize)?.dimensions || "1024x1536",
               isFrontBackOnly: true, // Force front-only for drafts
@@ -389,6 +389,9 @@ export function useDraftGeneration(props: DraftGenerationProps) {
         toneDescription: toneDescription,
         toField: toField,
         fromField: fromField,
+        relationshipField: props.relationshipField,
+        personalTraits: props.personalTraits,
+        photoReferences: props.photoReferences,
         message: messageContent,
         isHandwrittenMessage: isHandwrittenMessage,
         artisticStyle: selectedStyle,

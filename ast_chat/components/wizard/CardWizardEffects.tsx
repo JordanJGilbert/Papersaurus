@@ -74,6 +74,9 @@ export function CardWizardEffects({
       
       await cardStudio.checkPendingJobs();
       
+      // Small delay to ensure state updates have propagated
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       // Only auto-navigate if there's an active generation in progress
       // Don't navigate for completed drafts - let user choose
       if (cardStudio.isGenerating && cardStudio.generationProgress) {
@@ -262,6 +265,23 @@ export function CardWizardEffects({
     cardStudio.setNumberOfCards(formData.numberOfCards);
     cardStudio.setIsFrontBackOnly(formData.isFrontBackOnly);
   }, [cardForm.formData, cardForm.isInitialLoadComplete]);
+
+  // Restore reference images from localStorage on initial load ONLY
+  useEffect(() => {
+    if (!cardForm.isInitialLoadComplete) return;
+    
+    // Only sync reference images if cardStudio doesn't have them but form does
+    if (cardStudio.referenceImageUrls.length === 0 && 
+        cardForm.formData.referenceImageUrls.length > 0) {
+      console.log('🖼️ Restoring reference images from localStorage:', cardForm.formData.referenceImageUrls.length);
+      cardStudio.setReferenceImageUrls(cardForm.formData.referenceImageUrls);
+      
+      // Also restore photoReferences if available
+      if (cardForm.formData.photoReferences) {
+        cardStudio.setPhotoReferences(cardForm.formData.photoReferences);
+      }
+    }
+  }, [cardForm.isInitialLoadComplete]); // Only run once after initial load
 
   // Auto-complete step 1 once user makes selections
   useEffect(() => {

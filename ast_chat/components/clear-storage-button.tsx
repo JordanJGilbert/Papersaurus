@@ -26,21 +26,11 @@ export function ClearStorageButton() {
     setIsClearing(true);
     
     try {
-      // Clear all storage using storage manager
       if (typeof window !== 'undefined') {
         console.log('🧹 Clearing all storage...');
         
-        // Get storage info before clearing
-        const storageInfo = storage.getStorageInfo();
-        
-        // Clear using storage manager (only our keys)
-        storage.clearAll();
-        
-        // Also clear any legacy localStorage items
-        const legacyKeys = Object.keys(localStorage).filter(key => 
-          !key.startsWith('vibe-')
-        );
-        legacyKeys.forEach(key => localStorage.removeItem(key));
+        // Clear ALL localStorage with one simple call
+        localStorage.clear();
         
         // Clear sessionStorage too
         sessionStorage.clear();
@@ -52,8 +42,8 @@ export function ClearStorageButton() {
             .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
         });
         
-        console.log(`✅ Cleared ${storageInfo.keys.length} managed items + ${legacyKeys.length} legacy items`);
-        toast.success(`Cleared all data! Removed ${storageInfo.keys.length + legacyKeys.length} stored items.`);
+        console.log('✅ Cleared all localStorage, sessionStorage, and cookies');
+        toast.success('All stored data has been cleared!');
         
         // Give a moment for the toast to show
         setTimeout(() => {
@@ -91,7 +81,9 @@ export function ClearStorageButton() {
               <li>Active wizard session (form data & progress)</li>
               <li>Recent cards (last 5 generated)</li>
               <li>Recovery data (active generation)</li>
-              <li>All legacy storage data</li>
+              <li>Draft sessions (saved draft cards)</li>
+              <li>All other localStorage data</li>
+              <li>Session storage and cookies</li>
             </ul>
             <p className="font-semibold text-red-600 dark:text-red-400 mt-3">
               This action cannot be undone!
