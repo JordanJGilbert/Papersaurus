@@ -80,6 +80,9 @@ export interface FinalFromDraftConfig {
   toneDescription: string;
   toField?: string;
   fromField?: string;
+  relationshipField?: string;
+  personalTraits?: string;
+  photoReferences?: PhotoReference[];
   message?: string;
   isHandwrittenMessage?: boolean;
   artisticStyle?: {
@@ -269,7 +272,7 @@ Unique ID: ${uniqueId}`.trim();
 
 IMPORTANT: When reference photos are provided:
 - DO NOT describe physical features (hair, eye color, facial features) - the AI can see these from the photos
-- DO describe: actions, poses, expressions, clothing (to maintain consistency), creative additions (props, activities)
+- DO describe: actions, poses, expressions, clothing (to maintain consistency but omit any text/logos on clothes), creative additions (props, activities)
 - Focus on the creative scene, composition, and how the people interact with the card's theme`;
     
     try {
@@ -303,7 +306,7 @@ IMPORTANT: When reference photos are provided:
     prompt += `${styleModifier}. Flat 2D artwork suitable for printing.`;
     
     if (config.referenceImageUrls?.length) {
-      prompt += ` Transform the people in the reference photos into cartoon/illustrated characters.`;
+      prompt += ` Transform the people in the reference photos into cartoon/illustrated characters. Keep their clothing but omit any text/logos on clothes.`;
     }
     
     return prompt;
@@ -351,7 +354,7 @@ ${personalDetails}
 ${config.referenceImageUrls?.length && config.photoReferences?.length ? `REFERENCE PHOTOS (${config.referenceImageUrls.length} attached):
 ${config.photoReferences.map((ref, idx) => `- Photo ${idx + 1}: ${ref.description || 'No description provided'}`).join('\n')}
 
-CRITICAL: I have attached ${config.referenceImageUrls.length} actual photo(s) to this message. You MUST analyze these attached images to see the real people in them. Transform these EXACT people from the photos into cartoon/illustrated characters. Do NOT make up generic descriptions - use the actual appearance of the people in the attached photos.` : ''}
+CRITICAL: I have attached ${config.referenceImageUrls.length} actual photo(s) to this message. You MUST analyze these attached images to see the real people in them. Transform these EXACT people from the photos into cartoon/illustrated characters. Keep their clothing but omit any text/logos on clothes. Do NOT make up generic descriptions - use the actual appearance of the people in the attached photos.` : ''}
 
 Unique ID: ${uniqueId}
 
@@ -359,7 +362,7 @@ Front Cover Requirements:
 - Include appropriate greeting text for a ${cardTypeForPrompt} card${config.toField ? ` (can optionally include "${config.toField}" in the greeting)` : ''}
 - Position text safely in center area (avoid top/bottom 10%)
 - Use beautiful, readable handwritten cursive script
-- ${config.referenceImageUrls?.length ? 'IMPORTANT: Reference photos are attached. Transform the people into cartoon/illustrated versions. Refer to them by name or position (e.g., "Lao Lao" or "person on left") rather than describing physical features. The image AI will see their appearance from the photos.' : 'Create charming cartoon-style figures if needed'}
+- ${config.referenceImageUrls?.length ? 'IMPORTANT: Reference photos are attached. Transform the people into cartoon/illustrated versions maintaining their clothing (but omit any text/logos on clothes). Refer to them by name or position (e.g., "Lao Lao" or "person on left") rather than describing physical features. The image AI will see their appearance from the photos.' : 'Create charming cartoon-style figures if needed'}
 - Be creative and unique, avoid generic designs
 - Flat 2D artwork for printing
 - Style: ${styleModifier}
@@ -480,8 +483,15 @@ REFINEMENT INSTRUCTIONS FOR ALL PANELS:
 
 IMPORTANT: The above front cover description is provided as CONTEXT ONLY. You should extract the color palette, artistic style, and overall aesthetic from it, but DO NOT copy characters, people, or specific scenes to other panels.
 
-CARD DETAILS:
+CARD CONTEXT:
 - Card Type: ${cardTypeForPrompt}
+- To: ${config.toField || 'Not specified'}
+- From: ${config.fromField || 'Not specified'}
+${config.relationshipField ? `- Relationship: ${config.toField || 'The recipient'} is ${config.fromField || 'the sender'}'s ${config.relationshipField}` : ''}
+${config.personalTraits ? `- Personal Traits: ${config.personalTraits}` : ''}
+${config.photoReferences?.length ? `- Reference Photos: ${config.photoReferences.map(ref => ref.description || 'Person in photo').join(', ')}` : ''}
+
+CARD DETAILS:
 - Message space needed: ${config.isHandwrittenMessage ? 'Yes (blank space for handwriting)' : 'Yes (for provided message)'}
 - Style Modifier: ${config.artisticStyle?.promptModifier || 'Default style'}
 
@@ -537,7 +547,14 @@ REFINEMENT NOTE: A rough draft of this exact image is provided as reference. Cre
 - Enhances details, textures, and color vibrancy
 - Corrects any minor imperfections or artifacts
 - Adds professional polish while staying true to the draft
-- Think of this as the "final art" version of the provided sketch`;
+- Think of this as the "final art" version of the provided sketch
+
+ORIGINAL CONTEXT TO MAINTAIN:
+${config.toField ? `- To: ${config.toField}` : ''}
+${config.fromField ? `- From: ${config.fromField}` : ''}
+${config.relationshipField ? `- Relationship: ${config.toField || 'The recipient'} is ${config.fromField || 'the sender'}'s ${config.relationshipField}` : ''}
+${config.personalTraits ? `- Personal Traits to incorporate: ${config.personalTraits}` : ''}
+${config.photoReferences?.length ? `- Reference photos of: ${config.photoReferences.map(ref => ref.description || 'Person in photo').join(', ')}` : ''}`;
 
       const prompts: CardPrompts = {
         frontCover: refinedFrontCoverPrompt,
@@ -588,7 +605,7 @@ REFINEMENT NOTE: A rough draft of this exact image is provided as reference. Cre
       config.photoReferences.forEach((ref, idx) => {
         photoContext += `\n- Photo ${idx + 1}: ${ref.description || 'No description provided'}`;
       });
-      photoContext += '\n\nTransform these people into cartoon/illustrated characters matching the descriptions above.';
+      photoContext += '\n\nTransform these people into cartoon/illustrated characters matching the descriptions above. Keep their clothing but omit any text/logos on clothes.';
     }
     
     let prompt = `Create a beautiful front cover for a ${cardType} greeting card. ${theme}.${contextSection}${photoContext}${personalDetails}

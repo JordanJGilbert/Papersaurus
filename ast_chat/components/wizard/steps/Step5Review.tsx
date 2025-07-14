@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Check, Edit, Clock, CheckCircle, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
+import { Check, Edit, Clock, CheckCircle, Sparkles } from "lucide-react";
 import { CardFormData } from "@/hooks/useCardForm";
 import { Separator } from "@/components/ui/separator";
 
@@ -44,20 +44,7 @@ export default function Step5Review({
   onSelectDraft 
 }: Step5Props) {
   const [isReady, setIsReady] = useState(false);
-  const [currentPanels, setCurrentPanels] = useState<number[]>([0, 0, 0, 0, 0]);
-  
-  const panelNames = ['Front', 'Left Interior', 'Right Interior', 'Back'];
-  
-  const handlePanelChange = (draftIndex: number, direction: 'next' | 'prev') => {
-    setCurrentPanels(prev => {
-      const newPanels = [...prev];
-      const current = prev[draftIndex];
-      newPanels[draftIndex] = direction === 'next' 
-        ? (current + 1) % 4 
-        : current === 0 ? 3 : current - 1;
-      return newPanels;
-    });
-  };
+  // Removed panel navigation state since we're only showing front covers
 
   // Mark step as complete when user is ready to generate
   useEffect(() => {
@@ -171,20 +158,23 @@ export default function Step5Review({
 
       {/* Draft Mode Description - only show when not generating */}
       {showDraftSelection && (
-        <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800">
+        <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
         <div className="flex items-start gap-3">
           <div className="w-6 h-6 bg-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
             <span className="text-white text-sm">🎨</span>
           </div>
-          <div>
-            <h4 className="font-medium text-purple-900 dark:text-purple-100 mb-1">
-              Draft Mode
+          <div className="space-y-2">
+            <h4 className="font-medium text-purple-900 dark:text-purple-100">
+              Draft Mode - Front Cover Previews
             </h4>
             <p className="text-sm text-purple-700 dark:text-purple-300">
-              Generate 5 designs, pick your favorite
+              We'll generate 5 rough draft variations of your card's front cover.
               {formData.selectedArtisticStyle === "ai-smart-style" && (
-                <span className="font-medium"> in curated styles</span>
+                <span className="font-medium"> Each will showcase a different artistic style.</span>
               )}
+            </p>
+            <p className="text-xs text-purple-600 dark:text-purple-400 italic">
+              Note: These are quick previews to help you choose a design direction. The final card will be much higher quality with all 4 panels.
             </p>
           </div>
         </div>
@@ -208,7 +198,7 @@ export default function Step5Review({
             ) : (
               <>
                 <span className="text-lg">🎨</span>
-                <span>Create 5 Complete Card Designs</span>
+                <span>Generate 5 Draft Previews</span>
               </>
             )}
           </button>
@@ -220,11 +210,11 @@ export default function Step5Review({
         <div className="space-y-4">
           <div className="text-center space-y-2">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              {isGenerating ? "Preview & Select as They're Ready!" : "Choose Your Favorite Design"}
+              {isGenerating ? "Creating Front Cover Drafts..." : "Choose Your Favorite Front Cover Design"}
             </h3>
             {!isGenerating && (
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                5 complete card variations created for preview. Select your favorite to generate the high-quality version!
+                These are rough drafts showing only the front cover. Select your favorite design style and we'll create the complete high-quality card with all 4 panels.
               </p>
             )}
           </div>
@@ -290,49 +280,17 @@ export default function Step5Review({
                   >
                     {card ? (
                       <>
-                        {/* Multi-panel preview with navigation */}
+                        {/* Front cover preview only */}
                         <div className="aspect-[2/3] relative overflow-hidden rounded border mb-3">
                           <img
-                            src={
-                              currentPanels[displayIndex] === 0 ? card.frontCover :
-                              currentPanels[displayIndex] === 1 ? (card.leftInterior || card.leftPage) :
-                              currentPanels[displayIndex] === 2 ? (card.rightInterior || card.rightPage) :
-                              card.backCover
-                            }
-                            alt={`Design ${displayIndex + 1} - ${panelNames[currentPanels[displayIndex]]}`}
+                            src={card.frontCover}
+                            alt={`Design ${displayIndex + 1} - Front Cover Draft`}
                             className="w-full h-full object-cover"
                           />
                           
-                          {/* Panel navigation arrows */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handlePanelChange(displayIndex, 'prev');
-                            }}
-                            className="absolute left-1 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white rounded-full p-1 shadow-md transition-colors"
-                          >
-                            <ChevronLeft className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handlePanelChange(displayIndex, 'next');
-                            }}
-                            className="absolute right-1 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white rounded-full p-1 shadow-md transition-colors"
-                          >
-                            <ChevronRight className="w-4 h-4" />
-                          </button>
-                          
-                          {/* Panel indicator dots */}
-                          <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1">
-                            {[0, 1, 2, 3].map(idx => (
-                              <div
-                                key={idx}
-                                className={`w-1.5 h-1.5 rounded-full transition-colors ${
-                                  currentPanels[displayIndex] === idx ? 'bg-white' : 'bg-white/50'
-                                }`}
-                              />
-                            ))}
+                          {/* Draft watermark */}
+                          <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
+                            DRAFT
                           </div>
                           
                           {selectedDraftIndex === displayIndex && (
@@ -347,7 +305,7 @@ export default function Step5Review({
                         {/* Card info */}
                         <div className="text-center space-y-2">
                           <h4 className="font-medium text-sm">
-                            Design {displayIndex + 1} - {panelNames[currentPanels[displayIndex]]}
+                            Draft {displayIndex + 1}
                           </h4>
                           {formData.selectedArtisticStyle === "ai-smart-style" && card.styleInfo && (
                             <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
@@ -360,18 +318,6 @@ export default function Step5Review({
                                 ✓ Selected
                               </div>
                             )}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                // Add preview functionality if needed
-                              }}
-                              className="w-full text-xs h-9 touch-manipulation"
-                            >
-                              <span className="hidden sm:inline">View All Panels</span>
-                              <span className="sm:hidden">View All</span>
-                            </Button>
                           </div>
                         </div>
                       </>
@@ -379,7 +325,7 @@ export default function Step5Review({
                       <div className="flex flex-col items-center justify-center py-8">
                         <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
                         <h4 className="font-medium text-sm mb-1">Creating...</h4>
-                        <p className="text-xs text-gray-500">Generating front cover...</p>
+                        <p className="text-xs text-gray-500">Generating draft...</p>
                       </div>
                     )}
                   </div>
@@ -391,7 +337,7 @@ export default function Step5Review({
             {selectedDraftIndex !== -1 && (
               <div className="text-center bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 mt-4">
                 <p className="text-sm font-medium text-purple-900 dark:text-purple-100">
-                  ✓ Design {selectedDraftIndex + 1} selected - ready to generate complete card!
+                  ✓ Draft {selectedDraftIndex + 1} selected - ready to generate your complete high-quality card with all 4 panels!
                 </p>
               </div>
             )}
@@ -406,10 +352,10 @@ export default function Step5Review({
                   className="h-10 px-4 text-sm"
                 >
                   <Sparkles className="w-4 h-4 mr-2" />
-                  Regenerate New Designs
+                  Generate New Drafts
                 </Button>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                  Not happy with these? Generate 5 new variations
+                  Not happy with these? Generate 5 new draft variations
                 </p>
               </div>
             )}
@@ -433,9 +379,10 @@ export default function Step5Review({
       <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
         <h4 className="font-medium text-gray-900 dark:text-gray-100 mb-2">💡 Generation Tips:</h4>
         <ul className="text-sm text-gray-700 dark:text-gray-300 space-y-1">
-          <li>• Draft Mode is recommended for first-time users</li>
-          <li>• Generation typically takes 1-3 minutes depending on complexity</li>
-          <li>• You can safely leave this page during generation</li>
+          <li>• Drafts are quick previews to help you choose a design direction</li>
+          <li>• Only the front cover is shown in draft mode</li>
+          <li>• Final generation creates all 4 panels in high quality</li>
+          <li>• Draft generation takes 30-60 seconds, final card takes 1-3 minutes</li>
           {formData.referenceImageUrls?.length > 0 && (
             <li>• Your {formData.referenceImageUrls.length} reference photo{formData.referenceImageUrls.length > 1 ? 's' : ''} will be used for character creation</li>
           )}

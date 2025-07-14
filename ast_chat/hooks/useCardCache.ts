@@ -102,10 +102,15 @@ export const useCardCache = () => {
         if (response.ok) {
           const data = await response.json();
           if (data.status === 'success' && data.cards && Array.isArray(data.cards)) {
+            // Deduplicate cards by ID
+            const uniqueCards = data.cards.filter((card, index, self) => 
+              index === self.findIndex((c) => c.id === card.id)
+            );
+            
             // Update global cache
             globalCache = {
-              cards: data.cards,
-              totalCount: data.pagination?.total || data.cards.length,
+              cards: uniqueCards,
+              totalCount: data.pagination?.total || uniqueCards.length,
               lastFetched: Date.now(),
               isComplete: true
             };

@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, Undo2, Redo2, History, Sparkles } from "lucide-react";
+import { ChevronDown, Undo2, Redo2, History, Sparkles, Wand2 } from "lucide-react";
 import { CardFormData } from "@/hooks/useCardForm";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -59,66 +59,61 @@ export default function Step2ContentCreation({
     setModificationPrompt(""); // Clear the prompt after use
   };
 
+  // Handle quick message generation
+  const handleQuickMessage = async () => {
+    if (!handleGetMessageHelp) return;
+    
+    const { selectedType, selectedTone, toField } = formData;
+    
+    // Create a high-quality, context-aware quick message prompt
+    let quickPrompt = `Create a beautiful, ${selectedTone} ${selectedType} card message`;
+    
+    if (toField) {
+      quickPrompt += ` for ${toField}`;
+    }
+    
+    // Add context-specific instructions for quality
+    if (selectedType === 'birthday') {
+      quickPrompt += `. Make it celebratory and warm. Reference another year of wonderful memories or adventures ahead`;
+    } else if (selectedType === 'anniversary') {
+      quickPrompt += `. Express deep love and appreciation. Reference the journey together`;
+    } else if (selectedType === 'thank-you') {
+      quickPrompt += `. Be specific about gratitude. Make them feel truly appreciated`;
+    } else if (selectedType === 'get-well') {
+      quickPrompt += `. Be encouraging and uplifting. Express care and support`;
+    } else if (selectedType === 'sympathy') {
+      quickPrompt += `. Be gentle and comforting. Offer sincere condolences`;
+    } else if (selectedType === 'holiday') {
+      quickPrompt += `. Capture the joy of the season. Include warm wishes`;
+    } else if (selectedType === 'congratulations') {
+      quickPrompt += `. Celebrate their achievement. Express pride and excitement`;
+    }
+    
+    // Add tone-specific quality markers
+    if (selectedTone === 'funny') {
+      quickPrompt += `. Include humor that feels natural and affectionate, not forced`;
+    } else if (selectedTone === 'heartfelt') {
+      quickPrompt += `. Write from the heart with genuine emotion`;
+    } else if (selectedTone === 'romantic') {
+      quickPrompt += `. Express deep love and affection beautifully`;
+    } else if (selectedTone === 'professional') {
+      quickPrompt += `. Keep it warm but appropriate for a professional relationship`;
+    }
+    
+    quickPrompt += `. 
+
+IMPORTANT: Create a message that feels like it was carefully crafted, not generic. It should be memorable, touching, and something the recipient would want to keep. Aim for 100-200 characters - long enough to be meaningful but short enough to be impactful. Make every word count.`;
+    
+    await handleGetMessageHelp(quickPrompt);
+  };
+
   // Dynamic placeholder based on card type and tone
   const messagePlaceholder = useMemo(() => {
     if (formData.isHandwrittenMessage) return "✍️ Leave blank - you'll handwrite";
     
-    const { selectedType, selectedTone, toField } = formData;
-    const name = toField || "them";
-    
-    // Birthday placeholders
-    if (selectedType === 'birthday') {
-      if (selectedTone === 'funny') {
-        return `Happy Birthday ${toField || '[Name]'}! Another year older means... [add joke about age/getting older/specific quirk]`;
-      } else if (selectedTone === 'heartfelt') {
-        return `Dear ${toField || '[Name]'}, On your special day, I want you to know... [share what they mean to you]`;
-      } else if (selectedTone === 'romantic') {
-        return `To my love, Every birthday with you is... [express your love and future wishes]`;
-      }
-    }
-    
-    // Anniversary placeholders
-    else if (selectedType === 'anniversary') {
-      if (selectedTone === 'romantic') {
-        return `My darling, [Number] years ago we... [share favorite memory and express love]`;
-      } else if (selectedTone === 'funny') {
-        return `Happy Anniversary! [Number] years and you still... [add funny observation about relationship]`;
-      }
-    }
-    
-    // Thank you placeholders
-    else if (selectedType === 'thank-you') {
-      if (selectedTone === 'professional') {
-        return `Dear ${toField || '[Name]'}, Thank you for... [be specific about what you're thanking them for]`;
-      } else if (selectedTone === 'heartfelt') {
-        return `I can't thank you enough for... [explain how their help/gift made a difference]`;
-      }
-    }
-    
-    // Get well placeholders
-    else if (selectedType === 'get-well') {
-      return `Thinking of you and hoping... [share encouraging words and well wishes]`;
-    }
-    
-    // Sympathy placeholders
-    else if (selectedType === 'sympathy') {
-      return `Dear ${toField || '[Name]'}, My heart goes out to you... [offer comfort and support]`;
-    }
-    
-    // Holiday placeholders
-    else if (selectedType === 'holiday') {
-      return `Wishing you and your family... [share holiday wishes and memories]`;
-    }
-    
-    // Generic fallback based on tone
-    if (selectedTone === 'funny') {
-      return `Hey ${toField || '[Name]'}! [Start with humor or inside joke]... [add your message]`;
-    } else if (selectedTone === 'heartfelt') {
-      return `Dear ${toField || '[Name]'}, I wanted to let you know... [share sincere thoughts]`;
-    }
-    
-    return `Dear ${toField || '[Name]'}, [Write your personal message here...]`;
-  }, [formData.selectedType, formData.selectedTone, formData.isHandwrittenMessage, formData.toField]);
+    // Simple, consistent placeholder for all card types
+    return "Write your card message here, or click the Create Message button for a starting place.";
+  }, [formData.isHandwrittenMessage]);
 
   const canUndo = currentMessageIndex > 0;
   const canRedo = currentMessageIndex < messageHistory.length - 1;
@@ -129,9 +124,25 @@ export default function Step2ContentCreation({
       {/* Message Section */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Card Message
-          </label>
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Card Message
+            </label>
+            {/* Create Message Button */}
+            {!formData.isHandwrittenMessage && !formData.finalCardMessage && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleQuickMessage}
+                disabled={isGeneratingMessage}
+                className="gap-1.5 text-xs"
+              >
+                <Wand2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Create Message</span>
+                <span className="sm:hidden">Create</span>
+              </Button>
+            )}
+          </div>
           <div className="flex items-center gap-1">
             {/* Message History Dropdown */}
             {messageHistory.length > 0 && (
@@ -232,9 +243,13 @@ export default function Step2ContentCreation({
             <div className="border border-gray-300 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
               {/* Main Message Textarea */}
               <Textarea
-                placeholder={formData.isHandwrittenMessage 
-                  ? "This space will be left empty on the card for your handwritten message..." 
-                  : messagePlaceholder}
+                placeholder={
+                  formData.isHandwrittenMessage 
+                    ? "This space will be left empty on the card for your handwritten message..." 
+                    : formData.isFrontBackOnly
+                    ? "With front/back only cards, your message will be beautifully displayed on the back cover..."
+                    : messagePlaceholder
+                }
                 value={formData.finalCardMessage}
                 onChange={(e) => updateFormData({ finalCardMessage: e.target.value })}
                 rows={isMessageExpanded ? 12 : 8}
@@ -292,7 +307,7 @@ export default function Step2ContentCreation({
           <div className="text-xs text-muted-foreground/70">
             {formData.isHandwrittenMessage 
               ? "💡 Your message will appear in handwritten style on the card"
-              : "💡 Messages typically work best between 50-350 characters"}
+              : "💡 Messages typically work best between 50-300 characters"}
           </div>
         </div>
         
@@ -313,6 +328,24 @@ export default function Step2ContentCreation({
             Leave space for handwritten message
           </label>
         </div>
+
+        {/* Front/Back Only Option */}
+        <div className="flex items-center space-x-2 mt-2">
+          <input
+            type="checkbox"
+            id="front-back-only"
+            checked={formData.isFrontBackOnly}
+            onChange={(e) => {
+              updateFormData({ 
+                isFrontBackOnly: e.target.checked
+              });
+            }}
+            className="rounded"
+          />
+          <label htmlFor="front-back-only" className="text-sm text-gray-600 dark:text-gray-400">
+            Create front and back covers only (no interior pages)
+          </label>
+        </div>
       </div>
 
       {/* Tips - Mobile Optimized */}
@@ -323,6 +356,7 @@ export default function Step2ContentCreation({
           <li>• Use the AI helper to create or modify your message</li>
           <li>• Try prompts like "make it funnier" or "add a personal touch"</li>
           <li>• Check "handwritten style" to display your typed message in handwriting font</li>
+          <li>• Select "front and back only" for a simpler 2-panel card design</li>
         </ul>
       </div>
     </div>
