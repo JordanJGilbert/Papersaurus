@@ -425,8 +425,18 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
     // TODO: Implement combined generation with AI chat
     const backCover = this.generateBackCoverPromptFromFront(config.frontCoverPrompt, styleModifier, config.cardType);
     
+    // Add refinement instructions to the front cover prompt
+    const refinedFrontCoverPrompt = config.frontCoverPrompt + `
+
+REFINEMENT NOTE: A rough draft of this exact image is provided as reference. Create a high-quality final version that:
+- Maintains the exact same composition, character positions, and overall design
+- Enhances details, textures, and color vibrancy
+- Corrects any minor imperfections or artifacts
+- Adds professional polish while staying true to the draft
+- Think of this as the "final art" version of the provided sketch`;
+
     const prompts: CardPrompts = {
-      frontCover: config.frontCoverPrompt, // Keep existing front cover
+      frontCover: refinedFrontCoverPrompt,
       backCover
     };
 
@@ -458,6 +468,15 @@ IMPORTANT: Wrap your final message in <MESSAGE> </MESSAGE> tags. Everything outs
 
 CONTEXT - FRONT COVER (already designed):
 "${config.frontCoverPrompt}"
+
+REFINEMENT INSTRUCTIONS FOR ALL PANELS:
+- A rough draft image is being provided as a visual reference for each panel
+- The final high-quality versions should closely resemble the drafts but with:
+  * Enhanced details and textures
+  * Corrected minor imperfections or inconsistencies
+  * Improved color depth and vibrancy
+  * Professional polish while maintaining the original composition
+- Think of this as taking a sketch to final artwork - same design, better execution
 
 IMPORTANT: The above front cover description is provided as CONTEXT ONLY. You should extract the color palette, artistic style, and overall aesthetic from it, but DO NOT copy characters, people, or specific scenes to other panels.
 
@@ -510,8 +529,18 @@ ${this.SAFETY_REQUIREMENTS}`;
       });
 
       // Response should already be parsed JSON due to jsonSchema
+      // Add refinement instructions to the front cover prompt
+      const refinedFrontCoverPrompt = config.frontCoverPrompt + `
+
+REFINEMENT NOTE: A rough draft of this exact image is provided as reference. Create a high-quality final version that:
+- Maintains the exact same composition, character positions, and overall design
+- Enhances details, textures, and color vibrancy
+- Corrects any minor imperfections or artifacts
+- Adds professional polish while staying true to the draft
+- Think of this as the "final art" version of the provided sketch`;
+
       const prompts: CardPrompts = {
-        frontCover: config.frontCoverPrompt,
+        frontCover: refinedFrontCoverPrompt,
         backCover: response.backCover
       };
 
