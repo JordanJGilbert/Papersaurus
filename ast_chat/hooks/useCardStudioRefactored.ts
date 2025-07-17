@@ -9,7 +9,7 @@ import { useWebSocket } from './cardStudio/useWebSocket';
 import { useJobManagement } from './cardStudio/useJobManagementSimplified';
 import { useMessageGeneration } from './cardStudio/useMessageGeneration';
 import { useFileHandling } from './cardStudio/useFileHandling';
-import { useDraftGeneration } from './cardStudio/useDraftGeneration';
+import { useCardGenerationSimple } from './cardStudio/useCardGenerationSimple';
 import { useCardGeneration } from './cardStudio/useCardGeneration';
 
 // Import constants and utils
@@ -116,27 +116,26 @@ export function useCardStudio() {
     fileHandling.photoReferences
   );
   
-  // Draft generation props
-  const draftGenerationProps = {
+  // Card generation props
+  const cardGenerationProps = {
     selectedType,
     customCardType,
     selectedTone,
     selectedArtisticStyle,
     customStyleDescription,
-    selectedDraftModel,
     selectedImageModel,
     selectedPaperSize,
     prompt,
     personalTraits,
     toField,
     fromField,
+    relationshipField,
     userEmail,
     finalCardMessage: messageGeneration.finalCardMessage,
     isHandwrittenMessage,
     isFrontBackOnly,
     referenceImageUrls: fileHandling.referenceImageUrls,
     photoReferences: fileHandling.photoReferences,
-    relationshipField,
     saveJobToStorage: jobManagement.saveJobToStorage,
     subscribeToJob: webSocket.subscribeToJob,
     unsubscribeFromAllJobs: webSocket.unsubscribeFromAllJobs,
@@ -145,10 +144,10 @@ export function useCardStudio() {
     setProgressPercentage: jobManagement.setProgressPercentage,
   };
   
-  const draftGeneration = useDraftGeneration(draftGenerationProps);
+  const cardGenerationSimple = useCardGenerationSimple(cardGenerationProps);
   
-  // Card generation props
-  const cardGenerationProps = {
+  // Card generation props for legacy hook
+  const cardGenerationLegacyProps = {
     selectedType,
     customCardType,
     selectedTone,
@@ -174,16 +173,16 @@ export function useCardStudio() {
     startElapsedTimeTracking: jobManagement.startElapsedTimeTracking,
     stopElapsedTimeTracking: jobManagement.stopElapsedTimeTracking,
     setCurrentJobId: jobManagement.setCurrentJobId,
-    setIsDraftMode: draftGeneration.setIsDraftMode,
-    setDraftCards: draftGeneration.setDraftCards,
-    setSelectedDraftIndex: draftGeneration.setSelectedDraftIndex,
-    setIsGeneratingFinalCard: draftGeneration.setIsGeneratingFinalCard,
-    setPreviewingDraftIndex: draftGeneration.setPreviewingDraftIndex,
-    setDraftCompletionShown: draftGeneration.setDraftCompletionShown,
-    setDraftCompletionCount: draftGeneration.setDraftCompletionCount,
+    setIsDraftMode: () => {},
+    setDraftCards: cardGenerationSimple.setGeneratedCards,
+    setSelectedDraftIndex: cardGenerationSimple.setSelectedCardIndex,
+    setIsGeneratingFinalCard: () => {},
+    setPreviewingDraftIndex: () => {},
+    setDraftCompletionShown: () => {},
+    setDraftCompletionCount: () => {},
   };
   
-  const cardGeneration = useCardGeneration(cardGenerationProps);
+  const cardGeneration = useCardGeneration(cardGenerationLegacyProps);
 
   // Handle job updates from WebSocket
   const handleJobUpdate = useCallback((data: any) => {
@@ -204,7 +203,7 @@ export function useCardStudio() {
     // Filter out updates from wrong job type
     // If we're in draft mode, only process draft jobs
     // If we're in final mode, only process non-draft jobs
-    const isInDraftMode = draftGeneration.isDraftMode;
+    const isInDraftMode = false; // No draft mode in simplified flow
     if (isInDraftMode && !isDraftJob) {
       console.log('🚫 Ignoring non-draft job update in draft mode:', job_id);
       return;
@@ -217,11 +216,10 @@ export function useCardStudio() {
     console.log('🔄 Processing job update:', { job_id, status, isDraftJob, draftIndex, progress });
     
     // Handle status transitions
-    if (status === 'processing' && !cardGeneration.isGenerating && !draftGeneration.isGenerating) {
+    if (status === 'processing' && !cardGeneration.isGenerating && !cardGenerationSimple.isGenerating) {
       console.log('🔄 Job is processing, setting generation state');
       if (isDraftJob) {
-        draftGeneration.setIsGenerating(true);
-        draftGeneration.setIsDraftMode(true);
+        cardGenerationSimple.setIsGenerating(true);
         jobManagement.startElapsedTimeTracking('draft');
       } else {
         cardGeneration.setIsGenerating(true);
@@ -238,7 +236,7 @@ export function useCardStudio() {
         // Don't update the progress message yet - it will be set in handleFinalCardCompletion
       } else {
         cardGeneration.setGenerationProgress(progress);
-        draftGeneration.setGenerationProgress(progress);
+        cardGenerationSimple.setGenerationProgress(progress);
         console.log(`📊 Progress message: ${progress}`);
       }
     }
@@ -404,8 +402,7 @@ export function useCardStudio() {
           console.error('❌ Cannot complete card - missing required fields');
           toast.error("Card generation incomplete - missing some panels. Please try again.");
           // Force clear the loading state
-          cardGeneration.setIsGenerating(false);
-          draftGeneration.setIsGeneratingFinalCard(false);
+          cardGenerationSimple.setIsGenerating(false);
           jobManagement.stopElapsedTimeTracking();
           jobManagement.setGenerationProgress("");
         }
@@ -426,10 +423,9 @@ export function useCardStudio() {
         toast.error(`Draft variation ${draftIndex + 1} failed. Continuing with others...`);
       } else {
         toast.error("❌ Card generation failed. Please try again.");
-        cardGeneration.setIsGenerating(false);
-        draftGeneration.setIsGeneratingFinalCard(false);
+        cardGenerationSimple.setIsGenerating(false);
         jobManagement.stopElapsedTimeTracking();
-        cardGeneration.setGenerationProgress("");
+        cardGenerationSimple.setGenerationProgress("");
         // Don't reset progress - let time-based progress continue
         // jobManagement.setProgressPercentage(0);
         jobManagement.setCurrentJobId(null);
@@ -451,9 +447,8 @@ export function useCardStudio() {
       // Reset UI state if this was the current job
       if (jobManagement.currentJobId === job_id) {
         jobManagement.setCurrentJobId(null);
-        cardGeneration.setIsGenerating(false);
-        draftGeneration.setIsGeneratingFinalCard(false);
-        cardGeneration.setGenerationProgress("");
+        cardGenerationSimple.setIsGenerating(false);
+        cardGenerationSimple.setGenerationProgress("");
         // Don't reset progress - let time-based progress continue
         // jobManagement.setProgressPercentage(0);
         jobManagement.stopElapsedTimeTracking();
@@ -466,7 +461,7 @@ export function useCardStudio() {
       }
       webSocket.unsubscribeFromJob(job_id);
     }
-  }, [selectedArtisticStyle, draftGeneration, cardGeneration, jobManagement, webSocket, isRestoringJobs]);
+  }, [selectedArtisticStyle, cardGenerationSimple, cardGeneration, jobManagement, webSocket, isRestoringJobs]);
 
   // Set up WebSocket job update handler
   useEffect(() => {
@@ -479,7 +474,7 @@ export function useCardStudio() {
   // Auto-reconnect WebSocket if disconnected during active generation
   useEffect(() => {
     if (!webSocket.isSocketConnected && 
-        (cardGeneration.isGenerating || draftGeneration.isGeneratingFinalCard) && 
+        (cardGeneration.isGenerating || cardGenerationSimple.isGenerating) && 
         webSocket.currentJobRef.current) {
       
       // Check if the generation has been running for more than 5 minutes
@@ -502,11 +497,8 @@ export function useCardStudio() {
               
               // Reset generation states
               cardGeneration.setIsGenerating(false);
-              draftGeneration.setIsGeneratingFinalCard(false);
-              draftGeneration.setIsDraftMode(false);
-              draftGeneration.setDraftCards([]);
-              draftGeneration.setDraftCompletionCount(0);
-              draftGeneration.setDraftCompletionShown(false);
+              cardGenerationSimple.setGeneratedCards([]);
+              cardGenerationSimple.setIsCardCompleted(false);
               jobManagement.setCurrentJobId(null);
               jobManagement.setGenerationProgress('');
               // Don't reset progress - let time-based progress continue
@@ -540,18 +532,18 @@ export function useCardStudio() {
       
       return () => clearTimeout(reconnectTimer);
     }
-  }, [webSocket, cardGeneration.isGenerating, draftGeneration.isGeneratingFinalCard, jobManagement.generationStartTime]);
+  }, [webSocket, cardGeneration.isGenerating, cardGenerationSimple.isGenerating, jobManagement.generationStartTime]);
 
   // Reset stale job flag when generation starts
   useEffect(() => {
-    if (cardGeneration.isGenerating || draftGeneration.isGeneratingFinalCard) {
+    if (cardGeneration.isGenerating || cardGenerationSimple.isGenerating) {
       staleJobLoggedRef.current = false;
     }
-  }, [cardGeneration.isGenerating, draftGeneration.isGeneratingFinalCard]);
+  }, [cardGeneration.isGenerating, cardGenerationSimple.isGenerating]);
 
   // Monitor for stale job updates
   useEffect(() => {
-    if ((cardGeneration.isGenerating || draftGeneration.isGeneratingFinalCard) && 
+    if ((cardGeneration.isGenerating || cardGenerationSimple.isGenerating) && 
         webSocket.currentJobRef.current) {
       const checkInterval = setInterval(async () => {
         const timeSinceLastUpdate = Date.now() - webSocket.lastJobUpdateRef.current;
@@ -631,7 +623,7 @@ export function useCardStudio() {
       
       return () => clearInterval(checkInterval);
     }
-  }, [cardGeneration.isGenerating, draftGeneration.isGeneratingFinalCard, 
+  }, [cardGeneration.isGenerating, cardGenerationSimple.isGenerating, 
       webSocket, jobManagement.progressPercentage, handleJobUpdate]);
 
   // Simplified job restoration using new storage manager
@@ -698,13 +690,13 @@ export function useCardStudio() {
           console.log('✅ Draft job already completed, not setting as generating');
           // Just restore the job ID for reference, but don't set as generating
           jobManagement.setCurrentJobId(recovery.jobId);
-          draftGeneration.setIsDraftMode(true);
+          // No draft mode in simplified flow
         } else {
           console.log('🎨 Resuming incomplete draft generation');
           // Subscribe to the job to check its status
           jobManagement.setCurrentJobId(recovery.jobId);
           webSocket.subscribeToJob(recovery.jobId);
-          draftGeneration.setIsDraftMode(true);
+          // No draft mode in simplified flow
           // Don't set as generating yet - wait for WebSocket to tell us the actual status
           // This prevents navigation to Step 5 for already completed jobs
           console.log('⏳ Waiting for job status update before setting generation state...');
@@ -761,18 +753,23 @@ export function useCardStudio() {
     setCustomCardType,
     selectedTone,
     setSelectedTone,
-    isGenerating: cardGeneration.isGenerating || draftGeneration.isGenerating,
-    setIsGenerating: cardGeneration.setIsGenerating,
+    isGenerating: cardGenerationSimple.isGenerating || cardGeneration.isGenerating,
+    setIsGenerating: cardGenerationSimple.setIsGenerating,
     isGeneratingMessage: messageGeneration.isGeneratingMessage,
     setIsGeneratingMessage: messageGeneration.setIsGeneratingMessage,
-    generatedCard: cardGeneration.generatedCard,
-    setGeneratedCard: cardGeneration.setGeneratedCard,
+    generatedCard: cardGenerationSimple.selectedCardIndex >= 0 ? cardGenerationSimple.generatedCards[cardGenerationSimple.selectedCardIndex] : null,
+    setGeneratedCard: (card) => {
+      // When setting generated card, add it to generatedCards if not already there
+      if (card && !cardGenerationSimple.generatedCards.find(c => c?.id === card.id)) {
+        cardGenerationSimple.setGeneratedCards([...cardGenerationSimple.generatedCards, card]);
+      }
+    },
     numberOfCards,
     setNumberOfCards,
-    generatedCards: cardGeneration.generatedCards,
-    setGeneratedCards: cardGeneration.setGeneratedCards,
-    selectedCardIndex: cardGeneration.selectedCardIndex,
-    setSelectedCardIndex: cardGeneration.setSelectedCardIndex,
+    generatedCards: cardGenerationSimple.generatedCards,
+    setGeneratedCards: cardGenerationSimple.setGeneratedCards,
+    selectedCardIndex: cardGenerationSimple.selectedCardIndex,
+    setSelectedCardIndex: cardGenerationSimple.setSelectedCardIndex,
     
     // Advanced options
     showAdvanced,
@@ -786,29 +783,29 @@ export function useCardStudio() {
     selectedDraftModel,
     setSelectedDraftModel,
     
-    // Draft mode
-    isDraftMode: draftGeneration.isDraftMode,
-    setIsDraftMode: draftGeneration.setIsDraftMode,
-    draftCards: draftGeneration.draftCards,
-    setDraftCards: draftGeneration.setDraftCards,
-    selectedDraftIndex: draftGeneration.selectedDraftIndex,
-    setSelectedDraftIndex: draftGeneration.setSelectedDraftIndex,
-    isGeneratingFinalCard: draftGeneration.isGeneratingFinalCard,
-    setIsGeneratingFinalCard: draftGeneration.setIsGeneratingFinalCard,
-    previewingDraftIndex: draftGeneration.previewingDraftIndex,
-    setPreviewingDraftIndex: draftGeneration.setPreviewingDraftIndex,
-    draftCompletionShown: draftGeneration.draftCompletionShown,
-    setDraftCompletionShown: draftGeneration.setDraftCompletionShown,
-    draftCompletionCount: draftGeneration.draftCompletionCount,
-    setDraftCompletionCount: draftGeneration.setDraftCompletionCount,
+    // Legacy draft mode (kept for compatibility but mapped to new generation)
+    isDraftMode: false,
+    setIsDraftMode: () => {},
+    draftCards: cardGenerationSimple.generatedCards,
+    setDraftCards: cardGenerationSimple.setGeneratedCards,
+    selectedDraftIndex: cardGenerationSimple.selectedCardIndex,
+    setSelectedDraftIndex: cardGenerationSimple.setSelectedCardIndex,
+    isGeneratingFinalCard: false,
+    setIsGeneratingFinalCard: () => {},
+    previewingDraftIndex: -1,
+    setPreviewingDraftIndex: () => {},
+    draftCompletionShown: false,
+    setDraftCompletionShown: () => {},
+    draftCompletionCount: 0,
+    setDraftCompletionCount: () => {},
     
     // Progress tracking
-    generationProgress: draftGeneration.isGenerating ? draftGeneration.generationProgress : cardGeneration.generationProgress,
-    setGenerationProgress: cardGeneration.setGenerationProgress,
+    generationProgress: cardGenerationSimple.generationProgress,
+    setGenerationProgress: cardGenerationSimple.setGenerationProgress,
     progressPercentage: jobManagement.progressPercentage,
     setProgressPercentage: jobManagement.setProgressPercentage,
-    isCardCompleted: cardGeneration.isCardCompleted,
-    setIsCardCompleted: cardGeneration.setIsCardCompleted,
+    isCardCompleted: cardGenerationSimple.isCardCompleted,
+    setIsCardCompleted: cardGenerationSimple.setIsCardCompleted,
     
     // Upload and personalization
     referenceImages: fileHandling.referenceImages,
@@ -878,8 +875,9 @@ export function useCardStudio() {
     isRestoringJobs,
     
     // Main generation functions
-    handleGenerateDraftCards: draftGeneration.handleGenerateDraftCards,
-    handleGenerateFinalFromDraft: draftGeneration.handleGenerateFinalFromDraft,
+    handleGenerateCards: cardGenerationSimple.handleGenerateCards,
+    handleGenerateDraftCards: cardGenerationSimple.handleGenerateCards, // Legacy alias
+    handleGenerateFinalFromDraft: () => {}, // No-op for legacy compatibility,
     
     // Additional state for message refinement
     messageHistory: messageGeneration.messageHistory,

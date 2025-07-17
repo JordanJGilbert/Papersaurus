@@ -80,14 +80,7 @@ export function CardWizardEffects({
       // Only auto-navigate if there's an active generation in progress
       // Don't navigate for completed drafts - let user choose
       if (cardStudio.isGenerating && cardStudio.generationProgress) {
-        if (cardStudio.isGeneratingFinalCard) {
-          console.log('🔄 Restoring to Step 6 due to ongoing final generation');
-          // Mark all previous steps as completed
-          for (let i = 1; i <= 5; i++) {
-            if (!wizardState.completedSteps.includes(i)) wizardState.markStepCompleted(i);
-          }
-          wizardState.updateCurrentStep(6);
-        } else if (cardStudio.isDraftMode && cardStudio.isGenerating) {
+        if (cardStudio.isGenerating) {
           console.log('🔄 Restoring to Step 5 due to ongoing draft generation');
           // Mark previous steps as completed
           if (!wizardState.completedSteps.includes(1)) wizardState.markStepCompleted(1);
@@ -118,8 +111,8 @@ export function CardWizardEffects({
           cardStudio.setGeneratedCard(finalCardData.card);
           cardStudio.setIsCardCompleted(true);
           
-          // Navigate to Step 6 to show the completed card
-          wizardState.updateCurrentStep(6);
+          // Navigate to Step 5 to show the completed card
+          wizardState.updateCurrentStep(5);
           console.log('✅ Final card restored successfully');
         } catch (e) {
           console.error('Failed to restore final card:', e);
@@ -258,10 +251,10 @@ export function CardWizardEffects({
         setLastSavedDraftCount(0);
       }
       
-      // Ensure we're on Step 6 to see the completed card
-      if (wizardState.currentStep !== 6) {
-        console.log('📍 Card completed but not on Step 6, navigating there now...');
-        wizardState.updateCurrentStep(6);
+      // Ensure we're on Step 5 to see the completed card
+      if (wizardState.currentStep !== 5) {
+        console.log('📍 Card completed but not on Step 5, navigating there now...');
+        wizardState.updateCurrentStep(5);
       }
     }
   }, [cardStudio.generatedCard, cardStudio.isCardCompleted]);
@@ -328,16 +321,19 @@ export function CardWizardEffects({
     }
   }, [cardForm.formData.userEmail, wizardState]);
 
-  // Auto-advance to Step 6 when final card generation starts
+  // Auto-advance to Step 5 when card generation starts
   useEffect(() => {
-    if (cardStudio.isGeneratingFinalCard && wizardState.currentStep < 6) {
-      console.log('🚀 Auto-advancing to Step 6: Final Generation');
-      if (!wizardState.completedSteps.includes(5)) {
-        wizardState.markStepCompleted(5);
+    if (cardStudio.isGenerating && wizardState.currentStep < 5 && cardStudio.generatedCards.length > 0) {
+      console.log('🚀 Auto-advancing to Step 5: Card Generation');
+      // Mark previous steps as completed
+      for (let i = 1; i <= 4; i++) {
+        if (!wizardState.completedSteps.includes(i)) {
+          wizardState.markStepCompleted(i);
+        }
       }
-      wizardState.updateCurrentStep(6);
+      wizardState.updateCurrentStep(5);
     }
-  }, [cardStudio.isGeneratingFinalCard, wizardState]);
+  }, [cardStudio.isGenerating, cardStudio.generatedCards, wizardState]);
 
   // Sync reference images from cardStudio to form when they change
   useEffect(() => {

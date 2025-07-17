@@ -59,16 +59,10 @@ const wizardSteps: WizardStep[] = [
     description: "Where to send your finished card"
   },
   {
-    id: "drafts",
-    title: "Choose Draft Preview",
-    mobileTitle: "Preview",
-    description: "Select from rough drafts (final will be high quality)"
-  },
-  {
     id: "generate",
-    title: "Final Generation",
+    title: "Generate Your Card",
     mobileTitle: "Generate",
-    description: "Creating your complete card"
+    description: "Create 5 unique card variations"
   }
 ];
 

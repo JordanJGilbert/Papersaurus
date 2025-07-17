@@ -5,8 +5,7 @@ import Step1CardBasics from "./steps/Step1CardBasics";
 import Step2ContentCreation from "./steps/Step2ContentCreation";
 import Step3Personalization from "./steps/Step3Personalization";
 import Step4Details from "./steps/Step4Details";
-import Step5Review from "./steps/Step5Review";
-import Step6FinalGeneration from "./steps/Step6FinalGeneration";
+import Step5Generate from "./steps/Step5Generate";
 import { CardFormData } from "@/hooks/useCardForm";
 
 interface CardWizardStepsProps {
@@ -127,21 +126,8 @@ export function CardWizardSteps({
       );
     
     case 5:
-      // Log only significant state changes
-      if (process.env.NODE_ENV === 'development') {
-        const stateKey = `${cardStudio.isGenerating}-${cardStudio.isDraftMode}-${cardStudio.draftCards.length}`;
-        if ((window as any).lastStep5State !== stateKey) {
-          console.log('📍 Step 5 state changed:', {
-            isGenerating: cardStudio.isGenerating,
-            isDraftMode: cardStudio.isDraftMode,
-            draftCards: cardStudio.draftCards.length,
-            progressPercentage: cardStudio.progressPercentage
-          });
-          (window as any).lastStep5State = stateKey;
-        }
-      }
       return (
-        <Step5Review
+        <Step5Generate
           formData={formData}
           updateFormData={updateFormData}
           onStepComplete={() => {
@@ -150,52 +136,19 @@ export function CardWizardSteps({
             }
           }}
           isGenerating={cardStudio.isGenerating}
-          isGeneratingFinalCard={cardStudio.isGeneratingFinalCard}
           isGeneratingMessage={cardStudio.isGeneratingMessage}
           generationProgress={cardStudio.generationProgress}
           progressPercentage={cardStudio.progressPercentage}
           currentElapsedTime={cardStudio.currentElapsedTime}
-          isDraftMode={cardStudio.isDraftMode}
-          draftCards={cardStudio.draftCards}
-          selectedDraftIndex={cardStudio.selectedDraftIndex}
+          generatedCards={cardStudio.generatedCards}
+          selectedCardIndex={cardStudio.selectedCardIndex}
           formatGenerationTime={cardStudio.formatGenerationTime}
-          onGenerateDraftCards={cardStudio.handleGenerateDraftCards}
-          onSelectDraft={(index) => {
-            cardStudio.setSelectedDraftIndex(index);
-            // Auto-advance to final generation step when draft is selected
-            if (!wizardState.completedSteps.includes(5)) {
-              wizardState.markStepCompleted(5);
-            }
-            wizardState.updateCurrentStep(6);
+          onGenerateCards={cardStudio.handleGenerateCards}
+          onSelectCard={(index) => {
+            cardStudio.setSelectedCardIndex(index);
           }}
-        />
-      );
-    
-    case 6:
-      return (
-        <Step6FinalGeneration
-          formData={formData}
-          isGeneratingFinalCard={cardStudio.isGeneratingFinalCard}
-          generationProgress={cardStudio.generationProgress}
-          progressPercentage={cardStudio.progressPercentage}
-          currentElapsedTime={cardStudio.currentElapsedTime}
-          selectedDraftIndex={cardStudio.selectedDraftIndex}
-          draftCards={cardStudio.draftCards}
-          generatedCard={cardStudio.generatedCard}
           isCardCompleted={cardStudio.isCardCompleted}
-          onGenerateFinalCard={cardStudio.handleGenerateFinalFromDraft}
-          formatGenerationTime={cardStudio.formatGenerationTime}
-          onBackToDrafts={() => {
-            cardStudio.setGeneratedCard(null);
-            cardStudio.setIsCardCompleted(false);
-            cardStudio.setIsGeneratingFinalCard(false);
-            cardStudio.setCurrentJobId(null);
-            cardStudio.setGenerationProgress('');
-            cardStudio.setProgressPercentage(0);
-            cardStudio.stopElapsedTimeTracking();
-            cardStudio.unsubscribeFromAllJobs();
-            wizardState.updateCurrentStep(5);
-          }}
+          onRegenerate={cardStudio.handleGenerateCards}
         />
       );
     
