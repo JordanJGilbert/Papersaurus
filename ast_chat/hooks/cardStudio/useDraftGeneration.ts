@@ -383,7 +383,8 @@ export function useDraftGeneration(props: DraftGenerationProps) {
       const effectivePrompt = prompt.trim() || `A beautiful ${cardTypeForPrompt} card with ${toneDescription} style`;
       
       let messageContent = finalCardMessage;
-      if (isHandwrittenMessage) {
+      // Treat empty messages as handwritten
+      if (isHandwrittenMessage || !finalCardMessage || finalCardMessage.trim() === '') {
         messageContent = "[Blank space for handwritten message]";
       }
       

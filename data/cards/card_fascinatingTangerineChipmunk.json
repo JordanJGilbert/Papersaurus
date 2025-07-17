@@ -1,0 +1,21 @@
+{
+  "id": "fascinatingTangerineChipmunk",
+  "prompt": "",
+  "cardType": "birthday",
+  "tone": "general",
+  "toField": "",
+  "fromField": "",
+  "message": "",
+  "artisticStyle": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_93e3c2c8.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_724fe670.png",
+  "leftPage": "",
+  "rightPage": "",
+  "generatedPrompts": {
+    "frontCover": "A whimsical and humorous watercolor greeting card front. In the center, a charming, slightly frazzled cartoon giraffe is tangled up in a ridiculously long, colorful birthday banner that it's trying to hang. The giraffe has a comical expression of mild panic and surprise, with one leg caught in the banner loops and its long neck twisted awkwardly. A small, cheeky bluebird is perched on the giraffe's head, holding the final letter of the banner in its beak. The scene is painted in a vibrant, soft-edged watercolor style with splashes and drips of color, creating a light and airy feel. Below the giraffe, in the safe center area, the words \"hope your birthday is anything but ordinary!\" are written in a beautiful, flowing, and readable handwritten cursive script in a dark teal ink. The background is a clean, simple off-white with subtle watercolor washes of pastel yellow and light blue, ensuring the focus is on the funny central illustration. Flat 2D artwork style for printing.\n\nREFINEMENT NOTE: A rough draft of this exact image is provided as reference. Create a high-quality final version that:\n- Maintains the exact same composition, character positions, and overall design\n- Enhances details, textures, and color vibrancy\n- Corrects any minor imperfections or artifacts\n- Adds professional polish while staying true to the draft\n- Think of this as the \"final art\" version of the provided sketch\n\nORIGINAL CONTEXT TO MAINTAIN:\n\n\n\n\n",
+    "backCover": "A minimalist and elegant back cover for a greeting card. The entire background is a solid off-white with a subtle, visible paper texture. In the top-left corner, there is a small, delicate arrangement of abstract watercolor splashes in pastel yellow, light blue, and a touch of vibrant teal, echoing the front cover's color palette. The splashes should be soft-edged with organic drips and bleeds. The design is very clean and sparse, occupying only the top-left quadrant, leaving the rest of the cover, especially the bottom-right corner, completely blank for branding or a QR code. Flat 2D artwork, watercolor painting style, high resolution."
+  },
+  "createdAt": 1752529373.4775114,
+  "expiresAt": 1784065373.477512,
+  "version": 1
+}

@@ -244,7 +244,9 @@ Unique ID: ${uniqueId}`.trim();
 
     if (!config.isFrontBackOnly) {
       prompts.leftInterior = this.generateLeftInteriorPrompt(styleModifier, config.cardType);
-      prompts.rightInterior = this.generateRightInteriorPrompt(config.message || '', config.isHandwrittenMessage || false, styleModifier, config.cardType);
+      // Treat empty messages as handwritten
+      const isHandwritten = !config.message || config.message.trim() === '' || config.isHandwrittenMessage || false;
+      prompts.rightInterior = this.generateRightInteriorPrompt(config.message || '', isHandwritten, styleModifier, config.cardType);
     }
 
     return prompts;
@@ -445,10 +447,12 @@ REFINEMENT NOTE: A rough draft of this exact image is provided as reference. Cre
 
     if (!config.isFrontBackOnly) {
       prompts.leftInterior = this.generateLeftInteriorPromptFromFront(config.frontCoverPrompt, styleModifier, config.cardType);
+      // Treat empty messages as handwritten
+      const isHandwritten = !config.message || config.message.trim() === '' || config.isHandwrittenMessage || false;
       prompts.rightInterior = this.generateRightInteriorPromptFromFront(
         config.frontCoverPrompt,
         config.message || '',
-        config.isHandwrittenMessage || false,
+        isHandwritten,
         styleModifier,
         config.cardType
       );
@@ -492,7 +496,7 @@ ${config.personalTraits ? `- Personal Traits: ${config.personalTraits}` : ''}
 ${config.photoReferences?.length ? `- Reference Photos: ${config.photoReferences.map(ref => ref.description || 'Person in photo').join(', ')}` : ''}
 
 CARD DETAILS:
-- Message space needed: ${config.isHandwrittenMessage ? 'Yes (blank space for handwriting)' : 'Yes (for provided message)'}
+- Message space needed: ${(!config.message || config.message.trim() === '' || config.isHandwrittenMessage) ? 'Yes (blank space for handwriting)' : 'Yes (for provided message)'}
 - Style Modifier: ${config.artisticStyle?.promptModifier || 'Default style'}
 
 VISUAL DENSITY REQUIREMENTS:
@@ -566,7 +570,9 @@ ${config.photoReferences?.length ? `- Reference photos of: ${config.photoReferen
         prompts.rightInterior = response.rightInterior;
         
         // Append the actual message to the right interior prompt
-        if (config.message && !config.isHandwrittenMessage) {
+        // Treat empty messages as handwritten
+        const isHandwritten = !config.message || config.message.trim() === '' || config.isHandwrittenMessage;
+        if (config.message && config.message.trim() !== '' && !isHandwritten) {
           prompts.rightInterior += `\n\nDisplay this exact text in elegant, clearly readable handwritten script: "${config.message}"`;
         }
       }

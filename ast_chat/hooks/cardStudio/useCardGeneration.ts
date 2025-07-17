@@ -81,8 +81,9 @@ export function useCardGeneration(props: CardGenerationProps) {
     }
     
     // Add message data for handwritten overlay
-    if (props.isHandwrittenMessage) {
-      cardWithQR.message = props.finalCardMessage;
+    // Treat empty messages as handwritten
+    if (props.isHandwrittenMessage || !props.finalCardMessage || props.finalCardMessage.trim() === '') {
+      cardWithQR.message = props.finalCardMessage || '';
       cardWithQR.isHandwrittenMessage = true;
     }
     

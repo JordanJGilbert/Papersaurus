@@ -100,20 +100,16 @@ export default function Step2ContentCreation({
       quickPrompt += `. Keep it warm but appropriate for a professional relationship`;
     }
     
-    quickPrompt += `. 
-
-IMPORTANT: Create a message that feels like it was carefully crafted, not generic. It should be memorable, touching, and something the recipient would want to keep. Aim for 100-200 characters - long enough to be meaningful but short enough to be impactful. Make every word count.`;
+    quickPrompt += `. IMPORTANT: Create a message that feels like it was carefully crafted, not generic. It should be memorable, touching, and something the recipient would want to keep. Aim for 100-200 characters - long enough to be meaningful but short enough to be impactful. Make every word count.`;
     
     await handleGetMessageHelp(quickPrompt);
   };
 
   // Dynamic placeholder based on card type and tone
   const messagePlaceholder = useMemo(() => {
-    if (formData.isHandwrittenMessage) return "✍️ Leave blank - you'll handwrite";
-    
     // Simple, consistent placeholder for all card types
-    return "Write your card message here, or click the Create Message button for a starting place.";
-  }, [formData.isHandwrittenMessage]);
+    return "Write your message here (optional) - leave blank to handwrite your own message on the card";
+  }, []);
 
   const canUndo = currentMessageIndex > 0;
   const canRedo = currentMessageIndex < messageHistory.length - 1;
@@ -126,10 +122,10 @@ IMPORTANT: Create a message that feels like it was carefully crafted, not generi
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Card Message
+              Card Message <span className="text-xs font-normal text-gray-500">(optional)</span>
             </label>
             {/* Create Message Button */}
-            {!formData.isHandwrittenMessage && !formData.finalCardMessage && (
+            {!formData.finalCardMessage && (
               <Button
                 variant="outline"
                 size="sm"
@@ -189,7 +185,7 @@ IMPORTANT: Create a message that feels like it was carefully crafted, not generi
                   variant="ghost"
                   size="sm"
                   onClick={undoMessage}
-                  disabled={!canUndo || formData.isHandwrittenMessage}
+                  disabled={!canUndo}
                   className="px-1.5"
                   title="Undo"
                 >
@@ -199,7 +195,7 @@ IMPORTANT: Create a message that feels like it was carefully crafted, not generi
                   variant="ghost"
                   size="sm"
                   onClick={redoMessage}
-                  disabled={!canRedo || formData.isHandwrittenMessage}
+                  disabled={!canRedo}
                   className="px-1.5"
                   title="Redo"
                 >
@@ -244,10 +240,8 @@ IMPORTANT: Create a message that feels like it was carefully crafted, not generi
               {/* Main Message Textarea */}
               <Textarea
                 placeholder={
-                  formData.isHandwrittenMessage 
-                    ? "This space will be left empty on the card for your handwritten message..." 
-                    : formData.isFrontBackOnly
-                    ? "With front/back only cards, your message will be beautifully displayed on the back cover..."
+                  formData.isFrontBackOnly
+                    ? "Write your message here (optional) - with front/back cards, your message appears on the back cover"
                     : messagePlaceholder
                 }
                 value={formData.finalCardMessage}
@@ -258,8 +252,7 @@ IMPORTANT: Create a message that feels like it was carefully crafted, not generi
               />
               
               {/* Integrated AI Helper - Connected visually */}
-              {!formData.isHandwrittenMessage && (
-                <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+              <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
                   <div className="flex gap-2">
                     <div className="flex-1 relative">
                       <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -292,41 +285,36 @@ IMPORTANT: Create a message that feels like it was carefully crafted, not generi
                     AI will modify your message based on your instructions
                   </div>
                 </div>
-              )}
             </div>
           )}
         </div>
         
         {/* Character Count and Helper Text */}
-        <div className="mt-2 space-y-0.5">
-          {formData.finalCardMessage && (
-            <div className="text-xs text-muted-foreground">
-              {characterCount} characters
+        <div className="mt-2 space-y-1">
+          {formData.finalCardMessage ? (
+            <>
+              <div className="text-xs text-muted-foreground">
+                {characterCount} characters
+              </div>
+              <div className="text-xs text-muted-foreground/70">
+                💡 Messages typically work best between 50-300 characters
+              </div>
+            </>
+          ) : (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mt-2">
+              <div className="flex items-start gap-2">
+                <div className="text-blue-600 dark:text-blue-400 mt-0.5">✍️</div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                    Leave blank for handwritten message
+                  </div>
+                  <div className="text-xs text-blue-700 dark:text-blue-300">
+                    If you don't add a message here, we'll leave space on the card for you to write your own personal message by hand.
+                  </div>
+                </div>
+              </div>
             </div>
           )}
-          <div className="text-xs text-muted-foreground/70">
-            {formData.isHandwrittenMessage 
-              ? "💡 Your message will appear in handwritten style on the card"
-              : "💡 Messages typically work best between 50-300 characters"}
-          </div>
-        </div>
-        
-        {/* Handwritten Message Option */}
-        <div className="flex items-center space-x-2 mt-2">
-          <input
-            type="checkbox"
-            id="handwritten-message"
-            checked={formData.isHandwrittenMessage}
-            onChange={(e) => {
-              updateFormData({ 
-                isHandwrittenMessage: e.target.checked
-              });
-            }}
-            className="rounded"
-          />
-          <label htmlFor="handwritten-message" className="text-sm text-gray-600 dark:text-gray-400">
-            Leave space for handwritten message
-          </label>
         </div>
 
         {/* Front/Back Only Option */}
@@ -348,17 +336,7 @@ IMPORTANT: Create a message that feels like it was carefully crafted, not generi
         </div>
       </div>
 
-      {/* Tips - Mobile Optimized */}
-      <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 border border-green-200 dark:border-green-800">
-        <h4 className="font-medium text-green-900 dark:text-green-100 mb-2">✨ Message Tips</h4>
-        <ul className="text-sm text-green-800 dark:text-green-200 space-y-1">
-          <li>• Keep it personal and heartfelt</li>
-          <li>• Use the AI helper to create or modify your message</li>
-          <li>• Try prompts like "make it funnier" or "add a personal touch"</li>
-          <li>• Check "handwritten style" to display your typed message in handwriting font</li>
-          <li>• Select "front and back only" for a simpler 2-panel card design</li>
-        </ul>
-      </div>
+
     </div>
   );
 } 

@@ -1,0 +1,21 @@
+{
+  "id": "innovativeGoldenrodEagle",
+  "prompt": "",
+  "cardType": "birthday",
+  "tone": "general",
+  "toField": "Jordan",
+  "fromField": "Lao Lao",
+  "message": "",
+  "artisticStyle": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_93c49d1d.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_32578c14.png",
+  "leftPage": "",
+  "rightPage": "",
+  "generatedPrompts": {
+    "frontCover": "Greeting card front cover, a whimsical and funny watercolor painting featuring cartoon versions of Jordan and Lao Lao from the reference photo. The scene is a chaotic and joyful mountaintop celebration of all his favorite things. Jordan, in his dark blue shirt, is hilariously trying to balance on a snowboard that is surfing down a giant river made of flowing soy sauce. He has a wide, happy, and slightly panicked expression, holding a laptop in one hand that has binary code (0s and 1s) floating off the screen like confetti. Lao Lao, in her white jacket, is sitting cheerfully on his shoulders, holding up a perfectly marbled, sizzling wagyu steak on a fork like a trophy. The snowy mountain slopes around them are not made of snow, but are creatively composed of fluffy white rice. Dotted across the rice slopes are vibrant watercolor splashes of sushi rolls, sashimi, and Chinese dumplings instead of trees and rocks. The sky is a soft blend of watercolor blues and whites.\n\nCentered in a clear area of the sky above them, the text \"Happy Birthday, Jordan!\" is written in a beautiful, flowing, handwritten cursive script.\n\nThe overall style is flat 2D art, perfect for a card, with the characteristic soft edges, bleeding colors, and charming imperfections of a genuine watercolor painting. The composition is dynamic and full of playful energy.\n\nREFINEMENT NOTE: A rough draft of this exact image is provided as reference. Create a high-quality final version that:\n- Maintains the exact same composition, character positions, and overall design\n- Enhances details, textures, and color vibrancy\n- Corrects any minor imperfections or artifacts\n- Adds professional polish while staying true to the draft\n- Think of this as the \"final art\" version of the provided sketch\n\nORIGINAL CONTEXT TO MAINTAIN:\n- To: Jordan\n- From: Lao Lao\n- Relationship: Jordan is Lao Lao's Boyfriend \n- Personal Traits to incorporate: Sushi, wagyu steak, Chinese food, snowboarding, coding\n- Reference photos of: Jordan on the left, Lao Lao on the right ",
+    "backCover": "Back of a greeting card, minimalistic design in a watercolor painting style. The background is a soft, textured off-white paper canvas with subtle, organic paint bleeds of light blue and soft gray primarily in the top-left corner, fading out towards the center and bottom. The bottom-right corner is intentionally left clean and clear for a QR code placement. The overall aesthetic is clean, artistic, and cohesive with a whimsical watercolor theme. Flat 2D artwork."
+  },
+  "createdAt": 1752554275.1364248,
+  "expiresAt": 1784090275.1364255,
+  "version": 1
+}

@@ -1,0 +1,21 @@
+{
+  "id": "sincereSeafoamAntelope",
+  "prompt": "",
+  "cardType": "birthday",
+  "tone": "general",
+  "toField": "James",
+  "fromField": "Jordan",
+  "message": "",
+  "artisticStyle": "",
+  "frontCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_3b108ed1.png",
+  "backCover": "https://vibecarding.com/user_data/17145986105/images/gpt_image_api_92da71f1.png",
+  "leftPage": "",
+  "rightPage": "",
+  "generatedPrompts": {
+    "frontCover": "A dynamic, wide-angle comic book cover illustration. The scene is a high-altitude skydiving adventure with a humorous twist. James, from the reference photo, is depicted as a comic book hero, joyfully free-falling through a vibrant blue sky filled with fluffy white clouds. He's wearing his black t-shirt and black pants from the photo, now stylized as a superhero-ish suit, along with skydiving goggles pushed up on his forehead and a huge, excited grin. Jordan, from the reference photo, is strapped to his back in a tandem jump, wearing her blue top and black pants, looking comically terrified but also thrilled, with her mouth wide open in a scream-laugh. Instead of a standard parachute, a giant, colorful birthday cake with lit candles is deployed above them, its frosting and sprinkles catching the wind. The entire scene is framed with classic comic book action elements: bold black outlines, vibrant Ben-Day dots for shading, and dramatic motion lines streaking past them to emphasize the speed of their fall. In the center of the composition, in a beautiful, readable handwritten cursive script, the text reads \"Happy Birthday James\". The art style is flat 2D, with saturated colors and a high-energy, fun feel.\n\nREFINEMENT NOTE: A rough draft of this exact image is provided as reference. Create a high-quality final version that:\n- Maintains the exact same composition, character positions, and overall design\n- Enhances details, textures, and color vibrancy\n- Corrects any minor imperfections or artifacts\n- Adds professional polish while staying true to the draft\n- Think of this as the \"final art\" version of the provided sketch\n\nORIGINAL CONTEXT TO MAINTAIN:\n- To: James\n- From: Jordan\n- Relationship: James is Jordan's friend\n- Personal Traits to incorporate: skydiving\n- Reference photos of: james on right jordan on left",
+    "backCover": "A minimalist comic book style illustration for a card's back cover. The background is a solid, vibrant blue, matching the sky from the front cover. In the top-left corner, a single, stylized, fluffy white cloud with a bold black outline is positioned. This design element is minimal, occupying about 20% of the space, leaving the rest of the vibrant blue background open. The bottom-right corner is completely clear. The artwork is flat 2D with a professional, polished finish, maintaining the comic book aesthetic."
+  },
+  "createdAt": 1752529003.9136608,
+  "expiresAt": 1784065003.9136617,
+  "version": 1
+}
