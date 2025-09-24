@@ -109,5 +109,66 @@ coverage/
 *.so
 
 # Jupyter Notebooks
-.ipynb_checkpoints/ 
+.ipynb_checkpoints/
 .aider*
+
+# Security - CRITICAL: Never commit these files
+# Service account keys and credentials
+**/google_service_account.json
+**/service-account*.json
+**/service_account*.json
+**/*credentials*.json
+**/*creds*.json
+**/*secret*.json
+**/*private*.json
+
+# API Keys and tokens
+*.key
+*.pem
+*.p12
+*.pfx
+*.cert
+*.crt
+*.cer
+
+# Environment and config files with secrets
+.env
+.env.*
+.env.local
+.env.production
+.env.development
+*.env
+
+# AWS credentials
+.aws/
+aws_credentials
+aws_config
+
+# Google Cloud credentials
+gcloud/
+.gcloud/
+application_default_credentials.json
+
+# SSH Keys
+id_rsa
+id_rsa.pub
+id_dsa
+id_dsa.pub
+*.ppk
+authorized_keys
+known_hosts
+
+# Database credentials
+*.sql
+database.yml
+database.yaml
+config/database.yml
+
+# Other sensitive files
+secrets/
+private/
+confidential/
+secure/
+*.secret
+*.private
+*.confidential
