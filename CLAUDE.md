@@ -1,7 +1,7 @@
-# VibeCarding - AI-Powered Greeting Card Generator
+# Papersaurus - AI-Powered Greeting Card Generator
 
 ## Project Overview
-VibeCarding is a modern Next.js application that generates personalized greeting cards using AI. The app recently transitioned from a single-page form to a **step-based wizard interface** for better user experience.
+Papersaurus is a modern Next.js application that generates personalized greeting cards using AI. The app uses a **single-page interface** for streamlined card creation.
 
 ## 🚀 IMPORTANT: Testing Policy
 **ONLY run tests when explicitly requested by the user.** Do not automatically test changes unless the user specifically asks for testing. This helps maintain a faster development workflow.
@@ -82,10 +82,10 @@ When writing code for this project, follow these principles:
 ## Development Patterns
 
 ### Development Notes
-- **IMPORTANT**: When using Playwright MCP tools, always use domain `vibecarding.com` instead of `localhost`
-  - Example: `https://vibecarding.com` NOT `http://localhost:3000`
+- **IMPORTANT**: When using Playwright MCP tools, always use domain `papersaurus.com` instead of `localhost`
+  - Example: `https://papersaurus.com` NOT `http://localhost:3000`
   - This ensures proper testing of the production environment
-  - The site is accessible at vibecarding.com with SSL configured
+  - The site is accessible at papersaurus.com with SSL configured
 - **MOBILE FIRST**: This entire app is prioritizing mobile experience
   - All UI/UX decisions should favor mobile users
   - When using MCP tools for testing, **always use mobile view**
@@ -93,20 +93,24 @@ When writing code for this project, follow these principles:
   - Optimize for small screens and touch targets
   - Mobile viewport should be the default testing environment
 
-### Wizard Architecture
-The app uses a step-based wizard with modular components:
+### Application Architecture
+The app uses a single-page design with modular components:
 
 #### Core Hooks:
 - **useCardStudio**: Main hook containing all card generation logic (refactored into 7 modules)
-- **useWizardState**: Hook for managing step progression and validation
 - **useCardForm**: Hook for form data persistence across sessions
-- **useCardHistory**: Hook for tracking generated cards and draft sessions
+- **useCardHistory**: Hook for tracking generated cards
+- **useChatCardCreation**: Chat interface logic for conversational card creation
+- **useCardStudioWithForm**: Simplified version of useCardStudio for chat mode
+- **useCardFormNoStorage**: Form state without localStorage persistence for chat
 
-#### Wizard Components:
-- **CardWizard**: Main wrapper component (refactored into 4 modules)
-- **StepIndicator**: Visual progress indicator with mobile optimization
-- **WizardNavigation**: Step navigation controls
-- **CardHistoryModal**: Resume drafts and view completed cards
+#### Main Components:
+- **SinglePageCardCreator**: Main component for card creation with all fields on one page
+- **CardPreview**: Component for displaying and interacting with generated cards
+- **ChatCardCreator**: Alternative chat interface for conversational card creation
+- **ChatMessage**: Individual message display with formatting
+- **Print Dialog**: Modal for selecting physical print or email PDF
+- **Card Preview Grid**: Thumbnail view of all 5 generated designs
 
 #### Modular Architecture Benefits:
 - Each component/hook has a single responsibility
@@ -116,8 +120,8 @@ The app uses a step-based wizard with modular components:
 
 ### State Management
 - Form data persists in localStorage via `useCardForm` hook
-- Each step validates and marks completion independently
-- Navigation between steps is allowed only after validation
+- Real-time validation as users fill out the form
+- All fields accessible on a single page for easy editing
 
 ### Mobile-First Design Philosophy
 - **Primary Target**: Mobile users (phones and tablets)
@@ -131,14 +135,24 @@ The app uses a step-based wizard with modular components:
 
 ## Recent Updates
 
-### Photo Upload Moved to Step 1 (Latest Update)
-Reference photo upload has been moved from Step 3 to Step 1 for better user experience:
+### Chat Interface Back Cover Fix (Latest)
+- Fixed issue where back covers weren't being displayed in chat mode
+- Updated `useCardStudioWithForm` to properly extract backCoverUrl from WebSocket data
+- Back covers now properly show in card preview navigation
 
-#### Key Improvements:
-- **Earlier Engagement**: Users can upload photos right at the start
+### Chat Interface Multi-Design Support
+- Changed default `isFrontBackOnly` from `true` to `false` to generate 4 designs
+- Added Previous/Next navigation between all 4 card designs
+- Removed forced selection - users can view and print any design
+- Email only sent when specific card is printed (not automatically for all)
+
+### Photo Upload Feature
+Reference photo upload is integrated into the single-page form:
+
+#### Key Features:
 - **Automatic Compression**: Files over 10MB are automatically compressed
-- **Better Flow**: Photo context available throughout the wizard
-- **Cleaner Separation**: Step 3 now focused solely on artistic style
+- **Immediate Context**: Photo analysis happens right after upload
+- **Person Identification**: Modal to name people in photos
 - **No Model Dependency**: Photos can be uploaded regardless of image model selection
 
 ### Reference Photo Analysis Feature
@@ -146,25 +160,23 @@ Reference photo upload has been moved from Step 3 to Step 1 for better user expe
 - **Person Selection**: Interactive modal to select and name individuals
 - **Smart Integration**: Selected people incorporated into card designs
 - **Technical**: Uses MCP `analyze_images` tool with structured JSON output
-- **Note**: Reference photos only work with GPT-1 image model
+- **Note**: Reference photos work with all image models
 
-### Step 3 Visual Design Consolidation (Latest)
-- **Moved "Personalize the Artwork"**: Relocated from Step 2 to Step 3 for better logical grouping
-- **Unified Visual Design**: Step 3 now contains both artwork personalization and artistic style selection
-- **Clear Purpose**: All visual design choices are now in one dedicated step
-- **Step 2 Simplified**: Now focuses solely on message composition
-- **Better User Flow**: Visual elements (personalization + style) grouped together
-- **No Breaking Changes**: All existing functionality preserved
+#### Important Limitation:
+- **FRONT COVER ONLY**: Reference photos are only used for generating the front cover of the card
+- **Technical Reason**: The image-to-image generation (OpenAI's images.edit) only processes reference images for the front cover
+- **Design Intent**: This ensures people/characters from photos don't appear on back cover or interior panels where they might interfere with messages or decorative elements
 
-### Message Generation UX Enhancements
-- **Message History**: Dropdown with undo/redo and "Try Another" variations
-- **Dynamic Placeholders**: Context-aware hints based on card type and tone
-- **Character Count**: Shows current count with ideal range guidance
-- **Mobile-Optimized**: Responsive button text and touch-friendly controls
+#### User Flow:
+1. Upload reference photo in the form
+2. AI analyzes photo and detects people
+3. Modal appears for identifying people
+4. User describes who's in the photo
+5. Photo context is incorporated into front cover design only
 
 ### Card History Feature
 - Added `useCardHistory` hook to track the last 10 generated cards
-- Integrated with Step1 of wizard to show recent cards
+- Quick access to recent cards for template reuse
 - Cards display with metadata (date, type, tone, recipient)
 - One-click template selection from history
 
@@ -172,14 +184,14 @@ Reference photo upload has been moved from Step 3 to Step 1 for better user expe
 
 #### Email Configuration
 The system uses **SendGrid** for transactional emails:
-- Sender: `cards@vibecarding.com`
+- Sender: `cards@papersaurus.com`
 - Template: Professional HTML email with card preview
 - Includes download links for print-ready PDFs
 
 #### QR Code Generation
 QR codes are automatically generated for each card:
 - Created during the generation process
-- Points to: `https://vibecarding.com/cards/{uniqueId}`
+- Points to: `https://papersaurus.com/cards/{uniqueId}`
 - Stored as PNG in the card data structure
 - Displayed on back cover (bottom-right) with "Scan to view online" text
 
@@ -188,43 +200,50 @@ QR codes are automatically generated for each card:
 - `POST /save-public-card` - Saves card data with generated QR code
 - `GET /view-card/{uniqueId}` - Retrieves and displays saved cards
 
-### Wizard Step Structure
+### Chat Interface Features
 
-1. **Step 1 - Card Basics**
+#### Conversational Card Creation
+- Natural language input for card specifications
+- AI extracts card details from conversation
+- Photo upload support with automatic compression
+- Quick responses for common selections
+- Real-time card generation progress
+
+#### Chat Mode Specifics
+- **Front/Back Only**: No interior panels for simplicity
+- **4 Design Variations**: Generate multiple options to choose from
+- **No Forced Selection**: View and print any design without committing
+- **Smart Defaults**: AI selects artistic style automatically
+- **Email on Print**: Cards are emailed only when printed, not during generation
+
+### Single-Page Form Structure
+
+The single-page interface includes all card creation options in one streamlined form:
+
+1. **Card Type & Tone**
    - Card type selection (Birthday, Anniversary, Thank You, etc.)
    - Tone selection (Funny, Heartfelt, Professional, etc.)
+   - Clean dropdown interface with emojis and descriptions
+
+2. **Recipient Details**
    - To/From fields (optional personalization)
-   - Reference photo upload (optional) with automatic compression for files >10MB
-   - Photo analysis for person selection and naming
-   - Recent cards history display
+   - Relationship field for better personalization
 
-2. **Step 2 - Message Composition**
-   - Card message writing with AI assistance
-   - Handwritten message option
-   - Message history with undo/redo
-   - "Try Another" for message variations
-   - Character count guidance
+3. **Personalization**
+   - Interests and hobbies field for artwork personalization
+   - Reference photo upload with automatic compression
+   - Photo analysis and person identification
 
-3. **Step 3 - Visual Design (Optional)**
-   - Artwork personalization field (interests → visual elements)
-   - Artistic style selection (Style Sampler, Watercolor, etc.)
-   - Shows confirmation if photos were uploaded in Step 1
-   - Unified visual customization step
+4. **Artistic Style**
+   - Style selection (Style Sampler, Watercolor, etc.)
+   - Descriptions visible on all screen sizes
 
-4. **Step 4 - Email Address**
-   - Required for card delivery
-   - Validation before proceeding
-
-5. **Step 5 - Draft Selection**
-   - AI generates 5 draft variations (updated from 4)
-   - Interactive card preview with hover effects
-   - Selection determines final generation
-   - Reference photos automatically incorporated into designs
-
-6. **Step 6 - Final Generation**
-   - High-quality 4-panel card generation
-   - Progress tracking
-   - Email delivery with PDF attachment
+5. **Email & Generation**
+   - Email address for card delivery
+   - Generate button creates 5 unique card designs
+   - Real-time progress tracking with timer
+   - Thumbnail grid for easy design selection
+   - Print options (physical or PDF email)
 
 ## Architecture & APIs
 
@@ -238,6 +257,9 @@ QR codes are automatically generated for each card:
 - `POST /send-thank-you-email` - Send card via email
 - `GET /api/job-status/{job_id}` - Check generation progress
 - `GET /view-card/{uniqueId}` - Public card viewing
+- `POST /api/print-queue` - Add card to print queue
+- `POST /api/send-pdf-email` - Send PDF version via email
+- `GET /api/print-status/{job_id}` - Check print job status
 
 ### Storage Architecture
 - **Cards**: `/data/cards/card_{id}.json` 
@@ -255,7 +277,7 @@ npm run dev
 ### Production Deployment
 - Frontend: Next.js app on port 3000
 - Backend: Flask app on port 5001
-- Domain: https://vibecarding.com
+- Domain: https://papersaurus.com
 - SSL: Configured via Nginx
 
 ### Testing Changes in Production
@@ -264,15 +286,15 @@ When testing changes on the production server:
 **For Frontend Changes (Next.js):**
 ```bash
 # For development (hot reload, no build needed):
-sudo systemctl restart vibecarding-dev.service
+sudo systemctl restart papersaurus-dev.service
 
 # For production (with automatic build):
-sudo systemctl restart vibecarding.service
+sudo systemctl restart papersaurus.service
 ```
 
 **Available Frontend Services:**
-- `vibecarding-dev.service` - Development server with hot reload (port 3000)
-- `vibecarding.service` - Production server with automatic build (port 3000)
+- `papersaurus-dev.service` - Development server with hot reload (port 3000) (Note: currently still named vibecarding-dev.service)
+- `papersaurus.service` - Production server with automatic build (port 3000) (Note: currently still named vibecarding.service)
 
 Note: Only run one frontend service at a time. The production service automatically runs `npm run build` before starting.
 
@@ -294,10 +316,11 @@ sudo systemctl restart mcp_service.service
 
 ### Email Testing
 To test email functionality:
-1. Generate a card through the wizard
-2. Enter email in Step 4 (use `jordan.j.gilbert@gmail.com` for testing)
-3. Complete generation in Step 6
-4. Check inbox for professionally formatted email
+1. Fill out the single-page form
+2. Enter email (use `jordan.j.gilbert@gmail.com` for testing)
+3. Click Generate Card and wait for designs
+4. Select a design and choose print/email option
+5. Check inbox for professionally formatted email
 
 ## AI Models & Configuration
 
@@ -307,6 +330,16 @@ To test email functionality:
 - **Photo Analysis**: Gemini 2.5 Pro with vision
 - **Prompt Generation**: Gemini 2.5 Pro
 - **IMPORTANT**: Always use `gemini-2.5-pro` for ALL AI-related calls
+
+### Reference Image Processing
+- **Image-to-Image Generation**: Uses OpenAI's `images.edit` endpoint
+- **Front Cover Only**: Reference images are ONLY applied to the front cover generation
+- **Technical Flow**: 
+  - Reference images are passed to backend as `input_images`
+  - Backend sends them to MCP image service with `input_images_mode: "front_cover_only"`
+  - Only prompt index 0 (front cover) receives the reference images
+  - Other panels (back, interiors) use standard text-to-image generation
+- **Prompt Clarification**: AI prompts explicitly state reference images apply to front cover only
 
 ### Required Environment Variables
 - `OPENAI_API_KEY` - GPT image generation
@@ -354,8 +387,6 @@ const response = await chatWithAI(prompt, {
 ### Code Refactoring for Maintainability
 - **useCardStudio**: Split 2048-line hook into 7 focused modules (~100-400 lines each)
   - WebSocket, Job Management, Message Generation, File Handling, Draft/Final Generation
-- **CardWizard**: Split 627-line component into 4 modules (~100-225 lines each)
-  - Main state, Effects, Steps, Helpers
 - **Benefits**: Single responsibility, easier testing, better reusability, backward compatible
 
 ### Prompt Generation Consolidation
@@ -383,18 +414,6 @@ The `generateFinalFromDraftPromptsCombined()` method generates back cover, left 
 - **JSON Schema Output**: Uses structured JSON response for reliability
 - **Fallback**: Automatically falls back to individual generation if combined fails
 
-### WebSocket & State Management Fixes
-- **Multi-subscription support** for concurrent draft jobs
-- **Auto-reconnection** with exponential backoff
-- **Stale job detection** (30+ second timeout)
-- **One-way image sync** prevents reference photo loss
-
-### Recent Fixes
-- **Job Persistence**: File-based storage survives Flask restarts, 6-hour auto-cleanup
-- **Page Refresh Recovery**: Restores generation state from localStorage, handles stale jobs
-- **Message Rendering**: Fixed messages not appearing by appending exact text after AI prompts
-- **WebSocket Stability**: Multi-subscription support, auto-reconnection, progress tracking
-- **Reference Images**: Fixed persistence issues with one-way sync pattern
 
 ## Gallery UI Implementation
 
@@ -434,9 +453,9 @@ The gallery at `/gallery` now includes comprehensive UI enhancements:
 - **MCP Servers**: `/var/www/flask_app/mcp_client/mcp_servers/`
 
 ### Key Features
-- QR codes auto-generated for all cards (`vibecarding.com/cards/{id}`)
+- QR codes auto-generated for all cards (`papersaurus.com/cards/{id}`)
 - Email delivery via SendGrid (fallback: Gmail API)
-- Reference photos only work with GPT-1 model
+- Reference photos work with all image models
 - WebSocket auto-reconnection with exponential backoff
 - Job persistence survives server restarts (file-based)
 
